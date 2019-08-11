@@ -5,3 +5,4 @@ data/vcf
 .vcf*
 .zarr*
 .ipynb_*
+output/*
