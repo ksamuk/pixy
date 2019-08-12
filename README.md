@@ -1,7 +1,7 @@
 ``pixy``
 ====================
 
-A command line tool for sensibly estimating average nucleotide diversity within (π) and between (d<sub>xy</sub>) populations from a VCF. In particular, pixy accomodates (and encourages) the use of VCFs containing invariant (AKA monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub>.
+A command-line tool for sensibly estimating average nucleotide diversity within (π) and between (d<sub>xy</sub>) populations from a VCF. In particular, pixy accomodates (and encourages) the use of VCFs containing invariant (AKA monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub>.
 
 ***pixy is currently in active development, and is not yet ready for general use. pixy will be fully described in a forthcoming publication.***
 
