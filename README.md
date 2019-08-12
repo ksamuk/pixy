@@ -15,7 +15,7 @@ Planned: Installation via Anaconda recipe.
 
 ## Background
 
-Population geneticists are often interested in quantifying nucleotide diversity within and nucleotide differences between populations. The two most common summary statistics for these quantities are often attributed to Nei and Li (1979), who discuss summarizing variation case of two populations (denoted 'x' and 'y'):
+Population geneticists are often interested in quantifying nucleotide diversity within and nucleotide differences between populations. The two most common summary statistics for these quantities were described by Nei and Li (1979), who discuss summarizing variation case of two populations (denoted 'x' and 'y'):
 
 - π  - Average nucleotide diversity within populations, also sometimes denoted π<sub>x</sub> and π<sub>y</sub> to indicate the population of interest.
 - d<sub>xy</sub> - Average nucleotide difference between populations, also sometimes denoted π<sub>xy</sub> (pixy, get it?), to indicate that the statistic is a comparison between populations x and y.
