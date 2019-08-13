@@ -10,7 +10,7 @@ Kieran Samuk and Katharine Korunes <p>
 Duke University
 
 ## Installation
-Currently: Clone from Github, with manual dependancy installation.<p>
+Currently: Clone from Github, with manual dependency installation.<p>
 Planned: Installation via Anaconda recipe.
 
 ## Background
