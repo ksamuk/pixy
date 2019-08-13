@@ -4,5 +4,6 @@
 data/vcf
 .vcf*
 .zarr*
-.ipynb_*
+*.ipynb_*
+.ipynb_checkpoints/*
 output/*
