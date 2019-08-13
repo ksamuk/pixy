@@ -7,14 +7,23 @@ Welcome to pixy's documentation!
 ================================
 
 .. toctree::
+   :caption: Utility documentation
    :maxdepth: 2
-   :caption: Contents:
+
+   installation
+   quickstart
+   arguments
 
 
 
-Indices and tables
+Tutorials
 ==================
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. toctree::
+    :maxdepth: 2
+    :numbered:
+    :caption: Generating an Invariant Sites VCF
+
+    invar/gatk
+    invar/freebayes
+    invar/samtools
