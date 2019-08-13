@@ -1,7 +1,7 @@
 ``pixy``<img src="https://raw.githubusercontent.com/ksamuk/pixy/master/docs/pixy_logo.png" align="right" width="20%">
 ====================
 
-A command-line tool for sensibly estimating average nucleotide diversity within (π) and between (d<sub>xy</sub>) populations from a VCF. In particular, pixy accomodates (and encourages) the use of VCFs containing invariant (AKA monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub>.
+A command-line tool for sensibly estimating average nucleotide diversity within (π) and between (d<sub>xy</sub>) populations from a VCF. In particular, pixy facilitates the use of VCFs containing invariant (AKA monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub>.
 
 ***pixy is currently in active development and is not ready for general use. The software will be fully described in a forthcoming publication.***
 
