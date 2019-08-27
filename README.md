@@ -41,4 +41,4 @@ Both of π and d<sub>xy</sub> measure the average number of differences between 
 3. Computation of π and d<sub>xy</sub> for arbitrary numbers of populations 
 4. Computes all statistics in arbitrarily sized windows, and output contains all raw information for all computations (e.g. numerators and denominators).
 
-The majority of this is made possible by extensive use of the existing data structures and functions found in the brilliant python library [scikit-allel](https://github.com/cggh/scikit-allel). 
+The majority of this is made possible by extensive use of the existing data structures and functions found in the brilliant python library [scikit-allel](https://github.com/cggh/scikit-allel).  
