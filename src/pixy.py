@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# In[3]:
 
 
 import allel
@@ -19,7 +19,7 @@ from tqdm import tqdm
 import argparse
 
 
-# In[35]:
+# In[4]:
 
 
 # parse the command line arguements

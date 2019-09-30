@@ -7,9 +7,8 @@ version=$1
 mkdir -p archive
 mkdir -p release
 
-cp pixy.py release/pixy.py
+cp pixy.py src/pixy.py
 cp meta.yaml release/meta.yaml 
-cp build.sh release/build.sh
 cp -r src release/src
 
 tar czfv ${version}.tar.gz release 
