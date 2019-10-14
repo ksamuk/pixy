@@ -4,8 +4,8 @@ Quickstart Guide for Generating PIXY Input
 
 pixy facilitates the correct computation of π and dxy by allowing users to input data in a standard file format: Variant Call Format (VCF). AllSites VCFs contain invariant (AKA monomorphic) sites in addition to variant sites. Several commonly used, well-documented programs can generate AllSites VCFs. Here, we provide a quickstart guide for generating AllSites VCFs using two of the most widely-used tools for variant discovery and manipulation: BCFtools and GATK. Either of these tools can be run given only a set of aligned data (BAM files) and the reference sequence used to align them.
 
-.. Utilizing genomic intervals for improved runtime::
-    If generation of an AllSites VCF is time-consuming, we recommend parallelizing      your pipeline by breaking analyses down into smaller genomic regions. In our test datasets, we ran individual chromosomes in            parallel. Depending on the size of chromosomes in a dataset, it may be beneficial to break down chromosomes into smaller intervals      for variant calling. Genomic intervals can be specified using the -L parameter in GATK or the -r parameter in bcftools mpileup.
+.. note::
+    **Utilizing genomic intervals for improved runtime:** If generation of an AllSites VCF is time-consuming, we recommend parallelizing your pipeline by breaking analyses down into smaller genomic regions. In our test datasets, we ran individual chromosomes in parallel. Depending on the size of chromosomes in a dataset, it may be beneficial to break down chromosomes into smaller intervals for variant calling. Genomic intervals can be specified using the -L parameter in GATK or the -r parameter in bcftools mpileup.
 
 Generating AllSites VCFs using BCFtools (mpileup/call)
 ===================
@@ -28,18 +28,18 @@ Generating AllSites VCFs using GATK
 
 GATK recommends first calling variants per-sample using HaplotypeCaller in GVCF mode (Step 1 below). Next, GenomicsDBImport consolidates information from GVCF files across samples to improve the efficiency joint genotyping (Step 2 below). In the 3rd step, GenotypeGVCFs produces a set of jointly-called SNPs and INDELS ready for filtering and analysis. We recommend consulting the full GATK documentation found here: https://software.broadinstitute.org/gatk/
 
-Step1 - HaplotypeCaller (this step should be run for each BAM file):: console
+Step 1 - HaplotypeCaller (this step should be run for each BAM file)::
 
     gatk-4.0.7.0/gatk --java-options "-Xmx4G" HaplotypeCaller \
     -R <reference.fa> -I <input.bam> -O <output.g.vcf> -ERC GVCF -L <X>
 
-Step2 - GenomicsDBImport:: console
+Step 2 - GenomicsDBImport::
 
     gatk-4.0.7.0/gatk --java-options "-Xmx4g" GenomicsDBImport \
     -V $file1 -V $file2 --genomicsdb-workspace-path <allsamples_genomicsdb> \
     -L <X>
 
-Step3 - GenotypeGVCFs:: console
+Step 3 - GenotypeGVCFs::
 
     gatk-4.0.7.0/gatk --java-options "-Xmx4g" GenotypeGVCFs \
     -R <reference.fa> -V gendb://<allsamples_genomicsdb> \
@@ -55,4 +55,4 @@ Notes on the options selected above:
 Important: In GATK v4.x, we have found that you must specify an interval (-L) when running GenotypeGVCFs. Without a designated interval, it appears to encounter missing reference confidence blocks, causing it to fail. This is true even when the problematic blocks are outside of the GenomicsDB interval being passed to it. We recommend always specifying an interval (-L) to avoid such issues.
 
 .. note::
-    In the example above, we use GATK v4, but AllSites VCFs can also be easily generated in GATK v3.x by running GenotypeGVCFs with the “-allSites” parameter. (Note the slightly different syntax from “-all-sites” in GATK v4).
+    **GATK versions:** In the example above, we use GATK v4, but AllSites VCFs can also be easily generated in GATK v3.x by running GenotypeGVCFs with the “-allSites” parameter. (Note the slightly different syntax from “-all-sites” in GATK v4).
