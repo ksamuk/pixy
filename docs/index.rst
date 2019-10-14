@@ -21,9 +21,6 @@ Tutorials
 
 .. toctree::
     :maxdepth: 2
-    :numbered:
-    :caption: Generating an Invariant Sites VCF
+    :caption: Generating PIXY Input
 
-    invar/gatk
-    invar/freebayes
-    invar/samtools
+    invar/allsitesQuickstart
