@@ -7,10 +7,10 @@ requirements = [
 
 setup(
     name='pixy',
-    version='1.0',
-    description="pixy test",
-    #author="kieran",
-    #author_email='ksamuk',
+    version='0.1',
+    description="pixy",
+    author="Katharine Korunes, Kieran Samuk",
+    author_email='kkorunes@gmail.com, ksamuk@gmail.com',
     url='https://github.com/ksamuk/pixy',
     packages=['pixy'],
     entry_points={
