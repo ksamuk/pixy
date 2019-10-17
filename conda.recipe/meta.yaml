@@ -1,6 +1,6 @@
 {% set name = "pixy" %}
 {% set version = "0.1" %}
-{% set sha256 = "651aa871e9181367732bd590a39ce9375bc0d650c68a9a4fe74531bf16b055a2" %}
+{% set sha256 = "d2156f2f0d8bd7f8709055285f0cefc463edb88e637d365050d2c9038d0ec842" %}
 
 package:
   name: {{ name|lower }}
