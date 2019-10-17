@@ -389,16 +389,16 @@ if (args.populations is not None) and ((args.stats == 'pi' or args.stats == 'pi_
 
     chr_length = 1000000 # testing value
 
-    # window size:
-    window_size = 1000
-
-    # initialize window_pos_2 
-    window_pos_2 = window_size
-
     # initialize the pi output file names
 
     for pop in popnames:
 
+        # window size:
+        window_size = 1000
+
+        # initialize window_pos_2 
+        window_pos_2 = window_size
+        
         # create pi name via the prefix
         pi_file = str(args.outfile_prefix) + "_" + str(pop) +"_pi.txt"
 
@@ -446,12 +446,6 @@ if (args.populations is not None) and ((args.stats == 'dxy' or args.stats == 'pi
 
     chr_length = 10000 # testing value, total length of the chromosome
 
-    # window size:
-    window_size = 1000
-
-    # initialize window_pos_2 
-    window_pos_2 = window_size
-
     # create a list of all pairwise comparisons between populations in the popfile
     dxy_pop_list = list(combinations(popnames, 2))
 
@@ -459,7 +453,13 @@ if (args.populations is not None) and ((args.stats == 'dxy' or args.stats == 'pi
     for pop_pair in dxy_pop_list:
         pop1 = pop_pair[0]
         pop2 = pop_pair[1]
+        
+        # window size:
+        window_size = 1000
 
+        # initialize window_pos_2 
+        window_pos_2 = window_size
+        
         # rename the dxy output file based on the prefix
         dxy_file = str(args.outfile_prefix) + "_" + str(pop1) + "_" + str(pop2) +"_dxy.txt"
 
@@ -497,11 +497,11 @@ if (args.populations is not None) and ((args.stats == 'dxy' or args.stats == 'pi
     print("Dxy calculations complete and written to " + args.outfile_prefix + "_[pop1]_[pop2]_dxy.txt")
 
 
-# In[2]:
+# In[1]:
 
 
 # convert this notebook to a .py script
-get_ipython().system('jupyter nbconvert --to=python pixy.ipynb')
+get_ipython().system(u'jupyter nbconvert --to=python pixy.ipynb')
 
 
 # In[ ]:

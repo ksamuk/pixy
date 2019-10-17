@@ -1,0 +1,36 @@
+{% set data = load_setup_py_data() %}
+{% set version = "0.1" %}
+
+package:
+  name: pixy
+  
+  version: {{ version }}
+
+source:
+  path: ../src
+
+build:
+  number: 1
+
+requirements:
+  build:
+    - python
+    - setuptools
+
+  run:
+    - scikit-allel
+    - tqdm
+    - numpy >=1.13
+    - python
+
+test:
+  commands:
+    - pixy --help
+
+about:
+  home: https://github.com/ksamuk/pixy
+  license: MIT
+  summary: 'Command line tool for estimating nucleotide diversity within and between populations'
+  dev_url: https://github.com/ksamuk/pixy
+  doc_url: https://pixy.readthedocs.io/en/latest/
+  doc_source_url: https://github.com/ksamuk/pixy/blob/master/README.md
