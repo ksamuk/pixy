@@ -1,14 +1,15 @@
-{% set data = load_setup_py_data() %}
+{% set name = "pixy" %}
 {% set version = "0.1" %}
+{% set sha256 = "b8dacb2334236ba450d588ec4e0d7ceba8d6d0d658d7e93c1298c4d4772f5dd2" %}
 
 package:
-  name: pixy
-  
+  name: {{ name|lower }}
   version: {{ version }}
 
 source:
   #path: ../src
   url: https://github.com/ksamuk/pixy/archive/{{ version }}.tar.gz
+  sha256: {{ sha256 }}
 
 build:
   number: 0
