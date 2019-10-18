@@ -18,7 +18,7 @@ setup(
             'pixy=pixy.py'
         ]
     },
-	scripts='pixy/pixy.py',
+    scripts='src/pixy.py',
     install_requires=requirements,
     keywords='pixy',
     classifiers=[
