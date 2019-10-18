@@ -9,7 +9,7 @@ requirements = [
 
 setup(
     name='pixy',
-    version='0.1',
+    version='0.12',
     packages=[''],
     package_dir={'': 'src'},
     entry_points={

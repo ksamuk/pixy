@@ -87,7 +87,7 @@ if not os.path.exists(zarr_path):
 elif 'regenerate_zarr' in args:
     if args.regenerate_zarr == 'yes':
         print("Regenerating Zarr array...")
-        allel.vcf_to_zarr(vcf_path, zarr_path, group=chromosome', fields='*', log=sys.stdout, overwrite=True)
+        allel.vcf_to_zarr(vcf_path, zarr_path, group='chromosome', fields='*', log=sys.stdout, overwrite=True)
 
 # inspect the structure of the zarr data
 callset = zarr.open_group(zarr_path, mode='r')
