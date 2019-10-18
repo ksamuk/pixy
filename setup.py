@@ -15,10 +15,10 @@ setup(
     packages=['pixy'],
     entry_points={
         'console_scripts': [
-            'pixy=pixy.py'
+            'pixy=src/pixy.py'
         ]
     },
-	scripts='pixy/pixy.py',
+	scripts='src/pixy.py',
     install_requires=requirements,
     keywords='pixy',
     classifiers=[
