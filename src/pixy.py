@@ -1,12 +1,6 @@
-#!/usr/bin/env python
 # coding: utf-8
-
-# In[3]:
-
-
 import allel
 import zarr
-import numcodecs
 import numpy as np
 import sys
 import os
@@ -18,16 +12,12 @@ from collections import Counter
 from tqdm import tqdm
 import argparse
 
-
-# In[4]:
-
-
 # parse the command line arguements
-# - validate the arguements 
+# - validate the arguements
 # - throw errors if requiremabents are missing
 # - validate the filter strings
 
-#pi_dxy --pi --dxy\ # must include at least 1 of pi and/dxy 
+#pi_dxy --pi --dxy\ # must include at least 1 of pi and/dxy
 #--vcf allsites.vcf.gz \ # required
 #--zarr path/to/zarr \  # default to the vcf folder
 #--populations popfile.txt \ # only required for dxy
@@ -38,7 +28,7 @@ import argparse
 
 # initialize and add arguments to the argparser
 
-help_image = "██████╗ ██╗██╗  ██╗██╗   ██╗\n" "██╔══██╗██║╚██╗██╔╝╚██╗ ██╔╝\n" "██████╔╝██║ ╚███╔╝  ╚████╔╝\n" "██╔═══╝ ██║ ██╔██╗   ╚██╔╝\n" "██║     ██║██╔╝ ██╗   ██║\n" "╚═╝     ╚═╝╚═╝  ╚═╝   ╚═╝\n" 
+help_image = "██████╗ ██╗██╗  ██╗██╗   ██╗\n" "██╔══██╗██║╚██╗██╔╝╚██╗ ██╔╝\n" "██████╔╝██║ ╚███╔╝  ╚████╔╝\n" "██╔═══╝ ██║ ██╔██╗   ╚██╔╝\n" "██║     ██║██╔╝ ██╗   ██║\n" "╚═╝     ╚═╝╚═╝  ╚═╝   ╚═╝\n"
 
 help_text = 'pixy: sensible estimates of pi and dxy from a VCF'
 
@@ -91,7 +81,7 @@ args = parser.parse_args()
 
 # perform the vcf to zarr conversion if the zarr array is missing, or regeneration has been requested
 
-if os.path.exists(zarr_path) is not True:
+if not os.path.exists(zarr_path):
     print("Zarr array does not exist, building...")
     allel.vcf_to_zarr(vcf_path, zarr_path, group=chromosome, fields='*', log=sys.stdout, overwrite=True)
 elif 'regenerate_zarr' in args:
@@ -117,7 +107,7 @@ poppanel = pandas.read_csv(args.populations, sep='\t', usecols=[0,1], names=['ID
 poppanel.head()
 
 # get a list of samples from the callset
-samples = callset[chromosome + '/samples'][:]
+samples = callset[os.path.join(chromosome,"samples")][:]
 samples_list = list(samples)
 #print('VCF samples:', samples_list)
 
@@ -130,18 +120,16 @@ missing = list(set(IDs)-set(samples_list))
 try:
     samples_callset_index = [samples_list.index(s) for s in poppanel['ID']]
 except ValueError as e:
-    raise Exception('ERROR: the following samples are listed in the population file but not in the VCF:', missing) from e
-else:   
+    raise ValueError('ERROR: the following samples are listed in the population file but not in the VCF:', missing) from e
+else:
     poppanel['callset_index'] = samples_callset_index
 
     # use the popindices dictionary to keep track of the indices for each population
     popindices={}
     popnames = poppanel.Population.unique()
     for name in popnames:
-        #print(name)
         popindices[name] = poppanel[poppanel.Population == name].callset_index.values
 
-    #print(popindices)
 
 
 # In[7]:
@@ -165,19 +153,19 @@ filters = []
 # apply the filter
 # TBD: handle cases where the specified filter isn't in the callset
 for x in args.variant_filter_expression.split(","):
-    stat = re.sub("[^A-Za-z]+", "", x)
-    value = int(re.sub("[^0-9]+", "", x))
-    compare = re.sub("[A-Za-z0-9]+", "", x)
-    
+    stat = re.sub(r"[^A-Za-z]+", "", x)
+    value = int(re.sub(r"[^0-9]+", "", x))
+    compare = re.sub(r"[A-Za-z0-9]+", "", x)
+
     #print(str(stat) + " " + str(compare) + " " + str(value))
-    
+
     # check if the requested annotation exists in the VCF
-    try: 
+    try:
         stat_index = calldata_fields.index(stat)
     except ValueError as e:
         raise Exception("Error: The requested filter \'" + stat + "\' is not annotated in the input VCF") from e
-    else: 
-   
+    else:
+
         # check if this is the first run through the loop
         # if so, either catch GQ and RGQ as separate filters or create the initial filter
         # on subsequent runs ('filters' is not a list), only catch GQ and RGQ or update the filter (logical AND)
@@ -204,15 +192,15 @@ for x in args.variant_filter_expression.split(","):
 
 GQ_exists = 'GQ_filter' in args
 RGQ_exists = 'RGQ_filter' in args
-   
+
 if GQ_exists & RGQ_exists:
     filters = np.logical_and(filters, np.logical_or(GQ_filter, RGQ_filter))
 elif GQ_exists:
     filters = np.logical_and(filters, GQ_filter)
 elif RGQ_exists:
     filters = np.logical_and(filters, RGQ_filter)
-        
-# finally, invert the whole array 
+
+# finally, invert the whole array
 # this is for convenience/brevity in the next section
 
 filters = np.invert(filters)
@@ -222,7 +210,7 @@ filters = np.invert(filters)
 
 
 # applying the filter to the data
-# all the filters are in a boolean array ('filters') 
+# all the filters are in a boolean array ('filters')
 
 # TBD: check to see there is any data left
 # TBD: print warning for low data* think more about this
@@ -231,11 +219,11 @@ filters = np.invert(filters)
 
 # the genotype calls
 # recode the gt matrix as a Dask array (saves memory)
-gt_dask = allel.GenotypeDaskArray(callset[chromosome + '/calldata/GT'])
+gt_dask = allel.GenotypeDaskArray(callset[os.path.join(chromosome, "calldata", "GT")])
 
-# create a packed genotype array 
+# create a packed genotype array
 # this is a array with dims snps x samples
-# genotypes are represented by single byte codes 
+# genotypes are represented by single byte codes
 # critically, as the same dims as the filters array below
 gt_array = allel.GenotypeArray(gt_dask).to_packed()
 
@@ -307,10 +295,10 @@ def dxyTallyRegion(pop1_gt_region, pop2_gt_region):
         avg_pi = 0
     return(avg_pi, total_diffs, total_comps, total_missing)
 
-#Out of sites with data, count differences. 
+#Out of sites with data, count differences.
 #Return the number of differences, the number of comparisons, and missing data count.
 def compareGTs(vec):
-    # use gts to select only sites with data. 
+    # use gts to select only sites with data.
     # counting missing data as a check, but it's implicit in the length of (gts)
     gts = []
     missing = 0
@@ -322,7 +310,7 @@ def compareGTs(vec):
     c = Counter(gts)
     #print(c)
     diffs = c[1]*c[0]
-    comps = len(list(combinations(gts, 2)))        
+    comps = len(list(combinations(gts, 2)))
     return(diffs,comps,missing)
 
 def dxyCompareGTs(vec1, vec2):
@@ -341,7 +329,7 @@ def dxyCompareGTs(vec1, vec2):
             gts2.append(y)
         else:
             missing += 1
-     
+
     diffs = 0
     comps = 0
     length1 = len(gts1)
@@ -352,8 +340,8 @@ def dxyCompareGTs(vec1, vec2):
             j = gts2[n]
             comps += 1
             if i != j:
-                diffs += 1    
-        
+                diffs += 1
+
     return(diffs,comps,missing)
 
 
@@ -388,9 +376,9 @@ if (args.populations is not None) and ((args.stats == 'pi' or args.stats == 'pi_
         # window size:
         window_size = 1000
 
-        # initialize window_pos_2 
+        # initialize window_pos_2
         window_pos_2 = window_size
-        
+
         # create pi name via the prefix
         pi_file = str(args.outfile_prefix) + "_" + str(pop) +"_pi.txt"
 
@@ -409,7 +397,7 @@ if (args.populations is not None) and ((args.stats == 'pi' or args.stats == 'pi_
             loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
             gt_region1 = gt_array[loc_region]
 
-            # subset the window for the individuals in each population 
+            # subset the window for the individuals in each population
             gt_pop = gt_region1.take(popindices[pop], axis=1)
 
             avg_pi, total_diffs, total_comps, total_missing = tallyRegion(gt_pop)
@@ -445,13 +433,13 @@ if (args.populations is not None) and ((args.stats == 'dxy' or args.stats == 'pi
     for pop_pair in dxy_pop_list:
         pop1 = pop_pair[0]
         pop2 = pop_pair[1]
-        
+
         # window size:
         window_size = 1000
 
-        # initialize window_pos_2 
+        # initialize window_pos_2
         window_pos_2 = window_size
-        
+
         # rename the dxy output file based on the prefix
         dxy_file = str(args.outfile_prefix) + "_" + str(pop1) + "_" + str(pop2) +"_dxy.txt"
 
@@ -470,34 +458,14 @@ if (args.populations is not None) and ((args.stats == 'dxy' or args.stats == 'pi
             # use the popGTs dictionary to keep track of this region's GTs for each population
             popGTs={}
             for name in pop_pair:
-                #print(popindices[name])
                 gt_pop = gt_region1.take(popindices[name], axis=1)
                 popGTs[name] = gt_pop
-            #print(popGTs)
             pop1_gt_region1 = popGTs[pop1]
             pop2_gt_region1 = popGTs[pop2]
             avg_dxy, total_diffs, total_comps, total_missing = dxyTallyRegion(pop1_gt_region1, pop2_gt_region1)
             outfile.write(str(pop1) + "\t" + str(pop2) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_dxy) + "\t" + str(len(gt_region1)) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
-
-            #print("Region:", x , y, ",", "Region length:", len(pop1_gt_region1))
-            #print("Average dxy:", avg_dxy)
-            #print("Diffs, comps, missing:", total_diffs, total_comps, total_missing, "\n")
             window_pos_2 += window_size
 
         outfile.close()
 
     print("Dxy calculations complete and written to " + args.outfile_prefix + "_[pop1]_[pop2]_dxy.txt")
-
-
-# In[1]:
-
-
-# convert this notebook to a .py script
-# get_ipython().system(u'jupyter nbconvert --to=python pixy.ipynb')
-
-
-# In[ ]:
-
-
-
-
