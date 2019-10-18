@@ -37,10 +37,11 @@ parser = argparse.ArgumentParser(description=help_image+help_text, formatter_cla
 
 parser.add_argument('--version', action='version', version='%(prog)s version 1.0')
 parser.add_argument('--stats', choices=['pi', 'dxy', 'pi_dxy'], help='Which stats to to calulate from the VCF (pi, dxy, or both)', required=True)
-parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
-parser.add_argument('--zarr', type=str, nargs='?', help='Folder in which to build the Zarr array', required=True)
+parser.add_argument('--vcf_path', type=str, nargs='?', help='Path to the input VCF', required=True)
+parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array', required=True)
 parser.add_argument('--regenerate_zarr', choices=['yes', 'no'], help='Force regeneration of the Zarr array')
 parser.add_argument('--populations', type=str, nargs='?', help='Path to the populations file', required=True)
+parser.add_argument('--chromosome', type=str, nargs='?', help='Target chromosome (as annotated in the CHROM field)', required=True)
 parser.add_argument('--window_size', type=int, nargs='?', help='Window size in base pairs over which to calculate pi/dxy')
 parser.add_argument('--variant_filter_expression', type=str, nargs='?', help='A comma separated list of filters (e.g. DP>=10,GQ>=20) to apply to SNPs', required=True)
 parser.add_argument('--invariant_filter_expression', type=str, nargs='?', help='A comma separated list of filters (e.g. DP>=10,RGQ>=20) to apply to invariant sites', required=True)
@@ -78,24 +79,15 @@ args = parser.parse_args()
 
 # Zarr array conversion
 
-# test data
-# TBD: replace with parsed args
-chromosome = "chrX"
-vcf_path = os.path.join("data", "vcf", "ag1000", "chrX_36Ag_allsites.vcf.gz")
-zarr_path = os.path.join("data", "vcf", "ag1000", "chrX_36Ag_allsites.zarr")
-
-#vcf_path = '/Users/Katharine Korunes/Documents/Dxy_test_data/chrX_36Ag_allsites.vcf.gz'
-#zarr_path = '/Users/Katharine Korunes/Documents/Dxy_test_data/chrX_36Ag_allsites.zarr'
-
 # perform the vcf to zarr conversion if the zarr array is missing, or regeneration has been requested
 
 if not os.path.exists(zarr_path):
     print("Zarr array does not exist, building...")
-    allel.vcf_to_zarr(vcf_path, zarr_path, group='chrX', fields='*', log=sys.stdout, overwrite=True)
+    allel.vcf_to_zarr(vcf_path, zarr_path, group=chromosome, fields='*', log=sys.stdout, overwrite=True)
 elif 'regenerate_zarr' in args:
     if args.regenerate_zarr == 'yes':
         print("Regenerating Zarr array...")
-        allel.vcf_to_zarr(vcf_path, zarr_path, group='chrX', fields='*', log=sys.stdout, overwrite=True)
+        allel.vcf_to_zarr(vcf_path, zarr_path, group=chromosome', fields='*', log=sys.stdout, overwrite=True)
 
 # inspect the structure of the zarr data
 callset = zarr.open_group(zarr_path, mode='r')
@@ -149,7 +141,7 @@ else:
 ops = { "<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge, "==": operator.eq}
 
 # determine the complete list of available calldata fields usable for filtration
-calldata_fields = sorted(callset['chrX/calldata'].array_keys())
+calldata_fields = sorted(callset[chromosome + '/calldata/'].array_keys())
 
 # intialize the filtration array (as a list)
 filters = []
