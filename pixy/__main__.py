@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import allel
 import zarr
 import numpy as np
