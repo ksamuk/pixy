@@ -10,14 +10,12 @@ requirements = [
 setup(
     name='pixy',
     version='0.12',
-    packages=[''],
-    package_dir={'': 'src'},
+    packages=['pixy'],
     entry_points={
         'console_scripts': [
-            'pixy=pixy.py'
+            'pixy=pixy.__main__:main'
         ]
     },
-    scripts="pixy.py",
     url='https://github.com/ksamuk/pixy',
     license='MIT',
     author='Katharine Korunes, Kieran Samuk',
@@ -27,6 +25,6 @@ setup(
     keywords='pixy',
     classifiers=[
         'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.6'
+        'Programming Language :: Python :: 3.6',
     ]
 )
