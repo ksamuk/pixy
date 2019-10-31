@@ -10,6 +10,7 @@ Welcome to pixy's documentation!
    :caption: Utility documentation
    :maxdepth: 2
 
+   about
    installation
    quickstart
    arguments
