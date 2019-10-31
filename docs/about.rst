@@ -1,5 +1,5 @@
 ************
-About
+About pixy
 ************
 
 **Authors: Kieran Samuk and Katharine Korunes, Duke University**
@@ -20,8 +20,8 @@ case of two populations (denoted 'x' and 'y'):
     pixy is currently in active development and is not ready for general use. 
     The software will be fully described in a forthcoming publication.
 
-Common pitfalls in calculating π and dxy:
-===================
+Common pitfalls in calculating π and dxy
+#####################
 
 Both π and dxy measure the average number of differences between sequences per nucleotide not per SNP. As such, one must include 
 monomorphic/invariant sites when tallying differences between sequences. Prior to the genomic era, such sites were almost always explicitly 
@@ -30,8 +30,8 @@ VCFs which by design often omit invariant sites. With variants-only VCFs, there 
 sites. Further, when one does include invariant sites in a VCF, it generally results in very large files that are difficult to manipulate 
 with standard tools.
 
-The solution:
-===================
+Better π and dxy calculation with pixy
+#####################
 
 pixy provides the following solutions to problems inherent in computing π and dxy from a VCF:
 
