@@ -3,12 +3,12 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-.. image:: pixy_logo.png
-   :width: 100
-
 Welcome to pixy's documentation!
 ================================
-
+.. image:: pixy_logo.png
+   :width: 200
+   :align: center
+   
 .. toctree::
    :caption: Utility documentation
    :maxdepth: 2
