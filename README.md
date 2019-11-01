@@ -5,6 +5,10 @@
 
 **`pixy`** ***is currently in active development and is not ready for general use. The software will be fully described in a forthcoming publication.***
 
+## Documentation
+
+https://pixy.readthedocs.io/en/latest/
+
 ## Authors
 Kieran Samuk and Katharine Korunes <p>
 Duke University
