@@ -5,6 +5,28 @@
 
 **`pixy`** ***is currently in active development and is not ready for general use. The software will be fully described in a forthcoming publication.***
 
+## Installation
+
+`pixy` is currently available for installation on Linux/OSX systems via conda-forge. To install pixy using conda, you will first need to add conda-forge as a channel (if you haven't already):
+```
+conda config --add channels conda-forge
+```
+
+Then install pixy:
+```
+conda install pixy
+```
+
+You can test your pixy installation by running:
+```
+pixy --help
+```
+
+For information in installing conda, see here:
+https://docs.anaconda.com/anaconda/install/
+https://docs.conda.io/en/latest/miniconda.html
+
+
 ## Documentation
 
 https://pixy.readthedocs.io/en/latest/
