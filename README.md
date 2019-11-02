@@ -23,8 +23,10 @@ pixy --help
 ```
 
 For information in installing conda, see here:
-https://docs.anaconda.com/anaconda/install/
-https://docs.conda.io/en/latest/miniconda.html
+
+anaconda (more features and initial modules): https://docs.anaconda.com/anaconda/install/
+
+miniconda (lighter weight): https://docs.conda.io/en/latest/miniconda.html
 
 
 ## Documentation
