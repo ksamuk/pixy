@@ -5,16 +5,18 @@
 
 Welcome to pixy's documentation!
 ================================
-
+.. image:: pixy_logo.png
+   :width: 200
+   :align: center
+   
 .. toctree::
    :caption: Utility documentation
    :maxdepth: 2
 
+   about
    installation
    quickstart
    arguments
-
-
 
 Tutorials
 ==================
