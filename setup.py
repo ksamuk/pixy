@@ -9,7 +9,7 @@ requirements = [
 
 setup(
     name='pixy',
-    version='0.12',
+    version='0.11',
     packages=['pixy'],
     entry_points={
         'console_scripts': [
@@ -24,7 +24,6 @@ setup(
     install_requires=requirements,
     keywords='pixy',
     classifiers=[
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.6'
     ]
 )

@@ -1,5 +1,5 @@
 {% set name = "pixy" %}
-{% set version = "0.12" %}
+{% set version = "0.1" %}
 
 package:
   name: {{ name|lower }}
@@ -8,18 +8,18 @@ package:
 source:
   path: ../
   #url: https://github.com/ksamuk/pixy/archive/{{ version }}.tar.gz
-  #sha256: 0c3fb3e61fcb76c4119e074bb52e91b321c7480c282f201dae510321922dca31
+  #sha256: 40cb4db24d08d86347fe2a6dd64bd2e20f8a9c9671f19202086e5c72b670a776
 
 build:
   number: 0
   script: "{{ PYTHON }} -m pip install . -vv"
-  noarch: python
+  skip: True  # [win or py<36]
   entry_points:
     - pixy = pixy.__main__:main
 
 requirements:
   host:
-    - python >=3.6
+    - python
     - setuptools
     - pip
   run:
@@ -28,7 +28,7 @@ requirements:
     - pandas
     - numpy
     - zarr
-    - python >=3.6
+    - python
 
 test:
   commands:
