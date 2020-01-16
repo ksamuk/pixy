@@ -1,5 +1,5 @@
 ************
-Quickstart Guide for Generating PIXY Input
+Quickstart Guide for Generating pixy Input
 ************
 
 pixy facilitates the correct computation of π and dxy by allowing users to input data in a standard file format: Variant Call Format (VCF). AllSites VCFs contain invariant (AKA monomorphic) sites in addition to variant sites. Several commonly used, well-documented programs can generate AllSites VCFs. Here, we provide a quickstart guide for generating AllSites VCFs using two of the most widely-used tools for variant discovery and manipulation: BCFtools and GATK. Either of these tools can be run given only a set of aligned data (BAM files) and the reference sequence used to align them.
