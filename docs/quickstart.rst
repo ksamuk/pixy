@@ -41,7 +41,7 @@ Step 4
 ======
 Create a populations file. This is a headerless, tab-separated file where the first column are sample names (exactly as represented in the VCF), and the second column are population names (these can be anything).
 
-.. code:: console
+.. code:: python
     ERS223827	BFS
     ERS223759	BFS
     ERS223750	BFS
