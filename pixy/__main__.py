@@ -2,16 +2,18 @@
 
 import allel
 import zarr
+import numcodecs
 import numpy as np
 import sys
 import os
 import re
 import operator
 import pandas
+from scipy import special
 from itertools import combinations
 from collections import Counter
-from tqdm import tqdm
 import argparse
+
 
 def main(args=None):
 
