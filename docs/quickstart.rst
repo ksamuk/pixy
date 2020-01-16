@@ -39,12 +39,9 @@ To see a list of arguments and test the pixy installation, type:
 
 Step 4
 ======
-Create a populations file. This is a headerless, tab-separated file where the first column are sample names (exactly as represented in the VCF), and the second column are population names (these can be any).
+Create a populations file. This is a headerless, tab-separated file where the first column are sample names (exactly as represented in the VCF), and the second column are population names (these can be anything).
 
 .. code:: console
-    ERS223790	BFS
-    ERS223797	BFS
-    ERS223771	BFS
     ERS223827	BFS
     ERS223759	BFS
     ERS223750	BFS
@@ -54,8 +51,6 @@ Create a populations file. This is a headerless, tab-separated file where the fi
     ERS224300	AFS
     ERS224168	KES
     ERS224314	KES
-    ERS224235	AFS
-    ERS224245	KES 
 
     
 Step 5
@@ -65,8 +60,17 @@ Run pixy! An example is shown below.
 
 .. code:: console
 
-    pixy --interval_start 1 --interval_end 100000 --stats pi fst dxy --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz --zarr_path data/vcf/ag1000/chrX_36Ag_allsites --chromosome X --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --outfile_prefix output/pixy_out
-
+    pixy --interval_start 1 \
+    --interval_end 100000 \
+    --stats pi fst dxy \
+    --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
+    --zarr_path data/vcf/ag1000/chrX_36Ag_allsites \
+    --chromosome X \
+    --window_size 10000 \
+    --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
+    --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 \
+    --invariant_filter_expression DP>=10,RGQ>=20 \
+    --outfile_prefix output/pixy_out
 
 Step 6
 ======
