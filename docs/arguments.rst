@@ -2,40 +2,48 @@
 Arguments
 ************
 
-Install the package (or add it to your ``requirements.txt`` file):
+Below is a list of arguments that pixy accepts.
+
+* ``--version`` Print the pixy version number.
+
+* ``--stats [fst,dxy,pi]`` Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True).
+
+* ``--vcf`` Path to the input VCF.
+
+* ``--zarr_path`` Folder in which to build the Zarr array.
+
+* ``--regenerate_zarr [yes, no]`` Force regeneration of the Zarr array.
+
+* ``--populations`` Path to the populations file.
+
+* ``--window_size`` Window size in base pairs over which to calculate pi/dxy.
+
+* ``--chromosome`` Target chromosome (as annotated in the CHROM field).
+
+* ``--interval_start`` The start of the interval over which to calculate pi/dxy.
+
+* ``--interval_end`` The end of the interval over which to calculate pi/dxy.
+
+* ``--variant_filter_expression`` A comma separated list of filters (e.g. DP>=10,GQ>=20) to apply to SNPs.
+
+* ``--invariant_filter_expression`` A comma separated list of filters (e.g. DP>=10,RGQ>=20) to apply to invariant sites.
+
+* ``--outfile_prefix`` Path and prefix for the output file, e.g. path/to/outfile.
+
+* ``--bypass_filtration`` [yes,no] Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme .caution)
+
+An example:
 
 .. code:: console
 
-    pip install sphinx_rtd_theme
-
-In your ``conf.py`` file:
-
-.. code:: python
-
-    import sphinx_rtd_theme
-
-    extensions = [
-        ...
-        'sphinx_rtd_theme',
-    ]
-
-    html_theme = "sphinx_rtd_theme"
-
-
-.. note::
-    Adding this theme as an extension is what enables localization of theme
-    strings in your translated output. If these strings are not translated in
-    your output, either we lack the localized strings for your locale, or you
-    are using an old version of the theme.
-
-Via Git or Download
-===================
-
-Symlink or subtree the ``sphinx_rtd_theme/sphinx_rtd_theme`` repository into your documentation at
-``docs/_themes/sphinx_rtd_theme`` then add the following two settings to your Sphinx
-``conf.py`` file:
-
-.. code:: python
-
-    html_theme = "sphinx_rtd_theme"
-    html_theme_path = ["_themes", ]
+    pixy --interval_start 1 \
+    --interval_end 100000 \
+    --stats pi fst dxy \
+    --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
+    --zarr_path data/vcf/ag1000/chrX_36Ag_allsites \
+    --chromosome X \
+    --window_size 10000 \
+    --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
+    --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 \
+    --invariant_filter_expression DP>=10,RGQ>=20 \
+    --outfile_prefix output/pixy_out
