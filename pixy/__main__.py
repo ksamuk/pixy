@@ -18,79 +18,46 @@ def main(args=None):
     if args is None:
         args = sys.argv[1:]    
     
-    # parse the command line arguements
-    # - validate the arguements 
-    # - throw errors if requirements are missing
-    # - validate the filter strings
+    # argument parsing via argparse
     
-    #pi_dxy --pi --dxy\ # must include at least 1 of pi and/dxy 
-    #--vcf allsites.vcf.gz \ # required
-    #--zarr path/to/zarr \  # default to the vcf folder
-    #--populations popfile.txt \ # only required for dxy
-    #--window_size 10000 \ # not required, defaults to whole genome
-    #--snp_filter_expression "DP>=10, GQ>=20, FS>2" \ # required
-    #--monomorphic_filter_expression "DP>=10, RGQ>=20" \ # required
-    #--out pi_dxy_out.txt # default to vcf path + suffix
-    
-    # initialize and add arguments to the argparser
-    
+    # the ascii help image
     help_image = "██████╗ ██╗██╗  ██╗██╗   ██╗\n" "██╔══██╗██║╚██╗██╔╝╚██╗ ██╔╝\n" "██████╔╝██║ ╚███╔╝  ╚████╔╝\n" "██╔═══╝ ██║ ██╔██╗   ╚██╔╝\n" "██║     ██║██╔╝ ██╗   ██║\n" "╚═╝     ╚═╝╚═╝  ╚═╝   ╚═╝\n" 
     
     help_text = 'pixy: senisble estimates of pi and dxy from a VCF'
     
-    
+    # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text, formatter_class=argparse.RawTextHelpFormatter)
     
-    parser.add_argument('--version', action='version', version='%(prog)s version 1.0')
-    parser.add_argument('--stats', choices=['pi', 'dxy', 'pi_dxy'], help='Which stats to to calulate from the VCF (pi, dxy, or both)', required=True)
+    parser.add_argument('--version', action='version', version='%(prog)s version 0.9')
+    parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
     parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
     parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array', required=True)
     parser.add_argument('--regenerate_zarr', choices=['yes', 'no'], help='Force regeneration of the Zarr array')
     parser.add_argument('--populations', type=str, nargs='?', help='Path to the populations file', required=True)
     parser.add_argument('--window_size', type=int, nargs='?', help='Window size in base pairs over which to calculate pi/dxy')
     parser.add_argument('--chromosome', type=str, nargs='?', help='Target chromosome (as annotated in the CHROM field)', required=True)
-    parser.add_argument('--interval_start', type=str, nargs='?', help='The start of the interval over which to calculate pi/dxy', required=False)
-    parser.add_argument('--interval_end', type=str, nargs='?', help='The end of the interval over which to calculate pi/dxy', required=False)
+    parser.add_argument('--interval_start', type=str, nargs='?', help='The start of the interval over which to calculate pi/dxy')
+    parser.add_argument('--interval_end', type=str, nargs='?', help='The end of the interval over which to calculate pi/dxy')
     parser.add_argument('--variant_filter_expression', type=str, nargs='?', help='A comma separated list of filters (e.g. DP>=10,GQ>=20) to apply to SNPs', required=True)
     parser.add_argument('--invariant_filter_expression', type=str, nargs='?', help='A comma separated list of filters (e.g. DP>=10,RGQ>=20) to apply to invariant sites', required=True)
     parser.add_argument('--outfile_prefix', type=str, nargs='?', help='Path and prefix for the output file, e.g. path/to/outfile')
     parser.add_argument('--bypass_filtration', action='store_const', const='yes', default='no', help='Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme caution)')
     
-    #parser.print_help()
-    
-    ### test values
+    ### test values for debugging
     
     # SIMULATED DATA
-    #args = parser.parse_args('--interval_start 1000 --interval_end 8000 --bypass_filtration --stats pi_dxy --vcf data/msprime_sim_invar/sim_dat_Ne=1.0e+06_mu=1e-08_samples=100_sites=10000_1_invar.vcf.gz --zarr_path data/msprime_sim_invar --chromosome 1 --window_size 1000 --populations data/msprime_sim_invar/populations.txt --regenerate_zarr yes --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --outfile_prefix output/pixy_out'.split())
+    #args = parser.parse_args('--interval_start 1000 --interval_end 8000 --bypass_filtration --stats pi fst dxy --vcf data/msprime_sim_invar/sim_dat_Ne=1.0e+06_mu=1e-08_samples=100_sites=10000_1_invar.vcf.gz --zarr_path data/msprime_sim_invar --chromosome 1 --window_size 1000 --populations data/msprime_sim_invar/populations.txt --regenerate_zarr yes --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --outfile_prefix output/pixy_out'.split())
     
     # ag1000g DATA
-    #args = parser.parse_args('--interval_start 1 --interval_end 100000 --stats pi_dxy --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz --zarr_path data/vcf/ag1000/chrX_36Ag_allsites --chromosome X --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt --regenerate_zarr no --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --outfile_prefix output/pixy_out'.split())
+    # args = parser.parse_args('--interval_start 1 --interval_end 100000 --stats pi fst --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz --zarr_path data/vcf/ag1000/chrX_36Ag_allsites --chromosome X --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt --regenerate_zarr no --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --outfile_prefix output/pixy_out'.split())
     
     ###
     
-    # catch arguments 
+    # catch arguments from the command line
     args = parser.parse_args()
     
     # map some arguments for compatibility
     chromosome = args.chromosome
-    
-    
-    
-    
-    #print(args)
-    #print(args.zarr_path)
-    #print(args.filter_expression)
-    
-    
-    
-    
-    # validating inputs
-    
-    # STEP 1 checking the vcf:
-    # - check if sci-kit allele can do this
-    # - check for contig info
-    # - alternatively use position vector
-    # - check for invariant sites and throw and error if they dont exist
     
     
     
@@ -109,8 +76,6 @@ def main(args=None):
     
     # inspect the structure of the zarr data
     callset = zarr.open_group(args.zarr_path, mode='r')
-    
-    #callset.tree(expand=True)
     
     
     
@@ -145,10 +110,7 @@ def main(args=None):
         popindices={}
         popnames = poppanel.Population.unique()
         for name in popnames:
-            #print(name)
             popindices[name] = poppanel[poppanel.Population == name].callset_index.values
-    
-        #print(popindices)
     
     
     
@@ -222,9 +184,7 @@ def main(args=None):
                 
         # finally, invert the whole array 
         # this is for convenience/brevity in the next section
-        
         filters = np.invert(filters)
-        
     
     
     
@@ -232,12 +192,6 @@ def main(args=None):
     # applying the filter to the data
     # all the filters are in a boolean array ('filters') 
     
-    # TBD: check to see there is any data left
-    # TBD: print warning for low data* think more about this
-    
-    #print("Applying filters...")
-    
-    # the genotype calls
     # recode the gt matrix as a Dask array (saves memory)
     gt_dask = allel.GenotypeDaskArray(callset[chromosome + '/calldata/GT'])
     
@@ -262,7 +216,7 @@ def main(args=None):
     # build the position array
     pos_array = allel.SortedIndex(callset[chromosome + '/variants/POS'])
     
-    # remove non-snps from the position array
+    # remove everything but biallelic snps and monomorphic sites from the position array
     pos_array = pos_array[callset[chromosome + '/variants/numalt'][:] < 2]
     
     
@@ -316,53 +270,27 @@ def main(args=None):
             avg_pi = 0
         return(avg_pi, total_diffs, total_comps, total_missing)
     
-    #Out of sites with data, count differences. 
     #Return the number of differences, the number of comparisons, and missing data count.
-    def compareGTs(vec):
-        # use gts to select only sites with data. 
-        # counting missing data as a check, but it's implicit in the length of (gts)
-        gts = []
-        missing = 0
-        for x in vec:
-            if x in (0,1):
-                gts.append(x)
-            else:
-                missing += 1
-        c = Counter(gts)
-        #print(c)
+    def compareGTs(vec): #for pi
+        c = Counter(vec)
         diffs = c[1]*c[0]
-        comps = len(list(combinations(gts, 2)))        
+        gts = c[1]+c[0]
+        missing = (len(vec))-gts  #anything that's not 1 or 0 is ignored and counted as missing
+        comps = int(scipy.special.comb(gts,2))
         return(diffs,comps,missing)
     
-    def dxyCompareGTs(vec1, vec2):
-        # use gts to select only sites with data. counting missing data as a check, but it's implicit in the length of (gts)
-        #gts for each of the 2 populations being compared:
-        gts1 = []
-        gts2 = []
-        missing = 0
-        for x in vec1:
-            if x in (0,1):
-                gts1.append(x)
-            else:
-                missing += 1
-        for y in vec2:
-            if y in (0,1):
-                gts2.append(y)
-            else:
-                missing += 1
-         
-        diffs = 0
-        comps = 0
-        length1 = len(gts1)
-        length2 = len(gts2)
-        for x in range(0,length1):
-            i = gts1[x]
-            for n in range(0,length2):
-                j = gts2[n]
-                comps += 1
-                if i != j:
-                    diffs += 1    
-            
+    def dxyCompareGTs(vec1, vec2): #for dxy
+        c1 = Counter(vec1)
+        c2 = Counter(vec2)
+        gt1zeros = c1[0]
+        gt1ones = c1[1]
+        gts1 = c1[1]+c1[0]
+        gt2zeros = c2[0]
+        gt2ones = c2[1]
+        gts2 = c2[1]+c2[0]
+        missing = (len(vec1)+len(vec2))-(gts1+gts2)  #anything that's not 1 or 0 is ignored and counted as missing  
+        diffs = (gt1zeros*gt2ones)+(gt1ones*gt2zeros)
+        comps = gts1*gts2
         return(diffs,comps,missing)
     
     
@@ -390,13 +318,13 @@ def main(args=None):
         if (interval_end > max(pos_array)):
             raise ValueError()        
     except ValueError as e:
-        raise Exception("The specified interval end ("+str(interval_end)+") exceeds the last position of the chromsome ("+str(max(pos_array))+")") from e
+        raise Exception("The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome ("+str(max(pos_array))+")") from e
     
     try:           
         if (interval_start < min(pos_array)):
             raise ValueError()      
     except ValueError as e:
-        raise Exception("The specified interval start ("+str(interval_start)+") begins before the first position of the chromsome ("+str(min(pos_array))+")") from e
+        raise Exception("The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome ("+str(min(pos_array))+")") from e
     
     try:           
         if ((interval_end - interval_start + 1) < window_size):
@@ -413,16 +341,11 @@ def main(args=None):
     
     # Compute pi over a chosen interval and window size
     
-    # calculate pi
-    
     # TBD:
-    # - are any pis/dxys all zero?
-    # - check if # missing == (pos2 - pos1)
-    # - check if everything was either compared or missing
     # - write out summary of program parameters file* think about how this should work
     
     
-    if (args.populations is not None) and ((args.stats == 'pi' or args.stats == 'pi_dxy')):
+    if (args.populations is not None) and ('pi' in args.stats):
     
         # initialize the pi output file names
     
@@ -437,16 +360,16 @@ def main(args=None):
             # create pi name via the prefix
             pi_file = str(args.outfile_prefix) + "_" + str(pop) +"_pi.txt"
     
-            # remove any existing pop files
+            # remove any existing pi files
             if os.path.exists(pi_file):
                 os.remove(pi_file)
     
-            # open the dxy output file for writing
+            # open the pi output file for writing
             outfile = open(pi_file, 'w')
             outfile.write("pop" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_pi" + "\t" + "no_sites" + "\t" + "count_diffs" + "\t" + "count_comparisons" + "\t" + "count_missing" + "\n")
     
             # loop over populations and windows, compute stats and write to file
-            for window_pos_1 in tqdm(range (interval_start, interval_end, window_size)):
+            for window_pos_1 in range(interval_start, interval_end, window_size):
     
                 # pull out the genotypes for the window
                 loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
@@ -471,10 +394,8 @@ def main(args=None):
     # DXY:
     # AVERAGE NUCLEOTIDE VARIATION BETWEEN POPULATIONS
     
-    #come back to this later (parsing arguments to dictate pi/dxy behaviour)
-    #if (args.populations is not None) and ((args.stats == 'dxy' or args.stats == 'pi_dxy'))
     
-    if (args.populations is not None) and ((args.stats == 'dxy' or args.stats == 'pi_dxy')):
+    if (args.populations is not None) and ('dxy' in args.stats):
     
         # create a list of all pairwise comparisons between populations in the popfile
         dxy_pop_list = list(combinations(popnames, 2))
@@ -502,7 +423,7 @@ def main(args=None):
             outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_dxy" + "\t" + "no_sites" + "\t" + "count_diffs" + "\t" + "count_comparisons" + "\t" + "count_missing" + "\n")
     
             # perform the dxy calculation for all windows in the range
-            for window_pos_1 in tqdm(range (interval_start, interval_end, window_size)):
+            for window_pos_1 in range (interval_start, interval_end, window_size):
                 loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
                 gt_region1 = gt_array[loc_region]
                 # use the popGTs dictionary to keep track of this region's GTs for each population
@@ -520,6 +441,56 @@ def main(args=None):
     
             outfile.close()
             print("Dxy calculations complete and written to " + args.outfile_prefix + "_[pop1]_[pop2]_dxy.txt")
+    
+    
+    
+    
+    # FST:
+    # WEIR AND COCKERHAMS FST
+    # This is just a plain wrapper for the scikit-allel fst function
+    
+    if (args.populations is not None) and ('fst' in args.stats):
+    
+        # determine all the possible population pairings
+        pop_names=list(popindices.keys())
+        fst_pop_list = list(combinations(pop_names, 2))
+    
+        # for each pair, compute fst
+        for pop_pair in fst_pop_list:
+    
+            # the indices for the individuals in each population
+            fst_pop_indicies=[popindices[pop_pair[0]], popindices[pop_pair[1]]]
+    
+            # rebuild the GT array for variant sites only
+            # this is done for speed (also FST is undefined for monomorphic sites)
+            gt_dask_fst = allel.GenotypeDaskArray(callset[chromosome + '/calldata/GT'])
+            gt_array_fst = allel.GenotypeArray(gt_dask_fst).to_packed()
+    
+            # flag & remove non-biallelic sites
+            non_bial_sites = np.where(np.logical_not(callset[chromosome + '/variants/numalt'][:] == 1))
+            gt_array_fst = np.delete(gt_array_fst, non_bial_sites, axis=0)
+            gt_array_fst = allel.GenotypeArray.from_packed(gt_array_fst)
+    
+            # also rebuild the position array for biallelic sites only
+            pos_array_fst = allel.SortedIndex(callset[chromosome + '/variants/POS'])
+            pos_array_fst = pos_array_fst[callset[chromosome + '/variants/numalt'][:] == 1]
+    
+            # compute FST
+            # windowed_weir_cockerham_fst seems to generate (spurious?) warnings about div/0, so suppressing warnings
+            # (this assumes that the scikit-allel function is working as intended)
+            np.seterr(divide='ignore', invalid='ignore')
+            a,b,c=allel.windowed_weir_cockerham_fst(pos_array_fst, gt_array_fst, subpops=fst_pop_indicies, size=args.window_size, start=interval_start, stop=interval_end)
+    
+            # write the fst results to file
+            fst_file = str(args.outfile_prefix) + "_" + str(pop_names[0]) + "_" + str(pop_names[1]) +"_fst.txt"
+    
+            # open the fst output file for writing
+            outfile = open(fst_file, 'w')
+            outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_wc_fst" + "\t" + "no_snps" + "\n")
+    
+            for fst,wind,snps in zip(a, b, c):
+                outfile.write(str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(wind[0]) + "\t" + str(wind[1]) + "\t" + str(fst) + "\t" + str(snps) +"\n")
+            outfile.close()
     
 if __name__ == "__main__":
     main()

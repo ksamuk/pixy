@@ -2,14 +2,13 @@ from setuptools import setup
 
 requirements = [
     'scikit-allel',
-    'tqdm',
     'numpy',
     'pandas',
 ]
 
 setup(
     name='pixy',
-    version='0.12',
+    version='0.9',
     packages=['pixy'],
     entry_points={
         'console_scripts': [
