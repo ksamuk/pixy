@@ -54,7 +54,7 @@ In the case of π, all comparisons are made between sequences from *same* popula
 
 ## The problem
 
-Both of π and d<sub>xy</sub> measure the average number of differences between sequences **per nucleotide not per SNP**. As such, one must include monomorphic/invariant sites when tallying differences between sequences. Prior to the genomic era,  such sites were almost always explicitly included in datasets because sequence data was in FASTA format (e.g. Sanger reads). However, most modern genomics tools encode variants as VCFs which by design often omit invariant sites. With variants-only VCFs, there is often no way to distinguish missing sites from invariant sites. Further, when one does include invariant sites in a VCF, it generally results in very large files that are difficult to manipulate with standard tools. 
+In order to be comparable across samples/studies/genomic regions, π and d<sub>xy</sub> are generally standardized by dividing by the *total* number of sites in the sequences being compared. As such, one must explicitly keep track of variable vs. missing vs. monomorphic (invariant) sites. Failure to do this results in biased estimates of pi and dxy. Prior to the genomic era, missing/invariant  sites were almost always explicitly included in datasets because sequence data was in FASTA format (e.g. Sanger reads). However, most modern genomics tools encode variants as VCFs which by design often omit invariant sites. With variants-only VCFs, there is often no way to distinguish missing sites from invariant sites. Further, when one does include invariant sites in a VCF, it generally results in very large files that are difficult to manipulate with standard tools. 
 
 ## The solution
 
