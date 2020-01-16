@@ -37,10 +37,6 @@ https://pixy.readthedocs.io/en/latest/
 Kieran Samuk and Katharine Korunes <p>
 Duke University
 
-## Installation
-Currently: Clone from Github, with manual dependency installation.<p>
-Planned: Installation via Anaconda recipe.
-
 ## Background
 
 Population geneticists are often interested in quantifying nucleotide diversity within and nucleotide differences between populations. The two most common summary statistics for these quantities were described by Nei and Li (1979), who discuss summarizing variation case of two populations (denoted 'x' and 'y'):
