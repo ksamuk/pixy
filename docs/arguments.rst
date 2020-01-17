@@ -2,6 +2,17 @@
 Arguments
 ************
 
+"""[Summary]
+
+:param [ParamName]: [ParamDescription], defaults to [DefaultParamVal]
+:type [ParamName]: [ParamType](, optional)
+...
+:raises [ErrorType]: [ErrorDescription]
+...
+:return: [ReturnDescription]
+:rtype: [ReturnType]
+"""
+
 Below is a list of arguments that pixy accepts.
 
 <dt>--version</dt> Print the pixy version number.
