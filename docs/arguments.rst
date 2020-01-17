@@ -2,9 +2,6 @@
 Arguments
 ************
 
-Option Lists
-------------
-   
 Below is a list of arguments that pixy accepts.
 
 --version       Print the pixy version number.
