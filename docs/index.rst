@@ -10,7 +10,7 @@ Welcome to pixy's documentation!
    :align: center
 
 .. class:: center
-*pixy: Unbiased estimates of pi, dxy (and Fst) from VCFs containing invariant sites.*
+   *pixy: Unbiased estimates of pi, dxy (and Fst) from VCFs containing invariant sites.*
 
 What is pixy?
 ===============
