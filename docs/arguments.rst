@@ -8,7 +8,8 @@ Option Lists
 Below is a list of arguments that pixy accepts.
 
 --version       Print the pixy version number.
---stats         Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True).
+--stats         Which statistics to calculate from the VCF 
+               (pi, dxy, and/or fst, separated by spaces)
 --vcf           Path to the input VCF.
 --zarr_path            Folder in which to build the Zarr array.
 --regenerate_zarr            Force regeneration of the Zarr array.
@@ -17,10 +18,14 @@ Below is a list of arguments that pixy accepts.
 --chromosome            Target chromosome (precisely as annotated in the CHROM field).
 --interval_start            The start of the interval over which to calculate pi/dxy.
 --interval_end            The end of the interval over which to calculate pi/dxy.
---variant_filter_expression            A comma separated list of filters (e.g. DP>=10,GQ>=20) to apply to SNPs.
---invariant_filter_expression            A comma separated list of filters (e.g. DP>=10,RGQ>=20) to apply to invariant sites.
---outfile_prefix            Path and prefix for the output file. Output files will be named like: path/to/outfile_pi_[popname].txt
---bypass_filtration            Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme .caution)
+--variant_filter_expression            A comma separated list of filters 
+                                       (e.g. DP>=10,GQ>=20) to apply to SNPs.
+--invariant_filter_expression          A comma separated list of filters 
+                                       (e.g. DP>=10,RGQ>=20) to apply to invariant sites.
+--outfile_prefix            Path and prefix for the output file. Output files will be named like: 
+                            path/to/outfile_pi_[popname].txt
+--bypass_filtration            Bypass all variant filtration (for data lacking FORMAT annotations, 
+                                use with extreme caution!)
 
 An example:
 
