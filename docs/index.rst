@@ -14,7 +14,7 @@ Welcome to pixy's documentation!
 
 What is pixy?
 ===============
-pixy is a command line tool for calculating the population genetic summary statistics pi (average per site heterozygosity) and dxy (average number of nucleotide differences between populations per site) from a VCF file. pixy is specifically designed to work with VCFs containing invariant sites and provide unbiased estimates in the presence of missing data. pixy draws heavily on scikit-allel for data structures,  manipulation, and the calculation of Fst.
+pixy is a command line tool for calculating the population genetic summary statistics **pi** (average per site heterozygosity) and **dxy** (average number of nucleotide differences between populations per site) from a VCF file. pixy is specifically designed to work with VCFs containing invariant sites and provide unbiased estimates in the presence of missing data. pixy draws heavily on scikit-allel for data structures,  manipulation, and the calculation of Fst.
 
 Why should I use this?
 =======================
