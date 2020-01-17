@@ -25,12 +25,12 @@ def main(args=None):
     # the ascii help image
     help_image = "██████╗ ██╗██╗  ██╗██╗   ██╗\n" "██╔══██╗██║╚██╗██╔╝╚██╗ ██╔╝\n" "██████╔╝██║ ╚███╔╝  ╚████╔╝\n" "██╔═══╝ ██║ ██╔██╗   ╚██╔╝\n" "██║     ██║██╔╝ ██╗   ██║\n" "╚═╝     ╚═╝╚═╝  ╚═╝   ╚═╝\n" 
     
-    help_text = 'pixy: senisble estimates of pi and dxy from a VCF'
+    help_text = 'pixy: unbiased estimates of pi and dxy from VCFs'
     
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text, formatter_class=argparse.RawTextHelpFormatter)
     
-    parser.add_argument('--version', action='version', version='%(prog)s version 0.9')
+    parser.add_argument('--version', action='version', version='%(prog)s version 0.92')
     parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
     parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
     parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array', required=True)
@@ -44,6 +44,7 @@ def main(args=None):
     parser.add_argument('--invariant_filter_expression', type=str, nargs='?', help='A comma separated list of filters (e.g. DP>=10,RGQ>=20) to apply to invariant sites', required=True)
     parser.add_argument('--outfile_prefix', type=str, nargs='?', help='Path and prefix for the output file, e.g. path/to/outfile')
     parser.add_argument('--bypass_filtration', action='store_const', const='yes', default='no', help='Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme caution)')
+    parser.add_argument('--fst_maf_filter', default=0.0, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.')
     
     ### test values for debugging
     
@@ -51,7 +52,7 @@ def main(args=None):
     #args = parser.parse_args('--interval_start 1000 --interval_end 8000 --bypass_filtration --stats pi fst dxy --vcf data/msprime_sim_invar/sim_dat_Ne=1.0e+06_mu=1e-08_samples=100_sites=10000_1_invar.vcf.gz --zarr_path data/msprime_sim_invar --chromosome 1 --window_size 1000 --populations data/msprime_sim_invar/populations.txt --regenerate_zarr yes --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --outfile_prefix output/pixy_out'.split())
     
     # ag1000g DATA
-    # args = parser.parse_args('--interval_start 1 --interval_end 100000 --stats pi fst --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz --zarr_path data/vcf/ag1000/chrX_36Ag_allsites --chromosome X --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt --regenerate_zarr no --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --outfile_prefix output/pixy_out'.split())
+    #args = parser.parse_args('--interval_start 1 --interval_end 100000 --stats pi fst --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz --zarr_path data/vcf/ag1000/chrX_36Ag_allsites --chromosome X --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt --regenerate_zarr no --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --fst_maf_filter 0.05 --outfile_prefix output/pixy_out'.split())
     
     ###
     
@@ -278,7 +279,7 @@ def main(args=None):
         diffs = c[1]*c[0]
         gts = c[1]+c[0]
         missing = (len(vec))-gts  #anything that's not 1 or 0 is ignored and counted as missing
-        comps = int(scipy.special.comb(gts,2))
+        comps = int(special.comb(gts,2))
         return(diffs,comps,missing)
     
     def dxyCompareGTs(vec1, vec2): #for dxy
@@ -472,6 +473,11 @@ def main(args=None):
             non_bial_sites = np.where(np.logical_not(callset[chromosome + '/variants/numalt'][:] == 1))
             gt_array_fst = np.delete(gt_array_fst, non_bial_sites, axis=0)
             gt_array_fst = allel.GenotypeArray.from_packed(gt_array_fst)
+            
+            #apply the maf filter (default is 0, i.e. no filter)
+            allele_counts=gt_array_fst.count_alleles(subpop = np.array(fst_pop_indicies).flatten().tolist())
+            allele_freqs = allele_counts.to_frequencies()
+            gt_array_fst = np.delete(gt_array_fst, np.where(allele_freqs < args.fst_maf_filter), axis=0)
     
             # also rebuild the position array for biallelic sites only
             pos_array_fst = allel.SortedIndex(callset[chromosome + '/variants/POS'])
