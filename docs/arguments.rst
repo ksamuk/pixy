@@ -4,7 +4,7 @@ Arguments
 
 Below is a list of arguments that pixy accepts.
 
-* ``--version`` Print the pixy version number.
+<dt>--version</dt> Print the pixy version number.
 
 * ``--stats [fst,dxy,pi]`` Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True).
 
