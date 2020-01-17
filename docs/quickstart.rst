@@ -5,15 +5,20 @@ Quick Start
 .. note::
     pixy is currently only available for Linux and macOS systems.
     
-Step 0
+ 
+1. Generate a VCF with Invariant Sites
 ======
 If you did not already generate an 'allsites' VCF (VCF with invariant sites), see the guide here: https://pixy.readthedocs.io/en/latest/invar/allsitesQuickstart.html
 
-Step 1
+.. note::
+    When working with whole genome data, we suggest you generate *separate invariant sites VCFs for each chromosome*. This is to prevent
+    memory limitation issues down the line. This is less of an issue for reduced representation sequencing, naturally.
+
+2. Install Anaconda
 ======
 If you haven't already, install Anaconda https://docs.anaconda.com/anaconda/install/ 
 
-Step 2
+3. Create a New Environment
 ======
 Create and activate a new conda environment for working with pixy:
 
@@ -22,7 +27,7 @@ Create and activate a new conda environment for working with pixy:
     conda create --name pixy
     conda activate pixy
 
-Step 3
+4. Install pixy
 ======
 Install pixy via the conda-forge channel. 
 
@@ -37,7 +42,7 @@ To see a list of arguments and test the pixy installation, type:
     pixy --help
 
 
-Step 4
+5. Create a populations file
 ======
 Create a populations file. This is a headerless, tab-separated file where the first column are sample names (exactly as represented in the VCF), and the second column are population names (these can be anything).
 
@@ -55,7 +60,7 @@ For example:
     ERS224314	KES
 
     
-Step 5
+6. Run pixy
 ======
 
 Run pixy! An example is shown below.
@@ -74,7 +79,7 @@ Run pixy! An example is shown below.
     --invariant_filter_expression DP>=10,RGQ>=20 \
     --outfile_prefix output/pixy_out
 
-Step 6
+7. Profit
 ======
 
 Parse the output files and enjoy your unbiased estimates of pi and dxy!
