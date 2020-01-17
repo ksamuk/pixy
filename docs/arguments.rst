@@ -2,7 +2,7 @@
 Arguments
 ************
 
-...descname:: 
+.. descname:: 
     test
     
 Below is a list of arguments that pixy accepts.
