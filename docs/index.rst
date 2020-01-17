@@ -8,7 +8,8 @@ Welcome to pixy's documentation!
 .. image:: pixy_logo.png
    :width: 200
    :align: center
-   
+
+.. class:: center
 *pixy: Unbiased estimates of pi, dxy (and Fst) from VCFs containing invariant sites.*
 
 What is pixy?
@@ -33,6 +34,12 @@ Tutorials
 
 .. toctree::
     :maxdepth: 2
-    :caption: Generating PIXY Input
+    :caption: Generating pixy Input
 
     invar/allsitesQuickstart
+    
+.. toctree::
+    :maxdepth: 2
+    :caption: Step by Step Installation & Usage
+
+    quickstart/quickstart
