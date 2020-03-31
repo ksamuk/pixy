@@ -1,5 +1,5 @@
 {% set name = "pixy" %}
-{% set version = "0.1" %}
+{% set version = "0.93" %}
 
 package:
   name: {{ name|lower }}
@@ -29,6 +29,7 @@ requirements:
     - numpy
     - zarr
     - python
+    - tabix
 
 test:
   commands:
