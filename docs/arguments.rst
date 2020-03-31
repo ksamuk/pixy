@@ -15,10 +15,10 @@ Below is a list of arguments that pixy accepts.
 --chromosome            Target chromosome (precisely as annotated in the CHROM field).
 --interval_start            The start of the interval over which to calculate pi/dxy.
 --interval_end            The end of the interval over which to calculate pi/dxy.
---variant_filter_expression            A comma separated list of filters 
-                                       (e.g. DP>=10,GQ>=20) to apply to SNPs.
---invariant_filter_expression          A comma separated list of filters 
-                                       (e.g. DP>=10,RGQ>=20) to apply to invariant sites.
+--variant_filter_expression            A comma separated list of filters contained in single quotes.
+                                       (e.g. 'DP>=10,GQ>=20') to apply to SNPs.
+--invariant_filter_expression          A comma separated list of filters contained in single quotes.
+                                       (e.g. 'DP>=10,RGQ>=20') to apply to invariant sites.
 --outfile_prefix            Path and prefix for the output file. Output files will be named like: 
                             path/to/outfile_pi_[popname].txt
 --bypass_filtration            Bypass all variant filtration (for data lacking FORMAT annotations, 
@@ -36,6 +36,6 @@ An example:
     --chromosome X \
     --window_size 10000 \
     --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
-    --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 \
-    --invariant_filter_expression DP>=10,RGQ>=20 \
+    --variant_filter_expression 'DP>=10,GQ>=20,RGQ>=20' \
+    --invariant_filter_expression 'DP>=10,RGQ>=20' \
     --outfile_prefix output/pixy_out

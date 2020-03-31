@@ -44,7 +44,7 @@ To see a list of arguments and test the pixy installation, type:
 
 5. Create a populations file
 ======
-Create a populations file. This is a headerless, tab-separated file where the first column are sample names (exactly as represented in the VCF), and the second column are population names (these can be anything).
+Create a populations file. This is a headerless, tab-separated file where the first column contains sample names (exactly as represented in the VCF), and the second column contains population names (these can be anything, but should be consistent!).
 
 For example:
 
@@ -83,3 +83,6 @@ Run pixy! An example is shown below.
 ======
 
 Parse the output files and enjoy your unbiased estimates of pi and dxy!
+
+.. note::
+    pixy ignores non-biallelic sites. If you want to compute pi with polyallelic sites and/or INDELs, please let us know! 
