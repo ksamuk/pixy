@@ -4,7 +4,6 @@ requirements = [
     'scikit-allel',
     'numpy',
     'pandas',
-	'tabix'
 ]
 
 setup(
