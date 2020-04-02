@@ -11,6 +11,8 @@ import subprocess
 import re
 import operator
 import pandas
+import warnings
+import time
 from scipy import special
 from itertools import combinations
 from collections import Counter
@@ -32,11 +34,11 @@ def main(args=None):
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text, formatter_class=argparse.RawTextHelpFormatter)
     
-    parser.add_argument('--version', action='version', version='%(prog)s version 0.93')
+    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.2')
     parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
     parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
     parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array(s)', required=True)
-    parser.add_argument('--reuse_zarr', choices=['yes', 'no'], default='no', help='Use existing Zarr array(s) (saves time when re-running)')
+    parser.add_argument('--reuse_zarr', choices=['yes', 'no'], default='no', help='Use existing Zarr array(s) (saves time if re-running)')
     parser.add_argument('--populations', type=str, nargs='?', help='Path to the populations file', required=True)
     parser.add_argument('--window_size', type=int, nargs='?', help='Window size in base pairs over which to calculate pi/dxy')
     parser.add_argument('--chromosomes', type=str, nargs='?', default='all', help='A single-quoted, comma separated list of chromosome(s) (e.g. \'X,1,2\')', required=False)
@@ -48,24 +50,11 @@ def main(args=None):
     parser.add_argument('--bypass_filtration', action='store_const', const='yes', default='no', help='Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme caution)')
     parser.add_argument('--fst_maf_filter', default=0.0, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.')
     
-    ### test values for debugging
-    
-    # SIMULATED DATA
-    #args = parser.parse_args('--interval_start 1000 --interval_end 8000 --bypass_filtration --stats pi fst dxy --vcf data/msprime_sim_invar/sim_dat_Ne=1.0e+06_mu=1e-08_samples=100_sites=10000_1_invar.vcf.gz --zarr_path data/msprime_sim_invar --chromosome 1 --window_size 1000 --populations data/msprime_sim_invar/populations.txt --regenerate_zarr yes --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 --invariant_filter_expression DP>=10,RGQ>=20 --outfile_prefix output/pixy_out'.split())
-    
-    # ag1000g DATA
-    #args = parser.parse_args('--stats pi --vcf data/vcf/multi_chr.vcf --zarr_path data/vcf/multi --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile_3.txt --variant_filter_expression DP>=10,GQ>20 --invariant_filter_expression DP>=10,RGQ>20 --fst_maf_filter 0.05 --outfile_prefix output/pixy_out'.split())
-    
-    ###
-    
     # catch arguments from the command line
     args = parser.parse_args()
     
-    # CHECK FOR TABIX
-    tabix_path = shutil.which("tabix")
     
-    if tabix_path is None:
-        raise Exception('ERROR: tabix is not installed! install with "conda install -c bioconda tabix"') 
+    
     
     # VALIDATE ARGUMENTS
     
@@ -78,9 +67,13 @@ def main(args=None):
     # get the list of format fields and requested filter fields
     format_fields = vcf_headers.formats.keys()
     filter_fields = list()
+    
     for x in args.variant_filter_expression.split(","):
         filter_fields.append(re.sub("[^A-Za-z]+", "", x))
     
+    for x in args.invariant_filter_expression.split(","):
+        filter_fields.append(re.sub("[^A-Za-z]+", "", x))
+        
     missing = list(set(filter_fields)-set(format_fields))
         
     if len(missing) >0:
@@ -91,11 +84,11 @@ def main(args=None):
     
     # defaults to all the chromosomes contained in the VCF (first data column)
     if args.chromosomes == 'all':
-        chrom_list = subprocess.check_output("grep -v '#' " + args.vcf + " | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
+        chrom_list = subprocess.check_output("zcat -f -- " + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
         chrom_all = chrom_list
     else:
         chrom_list = list(args.chromosomes.split(","))
-        chrom_all = subprocess.check_output("grep -v '#' " + args.vcf + " | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
+        chrom_all = subprocess.check_output("zcat -f -- " + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
         missing = list(set(chrom_list)-set(chrom_all))
         if len(missing) >0:
             raise Exception('ERROR: the following chromosomes were requested but not occur in the VCF:', missing) 
@@ -151,6 +144,9 @@ def main(args=None):
     
     
     # initialize and remove any previous output files
+    if os.path.exists(re.sub("[^\/]+$", "", args.outfile_prefix)) is not True:
+        os.mkdir(re.sub("[^\/]+$", "", args.outfile_prefix))
+    
     dxy_file = str(args.outfile_prefix) + "_dxy.txt"      
     if os.path.exists(dxy_file):
         os.remove(dxy_file)
@@ -177,36 +173,42 @@ def main(args=None):
     if 'fst' in args.stats:
         outfile = open(fst_file, 'a')
         outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_wc_fst" + "\t" + "no_snps" + "\n")
-        outfile.close()        
+        outfile.close()
+    
+    # initialize the folder structure for the zarr array
+    if args.reuse_zarr == 'no' and os.path.exists(args.zarr_path):
+        shutil.rmtree(args.zarr_path)
+        
+    if os.path.exists(args.zarr_path) is not True:
+            os.mkdir(args.zarr_path)
     
     
     
     
     # main loop for computing summary stats
     
-    for chromosome in chrom_list:
-        # Zarr array conversion
-        print("chromosome " + chromosome + "...")
+    # time the calculations
+    start_time = time.time()
+    print("Started calculations at " + time.strftime("%H:%M:%S", time.localtime(start_time)) + " local time")
     
-        # initialize the folder structure for the zarr array
-        if os.path.exists(args.zarr_path) is not True:
-            os.mkdir(args.zarr_path)
+    for chromosome in chrom_list:
+         
+        # Zarr array conversion
         
         # the chromosome specific zarr path
         zarr_path = args.zarr_path + "/" + chromosome
-        
+           
         # allow for resuse of previously calculated zarr arrays
-        if os.path.exists(zarr_path) is not True:
-            os.mkdir(zarr_path)
-            allel.vcf_to_zarr(args.vcf, zarr_path, region=chromosome, fields='*', log=sys.stdout, overwrite=True, tabix=tabix_path)
-        elif 'reuse_zarr' in args:
-            if args.reuse_zarr == 'no':
+        if args.reuse_zarr == 'yes' and os.path.exists(zarr_path):
+            print("If a zarr array exists, it will be reused for chromosome " + chromosome + "...")
+        elif args.reuse_zarr == 'no' or os.path.exists(zarr_path) is not True:
+            if os.path.exists(zarr_path):
                 shutil.rmtree(zarr_path)
-                os.mkdir(zarr_path)
-                allel.vcf_to_zarr(args.vcf, zarr_path, region=chromosome, fields='*', log=sys.stdout, overwrite=True, tabix=tabix_path)
-            if args.reuse_zarr == 'yes':
-                print("Reusing existing zarr array for chromosome " + chromosome + "...")
-    
+            os.mkdir(zarr_path)
+            allel.vcf_to_zarr(args.vcf, zarr_path, region=chromosome, fields='*', overwrite=True)
+            
+        print("Calculating statistics for chromosome " + chromosome + "...")
+        
         # inspect the structure of the zarr data
         callset = zarr.open_group(zarr_path, mode='r')
     
@@ -233,8 +235,6 @@ def main(args=None):
                 stat = re.sub("[^A-Za-z]+", "", x)
                 value = int(re.sub("[^0-9]+", "", x))
                 compare = re.sub("[A-Za-z0-9]+", "", x)
-    
-                #print(str(stat) + " " + str(compare) + " " + str(value))
     
                 # check if the requested annotation exists in the VCF
                 try: 
@@ -395,28 +395,24 @@ def main(args=None):
             interval_end = int(args.interval_end)
     
         if (args.interval_start is None):
-                interval_start = 1
+                interval_start = min(pos_array)
         else:
             interval_start = int(args.interval_start)
-            
-        try:    
+        
+        try:     
             if (interval_start > interval_end):
                 raise ValueError()        
         except ValueError as e:
             raise Exception("The specified interval start ("+str(interval_start)+") exceeds the interval end ("+str(interval_end)+")") from e
     
         # catch misspecified intervals
-        try:    
-            if (interval_end > max(pos_array)):
-                raise ValueError()        
-        except ValueError as e:
-            raise Exception("The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome ("+str(max(pos_array))+")") from e
-    
-        try:           
-            if (interval_start < min(pos_array)):
-                raise ValueError()      
-        except ValueError as e:
-            raise Exception("The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome ("+str(min(pos_array))+")") from e
+        if (interval_end > max(pos_array)):
+            warnings.warn("The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome and has been substituted ("+str(max(pos_array))+")")
+            interval_end = max(pos_array)
+            
+        if (interval_start < min(pos_array)):
+            warnings.warn("The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome and has been substituted ("+str(min(pos_array))+")")
+            interval_start = min(pos_array)
     
         try:           
             if ((interval_end - interval_start + 1) < window_size):
@@ -431,8 +427,7 @@ def main(args=None):
     
         # TBD:
         # - write out summary of program parameters file* think about how this should work
-    
-    
+        
         if (args.populations is not None) and ('pi' in args.stats):
     
             # open the pi output file for writing
@@ -446,21 +441,29 @@ def main(args=None):
                 # initialize window_pos_2 
                 window_pos_2 = (interval_start + window_size)-1
     
-    
                 # loop over populations and windows, compute stats and write to file
                 for window_pos_1 in range(interval_start, interval_end, window_size):
+                    
+                    # if the window has no sites, assign all NAs,
+                    # otherwise calculate pi
+                    if len(pos_array[(pos_array > window_pos_1 ) & (pos_array <window_pos_2)]) == 0:
+                        avg_pi, total_diffs, total_comps, total_missing, no_sites = "NA", "NA", "NA", "NA", 0
+                    else:
+                    
+                        # pull out the genotypes for the window
+                        loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
+                        gt_region1 = gt_array[loc_region]
+                        no_sites = len(gt_region1)
     
-                    # pull out the genotypes for the window
-                    loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
-                    gt_region1 = gt_array[loc_region]
-    
-    
-                    # subset the window for the individuals in each population 
-                    gt_pop = gt_region1.take(popindices[pop], axis=1)
-    
-                    avg_pi, total_diffs, total_comps, total_missing = tallyRegion(gt_pop)
-                    outfile.write(str(pop) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_pi) + "\t" + str(len(gt_region1)) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
+                        # subset the window for the individuals in each population 
+                        gt_pop = gt_region1.take(popindices[pop], axis=1)
+                        avg_pi, total_diffs, total_comps, total_missing = tallyRegion(gt_pop)
+                        
+                    outfile.write(str(pop) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_pi) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
                     window_pos_2 += window_size
+                    
+                    if window_pos_2 > interval_end:
+                        window_pos_2 = interval_end
     
                 # close output file and print complete message
             outfile.close()
@@ -493,20 +496,30 @@ def main(args=None):
     
                 # perform the dxy calculation for all windows in the range
                 for window_pos_1 in range (interval_start, interval_end, window_size):
-                    loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
-                    gt_region1 = gt_array[loc_region]
-                    # use the popGTs dictionary to keep track of this region's GTs for each population
-                    popGTs={}
-                    for name in pop_pair:
-                        gt_pop = gt_region1.take(popindices[name], axis=1)
-                        popGTs[name] = gt_pop
+                    
+                    if len(pos_array[(pos_array > window_pos_1 ) & (pos_array <window_pos_2)]) == 0:
+                        avg_dxy, total_diffs, total_comps, total_missing, no_sites = "NA", "NA", "NA", "NA", 0
+                    else:
+                        loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
+                        gt_region1 = gt_array[loc_region]
+                        no_sites = len(gt_region1)
+                        
+                        # use the popGTs dictionary to keep track of this region's GTs for each population
+                        popGTs={}
+                        for name in pop_pair:
+                            gt_pop = gt_region1.take(popindices[name], axis=1)
+                            popGTs[name] = gt_pop
     
-                    pop1_gt_region1 = popGTs[pop1]
-                    pop2_gt_region1 = popGTs[pop2]
-                    avg_dxy, total_diffs, total_comps, total_missing = dxyTallyRegion(pop1_gt_region1, pop2_gt_region1)
-                    outfile.write(str(pop1) + "\t" + str(pop2) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_dxy) + "\t" + str(len(gt_region1)) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
+                        pop1_gt_region1 = popGTs[pop1]
+                        pop2_gt_region1 = popGTs[pop2]
+                        avg_dxy, total_diffs, total_comps, total_missing = dxyTallyRegion(pop1_gt_region1, pop2_gt_region1)
+                        
+                    outfile.write(str(pop1) + "\t" + str(pop2) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_dxy) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
     
                     window_pos_2 += window_size
+                    
+                    if window_pos_2 > interval_end:
+                        window_pos_2 = interval_end
     
             outfile.close()
             print("Dxy calculations chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_dxy.txt")
@@ -561,6 +574,13 @@ def main(args=None):
                     outfile.write(str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(wind[0]) + "\t" + str(wind[1]) + "\t" + str(fst) + "\t" + str(snps) +"\n")
             outfile.close()
             print("Fst calculations chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_fst.txt")
+    
+    
+    
+    
+    print("\nAll calculations complete!")
+    end_time = (time.time() - start_time)
+    print("Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(end_time)))
     
     
     
