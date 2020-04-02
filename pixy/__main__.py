@@ -34,7 +34,7 @@ def main(args=None):
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text, formatter_class=argparse.RawTextHelpFormatter)
     
-    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.2')
+    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.3')
     parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
     parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
     parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array(s)', required=True)
@@ -51,6 +51,7 @@ def main(args=None):
     parser.add_argument('--fst_maf_filter', default=0.0, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.')
     
     # catch arguments from the command line
+    
     args = parser.parse_args()
     
     
@@ -80,15 +81,22 @@ def main(args=None):
         raise Exception('ERROR: the following genotype filters were requested but not occur in the VCF:', missing) 
         
     # CHROMOSOMES
-    # check if requested chromosomes exist in vcf
     
+    # check if the vcf is zipped
+    if re.search(".gz", args.vcf):
+        cat_prog = "gunzip -c "
+    else:
+        cat_prog = "cat "
+    
+    # check if requested chromosomes exist in vcf
     # defaults to all the chromosomes contained in the VCF (first data column)
+    
     if args.chromosomes == 'all':
-        chrom_list = subprocess.check_output("zcat -f -- " + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
+        chrom_list = subprocess.check_output(cat_prog + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
         chrom_all = chrom_list
     else:
         chrom_list = list(args.chromosomes.split(","))
-        chrom_all = subprocess.check_output("zcat -f -- " + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
+        chrom_all = subprocess.check_output(cat_prof + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
         missing = list(set(chrom_list)-set(chrom_all))
         if len(missing) >0:
             raise Exception('ERROR: the following chromosomes were requested but not occur in the VCF:', missing) 
