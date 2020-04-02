@@ -96,7 +96,7 @@ def main(args=None):
         chrom_all = chrom_list
     else:
         chrom_list = list(args.chromosomes.split(","))
-        chrom_all = subprocess.check_output(cat_prof + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
+        chrom_all = subprocess.check_output(cat_prog + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
         missing = list(set(chrom_list)-set(chrom_all))
         if len(missing) >0:
             raise Exception('ERROR: the following chromosomes were requested but not occur in the VCF:', missing) 
