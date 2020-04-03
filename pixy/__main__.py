@@ -34,7 +34,7 @@ def main(args=None):
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text, formatter_class=argparse.RawTextHelpFormatter)
     
-    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.3')
+    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.4')
     parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
     parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
     parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array(s)', required=True)
@@ -51,13 +51,26 @@ def main(args=None):
     parser.add_argument('--fst_maf_filter', default=0.0, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.')
     
     # catch arguments from the command line
-    
     args = parser.parse_args()
     
     
     
     
+    # CHECK FOR TABIX
+    # (disabled until we implement site level and BED support)
+    #tabix_path = shutil.which("tabix")
+    
+    #if tabix_path is None:
+    #    warnings.warn('[pixy] WARNING: tabix is not installed (or cannot be located) -- this may reduce performance. install tabix with "conda install -c bioconda tabix"') 
+    #if not os.path.exists(args.vcf + ".tbi") and tabix_path is not None:
+    #    raise Exception('[pixy] ERROR: your vcf is not indexed with tabix, index the bgzipped vcf with "tabix your.vcf.gz"') 
+    
+    
+    
+    
     # VALIDATE ARGUMENTS
+    
+    print("[pixy] Validating inputs...")
     
     # get vcf header info
     vcf_headers = allel.read_vcf_headers(args.vcf)
@@ -76,10 +89,10 @@ def main(args=None):
         filter_fields.append(re.sub("[^A-Za-z]+", "", x))
         
     missing = list(set(filter_fields)-set(format_fields))
-        
+    
     if len(missing) >0:
-        raise Exception('ERROR: the following genotype filters were requested but not occur in the VCF:', missing) 
-        
+        raise Exception('[pixy] ERROR: the following genotype filters were requested but not occur in the VCF:', missing) 
+    
     # CHROMOSOMES
     
     # check if the vcf is zipped
@@ -99,19 +112,19 @@ def main(args=None):
         chrom_all = subprocess.check_output(cat_prog + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
         missing = list(set(chrom_list)-set(chrom_all))
         if len(missing) >0:
-            raise Exception('ERROR: the following chromosomes were requested but not occur in the VCF:', missing) 
+            raise Exception('[pixy] ERROR: the following chromosomes were requested but not occur in the VCF:', missing) 
     
     # INTERVALS
     # check if intervals are correctly specified
     
     if args.interval_start is not None and args.interval_end is None:
-        raise Exception('ERROR: Both --interval_start and --interval_end must be specified') 
+        raise Exception('[pixy] ERROR: Both --interval_start and --interval_end must be specified') 
         
     if args.interval_start is None and args.interval_end is not None:
-        raise Exception('ERROR: Both --interval_start and --interval_end must be specified') 
+        raise Exception('[pixy] ERROR: Both --interval_start and --interval_end must be specified') 
         
     if args.interval_start is not None and args.interval_end is not None and len(chrom_list) > 1:
-        raise Exception('ERROR: --interval_start and --interval_end are not valid when calculating over multiple chromosomes. Remove both arguments or specify a single chromosome.') 
+        raise Exception('[pixy] ERROR: --interval_start and --interval_end are not valid when calculating over multiple chromosomes. Remove both arguments or specify a single chromosome.') 
     
     # SAMPLES
     # check if requested samples exist in vcf
@@ -136,7 +149,7 @@ def main(args=None):
     try:
         samples_callset_index = [samples_list.index(s) for s in poppanel['ID']]
     except ValueError as e:
-        raise Exception('ERROR: the following samples are listed in the population file but not in the VCF:', missing) from e
+        raise Exception('[pixy] ERROR: the following samples are listed in the population file but not in the VCF:', missing) from e
     else:   
         poppanel['callset_index'] = samples_callset_index
     
@@ -146,7 +159,7 @@ def main(args=None):
         for name in popnames:
             popindices[name] = poppanel[poppanel.Population == name].callset_index.values
     
-    print ("Preparing for calculation of summary statistics for " + str(len(chrom_list)) +" chromosome(s), and " + str(len(IDs)) + " sample(s)...")
+    print ("[pixy] Preparing for calculation of summary statistics for " + str(len(chrom_list)) +" chromosome(s), and " + str(len(IDs)) + " sample(s)...")
     
     
     
@@ -197,7 +210,7 @@ def main(args=None):
     
     # time the calculations
     start_time = time.time()
-    print("Started calculations at " + time.strftime("%H:%M:%S", time.localtime(start_time)) + " local time")
+    print("[pixy] Started calculations at " + time.strftime("%H:%M:%S", time.localtime(start_time)) + " local time")
     
     for chromosome in chrom_list:
          
@@ -205,19 +218,32 @@ def main(args=None):
         
         # the chromosome specific zarr path
         zarr_path = args.zarr_path + "/" + chromosome
-           
+        
+        # determine the fields that will be included
+        # TBD: just reading all fields currently
+        # vcf_fields = ['variants/CHROM', 'variants/POS'] + ['calldata/' + s for s in np.unique(filter_fields)]
+        
+        # build region string (if using an interval)
+        if args.interval_start is not None:
+            targ_region = chromosome + ":" + str(args.interval_start) + "-" + str(args.interval_end)
+        else:
+            targ_region = chromosome
+        
         # allow for resuse of previously calculated zarr arrays
         if args.reuse_zarr == 'yes' and os.path.exists(zarr_path):
-            print("If a zarr array exists, it will be reused for chromosome " + chromosome + "...")
+            print("[pixy] If a zarr array exists, it will be reused for chromosome " + chromosome + "...")
         elif args.reuse_zarr == 'no' or os.path.exists(zarr_path) is not True:
             if os.path.exists(zarr_path):
                 shutil.rmtree(zarr_path)
             os.mkdir(zarr_path)
-            allel.vcf_to_zarr(args.vcf, zarr_path, region=chromosome, fields='*', overwrite=True)
+            print("[pixy] Building zarr array for chromosome " + chromosome + "...")
+            warnings.filterwarnings("ignore")
+            allel.vcf_to_zarr(args.vcf, zarr_path, region=targ_region, fields='*', overwrite=True)
+            warnings.resetwarnings()
             
-        print("Calculating statistics for chromosome " + chromosome + "...")
+        print("[pixy] Calculating statistics for chromosome " + targ_region + "...")
         
-        # inspect the structure of the zarr data
+        # open the zarr
         callset = zarr.open_group(zarr_path, mode='r')
     
         # parse the filtration expression and build the boolean filter array
@@ -248,7 +274,7 @@ def main(args=None):
                 try: 
                     stat_index = calldata_fields.index(stat)
                 except ValueError as e:
-                    raise Exception("Error: The requested filter \'" + stat + "\' is not annotated in the input VCF") from e
+                    raise Exception("[pixy] ERROR: The requested filter \'" + stat + "\' is not annotated in the input VCF") from e
                 else: 
     
                     # check if this is the first run through the loop
@@ -411,22 +437,22 @@ def main(args=None):
             if (interval_start > interval_end):
                 raise ValueError()        
         except ValueError as e:
-            raise Exception("The specified interval start ("+str(interval_start)+") exceeds the interval end ("+str(interval_end)+")") from e
+            raise Exception("[pixy] ERROR: The specified interval start ("+str(interval_start)+") exceeds the interval end ("+str(interval_end)+")") from e
     
         # catch misspecified intervals
         if (interval_end > max(pos_array)):
-            warnings.warn("The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome and has been substituted ("+str(max(pos_array))+")")
+            warnings.warn("[pixy] WARNING: The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome and has been substituted ("+str(max(pos_array))+")")
             interval_end = max(pos_array)
             
         if (interval_start < min(pos_array)):
-            warnings.warn("The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome and has been substituted ("+str(min(pos_array))+")")
+            warnings.warn("[pixy] WARNING: The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome and has been substituted ("+str(min(pos_array))+")")
             interval_start = min(pos_array)
     
         try:           
             if ((interval_end - interval_start + 1) < window_size):
                 raise ValueError()      
         except ValueError as e:
-            raise Exception("The specified interval ("+str(interval_start)+"-"+str(interval_end)+") is too small for the requested window size ("+str(window_size)+")") from e
+            raise Exception("[pixy] ERROR: The specified interval ("+str(interval_start)+"-"+str(interval_end)+") is too small for the requested window size ("+str(window_size)+")") from e
     
         # PI:
         # AVERAGE NUCLEOTIDE VARIATION WITHIN POPULATIONS
@@ -476,12 +502,11 @@ def main(args=None):
                 # close output file and print complete message
             outfile.close()
     
-            print("Pi calculations for chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_pi.txt")
+            print("[pixy] Pi calculations for chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_pi.txt")
     
     
         # DXY:
         # AVERAGE NUCLEOTIDE VARIATION BETWEEN POPULATIONS
-    
     
         if (args.populations is not None) and ('dxy' in args.stats):
     
@@ -530,7 +555,7 @@ def main(args=None):
                         window_pos_2 = interval_end
     
             outfile.close()
-            print("Dxy calculations chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_dxy.txt")
+            print("[pixy] Dxy calculations for chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_dxy.txt")
     
         # FST:
         # WEIR AND COCKERHAMS FST
@@ -581,14 +606,14 @@ def main(args=None):
                 for fst,wind,snps in zip(a, b, c):
                     outfile.write(str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(wind[0]) + "\t" + str(wind[1]) + "\t" + str(fst) + "\t" + str(snps) +"\n")
             outfile.close()
-            print("Fst calculations chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_fst.txt")
+            print("[pixy] Fst calculations for chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_fst.txt")
     
     
     
     
-    print("\nAll calculations complete!")
+    print("\n[pixy] All calculations complete!")
     end_time = (time.time() - start_time)
-    print("Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(end_time)))
+    print("[pixy] Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(end_time)))
     
     
     
