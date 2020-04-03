@@ -2,25 +2,25 @@
 Arguments
 ************
 
-Below is a list of arguments that pixy accepts.
+Below is a list of required and optional arguments that pixy accepts. 
 
 --help       Print the help message. 
 --version       Print the pixy version number.
---stats         Which statistics to calculate from the VCF 
+--stats         **Required.** Which statistics to calculate from the VCF 
                (pi, dxy, and/or fst, separated by spaces)
---vcf           Path to the input VCF.
---zarr_path            Folder in which to build the Zarr array(s).
+--vcf           **Required.** Path to the input VCF.
+--zarr_path            **Required.** Folder in which to build the Zarr array(s).
 --reuse_zarr           Use existing Zarr array(s) (saves time if re-running). [yes,no] 
---populations            Path to the populations file. See quick start for format.
---window_size           Window size in base pairs over which to calculate pi/dxy.
+--populations            **Required.** Path to the populations file. See quick start for format.
+--window_size           Window size in base pairs over which to calculate pi/dxy. Defaults to the whole chromosome.
 --chromosomes            A single-quoted, comma separated list of chromosome(s) (e.g. 'X,1,2'). Defaults to all chromosomes in the VCF.
---interval_start            The start of the interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.
---interval_end            The end of the interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.
---variant_filter_expression            A comma separated list of filters contained in single quotes.
+--interval_start            The start of a specific interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.
+--interval_end            The end of a specific interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.
+--variant_filter_expression           **Required.** A comma separated list of filters contained in single quotes.
                                        (e.g. 'DP>=10,GQ>=20') to apply to SNPs.
---invariant_filter_expression          A comma separated list of filters contained in single quotes.
+--invariant_filter_expression          **Required.** A comma separated list of filters contained in single quotes.
                                        (e.g. 'DP>=10,RGQ>=20') to apply to invariant sites.
---outfile_prefix            Path and prefix for the output file. Output files will be named like: 
+--outfile_prefix            **Required.** Path and prefix for the output file. Output files will be named like: 
                             path/to/outfile_pi_[popname].txt
 --bypass_filtration            Bypass all variant filtration (for data lacking FORMAT annotations, 
                                 use with extreme caution!)
