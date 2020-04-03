@@ -4,7 +4,7 @@ Arguments
 
 Below is a list of arguments that pixy accepts.
 
---version       Print the help message. 
+--help       Print the help message. 
 --version       Print the pixy version number.
 --stats         Which statistics to calculate from the VCF 
                (pi, dxy, and/or fst, separated by spaces)
