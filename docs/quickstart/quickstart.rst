@@ -67,22 +67,39 @@ Run pixy! An example is shown below.
 
 .. code:: console
 
-    pixy --interval_start 1 \
-    --interval_end 100000 \
-    --stats pi fst dxy \
+    pixy --stats pi fst dxy \
     --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
-    --zarr_path data/vcf/ag1000/chrX_36Ag_allsites \
-    --chromosome X \
+    --zarr_path data/zarr/ag1000 \
+    --chromosomes 'X' \
     --window_size 10000 \
     --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
-    --variant_filter_expression DP>=10,GQ>=20,RGQ>=20 \
-    --invariant_filter_expression DP>=10,RGQ>=20 \
+    --variant_filter_expression 'DP>=10,GQ>=20,RGQ>=20' \
+    --invariant_filter_expression 'DP>=10,RGQ>=20' \
     --outfile_prefix output/pixy_out
+
+.. note::
+    pixy ignores non-biallelic sites. If you want to compute pi with polyallelic sites and/or INDELs, please let us know! 
 
 7. Profit
 ======
 
 Parse the output files and enjoy your unbiased estimates of pi and dxy!
 
-.. note::
-    pixy ignores non-biallelic sites. If you want to compute pi with polyallelic sites and/or INDELs, please let us know! 
+
+
+8. Stay up to date
+======
+
+You can keep pixy up to date by re-running:
+
+.. code:: console
+
+    conda install --yes -c conda-forge pixy
+ 
+You can check that you have the latest version via:
+ 
+ .. code:: console
+    
+    pixy --version
+
+And comparing the version number to the one listed here: https://anaconda.org/conda-forge/pixy.
