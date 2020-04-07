@@ -34,7 +34,7 @@ def main(args=None):
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text, formatter_class=argparse.RawTextHelpFormatter)
     
-    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.4')
+    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.42')
     parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
     parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
     parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array(s)', required=True)
@@ -197,9 +197,6 @@ def main(args=None):
         outfile.close()
     
     # initialize the folder structure for the zarr array
-    if args.reuse_zarr == 'no' and os.path.exists(args.zarr_path):
-        shutil.rmtree(args.zarr_path)
-        
     if os.path.exists(args.zarr_path) is not True:
             os.mkdir(args.zarr_path)
     
@@ -555,7 +552,7 @@ def main(args=None):
                         window_pos_2 = interval_end
     
             outfile.close()
-            print("[pixy] Dxy calculations for chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_dxy.txt")
+            print("[pixy] Dxy calculations chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_dxy.txt")
     
         # FST:
         # WEIR AND COCKERHAMS FST
@@ -606,7 +603,7 @@ def main(args=None):
                 for fst,wind,snps in zip(a, b, c):
                     outfile.write(str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(wind[0]) + "\t" + str(wind[1]) + "\t" + str(fst) + "\t" + str(snps) +"\n")
             outfile.close()
-            print("[pixy] Fst calculations for chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_fst.txt")
+            print("[pixy] Fst calculations chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_fst.txt")
     
     
     
