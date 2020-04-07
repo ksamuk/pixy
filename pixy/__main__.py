@@ -34,7 +34,7 @@ def main(args=None):
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text, formatter_class=argparse.RawTextHelpFormatter)
     
-    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.42')
+    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.43')
     parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
     parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
     parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array(s)', required=True)
@@ -230,8 +230,6 @@ def main(args=None):
         if args.reuse_zarr == 'yes' and os.path.exists(zarr_path):
             print("[pixy] If a zarr array exists, it will be reused for chromosome " + chromosome + "...")
         elif args.reuse_zarr == 'no' or os.path.exists(zarr_path) is not True:
-            if os.path.exists(zarr_path):
-                shutil.rmtree(zarr_path)
             os.mkdir(zarr_path)
             print("[pixy] Building zarr array for chromosome " + chromosome + "...")
             warnings.filterwarnings("ignore")
