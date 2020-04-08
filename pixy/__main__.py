@@ -6,17 +6,16 @@ import numcodecs
 import numpy as np
 import sys
 import os
-import shutil
 import subprocess
 import re
 import operator
 import pandas
 import warnings
 import time
-from scipy import special
-from itertools import combinations
-from collections import Counter
 import argparse
+import multiprocessing 
+
+from pixy_functions import *
 
 
 def main(args=None):
@@ -34,21 +33,27 @@ def main(args=None):
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text, formatter_class=argparse.RawTextHelpFormatter)
     
-    parser.add_argument('--version', action='version', version='%(prog)s version 0.93.43')
+    parser.add_argument('--version', action='version', version='%(prog)s version 0.94')
     parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
     parser.add_argument('--vcf', type=str, nargs='?', help='Path to the input VCF', required=True)
     parser.add_argument('--zarr_path', type=str, nargs='?', help='Folder in which to build the Zarr array(s)', required=True)
     parser.add_argument('--reuse_zarr', choices=['yes', 'no'], default='no', help='Use existing Zarr array(s) (saves time if re-running)')
     parser.add_argument('--populations', type=str, nargs='?', help='Path to the populations file', required=True)
-    parser.add_argument('--window_size', type=int, nargs='?', help='Window size in base pairs over which to calculate pi/dxy')
     parser.add_argument('--chromosomes', type=str, nargs='?', default='all', help='A single-quoted, comma separated list of chromosome(s) (e.g. \'X,1,2\')', required=False)
+    parser.add_argument('--window_size', type=int, nargs='?', help='Window size in base pairs over which to calculate pi/dxy')
     parser.add_argument('--interval_start', type=str, nargs='?', help='The start of the interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.')
     parser.add_argument('--interval_end', type=str, nargs='?', help='The end of the interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.')
     parser.add_argument('--variant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,GQ>=20\') to apply to SNPs', required=True)
     parser.add_argument('--invariant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,RGQ>=20\') to apply to invariant sites', required=True)
-    parser.add_argument('--outfile_prefix', type=str, nargs='?', help='Path and prefix for the output file, e.g. path/to/outfile')
     parser.add_argument('--bypass_filtration', action='store_const', const='yes', default='no', help='Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme caution)')
+    parser.add_argument('--outfile_prefix', type=str, nargs='?', help='Path and prefix for the output file, e.g. path/to/outfile')
     parser.add_argument('--fst_maf_filter', default=0.0, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.')
+    parser.add_argument('--n_cores', default=1, type=int, nargs='?', help='Number of computing cores to use for pi and dxy calculations')
+    
+    
+    # ag1000g DATA
+    #args = parser.parse_args('--n_cores 2 --reuse_zarr yes --stats dxy pi fst --vcf data/vcf/multi_chr.vcf.gz --zarr_path data/vcf/multi --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile_3.txt --variant_filter_expression DP>=10,GQ>20 --invariant_filter_expression DP>=10,RGQ>20 --fst_maf_filter 0.05 --outfile_prefix output/pixy_out'.split())
+    
     
     # catch arguments from the command line
     args = parser.parse_args()
@@ -71,6 +76,12 @@ def main(args=None):
     # VALIDATE ARGUMENTS
     
     print("[pixy] Validating inputs...")
+    
+    # expand all file paths
+    args.vcf = os.path.expanduser(args.vcf)
+    args.zarr_path = os.path.expanduser(args.zarr_path)
+    args.populations = os.path.expanduser(args.populations)
+    args.outfile_prefix = os.path.expanduser(args.outfile_prefix)
     
     # get vcf header info
     vcf_headers = allel.read_vcf_headers(args.vcf)
@@ -158,6 +169,13 @@ def main(args=None):
         popnames = poppanel.Population.unique()
         for name in popnames:
             popindices[name] = poppanel[poppanel.Population == name].callset_index.values
+            
+    # produce warning if n_cores < number of actual cores available
+    
+    if multiprocessing.cpu_count() < args.n_cores:
+        warnings.warn("\n[pixy] WARNING: " + str(args.n_cores)+" CPU cores were requested, but only "+str(multiprocessing.cpu_count()) + " are available.")
+    
+        
     
     print ("[pixy] Preparing for calculation of summary statistics for " + str(len(chrom_list)) +" chromosome(s), and " + str(len(IDs)) + " sample(s)...")
     
@@ -165,8 +183,8 @@ def main(args=None):
     
     
     # initialize and remove any previous output files
-    if os.path.exists(re.sub("[^\/]+$", "", args.outfile_prefix)) is not True:
-        os.mkdir(re.sub("[^\/]+$", "", args.outfile_prefix))
+    if os.path.exists(re.sub("[^/]+$", "", args.outfile_prefix)) is not True:
+        os.mkdir(re.sub("[^/]+$", "", args.outfile_prefix))
     
     dxy_file = str(args.outfile_prefix) + "_dxy.txt"      
     if os.path.exists(dxy_file):
@@ -198,7 +216,7 @@ def main(args=None):
     
     # initialize the folder structure for the zarr array
     if os.path.exists(args.zarr_path) is not True:
-            os.mkdir(args.zarr_path)
+        os.mkdir(args.zarr_path)
     
     
     
@@ -230,7 +248,6 @@ def main(args=None):
         if args.reuse_zarr == 'yes' and os.path.exists(zarr_path):
             print("[pixy] If a zarr array exists, it will be reused for chromosome " + chromosome + "...")
         elif args.reuse_zarr == 'no' or os.path.exists(zarr_path) is not True:
-            os.mkdir(zarr_path)
             print("[pixy] Building zarr array for chromosome " + chromosome + "...")
             warnings.filterwarnings("ignore")
             allel.vcf_to_zarr(args.vcf, zarr_path, region=targ_region, fields='*', overwrite=True)
@@ -340,77 +357,6 @@ def main(args=None):
         # remove everything but biallelic snps and monomorphic sites from the position array
         pos_array = pos_array[callset['/variants/numalt'][:] < 2]
     
-        #Basic functions for comparing the genotypes at each site in a region: counts differences out of sites with data
-    
-        #For the given region: return average pi, # of differences, # of comparisons, and # missing.
-        # this function loops over every site in a region passed to it
-    
-        #Basic functions for comparing the genotypes at each site in a region: counts differences out of sites with data
-    
-        #For the given region: return average pi, # of differences, # of comparisons, and # missing.
-        # this function loops over every site in a region passed to it
-        def tallyRegion(gt_region):
-            total_diffs = 0
-            total_comps = 0
-            total_missing = 0
-            for site in gt_region:
-                vec = site.flatten()
-                #now we have an individual site as a numpy.ndarray, pass it to the comparison function
-                site_diffs, site_comps, missing = compareGTs(vec)
-                total_diffs += site_diffs
-                total_comps += site_comps
-                total_missing += missing
-            if total_comps > 0:
-                avg_pi = total_diffs/total_comps
-            else:
-                avg_pi = 0
-            return(avg_pi, total_diffs, total_comps, total_missing)
-    
-        #For the given region: return average dxy, # of differences, # of comparisons, and # missing.
-        # this function loops over every site in a region passed to it
-        def dxyTallyRegion(pop1_gt_region, pop2_gt_region):
-            total_diffs = 0
-            total_comps = 0
-            total_missing = 0
-            for x in range(0,len(pop1_gt_region)):
-                site1 = pop1_gt_region[x]
-                site2 = pop2_gt_region[x]
-                vec1 = site1.flatten()
-                vec2 = site2.flatten()
-                #now we have an individual site as 2 numpy.ndarrays, pass them to the comparison function
-                site_diffs, site_comps, missing = dxyCompareGTs(vec1, vec2)
-                total_diffs += site_diffs
-                total_comps += site_comps
-                total_missing += missing
-            if total_comps > 0:
-                avg_pi = total_diffs/total_comps
-            else:
-                avg_pi = 0
-            return(avg_pi, total_diffs, total_comps, total_missing)
-    
-        #Return the number of differences, the number of comparisons, and missing data count.
-        def compareGTs(vec): #for pi
-            c = Counter(vec)
-            diffs = c[1]*c[0]
-            gts = c[1]+c[0]
-            missing = (len(vec))-gts  #anything that's not 1 or 0 is ignored and counted as missing
-            comps = int(special.comb(gts,2))
-            return(diffs,comps,missing)
-    
-        def dxyCompareGTs(vec1, vec2): #for dxy
-            c1 = Counter(vec1)
-            c2 = Counter(vec2)
-            gt1zeros = c1[0]
-            gt1ones = c1[1]
-            gts1 = c1[1]+c1[0]
-            gt2zeros = c2[0]
-            gt2ones = c2[1]
-            gts2 = c2[1]+c2[0]
-            missing = (len(vec1)+len(vec2))-(gts1+gts2)  #anything that's not 1 or 0 is ignored and counted as missing  
-            diffs = (gt1zeros*gt2ones)+(gt1ones*gt2zeros)
-            comps = gts1*gts2
-            return(diffs,comps,missing)
-    
         # Interval specification check
         # check if computing over specific intervals (otherwise, compute over whole chromosome)
     
@@ -448,7 +394,12 @@ def main(args=None):
                 raise ValueError()      
         except ValueError as e:
             raise Exception("[pixy] ERROR: The specified interval ("+str(interval_start)+"-"+str(interval_end)+") is too small for the requested window size ("+str(window_size)+")") from e
-    
+        
+        
+        # precompute list of windows over which to calculate pi and dxy
+        # (skipped for FST, which is handled by the scikit allele function automatically)
+        window_pos_1_list = range(interval_start, interval_end, window_size)
+          
         # PI:
         # AVERAGE NUCLEOTIDE VARIATION WITHIN POPULATIONS
     
@@ -459,19 +410,21 @@ def main(args=None):
         
         if (args.populations is not None) and ('pi' in args.stats):
     
-            # open the pi output file for writing
-            outfile = open(pi_file, 'a')
-    
+            # loop over the populations + calculation pi
             for pop in popnames:
     
-                # window size:
+                # window size
                 window_size = args.window_size
-    
-                # initialize window_pos_2 
-                window_pos_2 = (interval_start + window_size)-1
-    
-                # loop over populations and windows, compute stats and write to file
-                for window_pos_1 in range(interval_start, interval_end, window_size):
+                
+                # list of all the 1st positions in each window
+                
+                # function (defined here because scoping was complex)
+                # calculate pi for a single window
+                def calc_pi_window(window_pos_1):
+                     # create the sencond window, clipping if it exceeds the end of the scaffold
+                    window_pos_2 = window_pos_1 + window_size -1
+                    if window_pos_2 > interval_end:
+                        window_pos_2 = interval_end
                     
                     # if the window has no sites, assign all NAs,
                     # otherwise calculate pi
@@ -487,16 +440,25 @@ def main(args=None):
                         # subset the window for the individuals in each population 
                         gt_pop = gt_region1.take(popindices[pop], axis=1)
                         avg_pi, total_diffs, total_comps, total_missing = tallyRegion(gt_pop)
-                        
-                    outfile.write(str(pop) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_pi) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
-                    window_pos_2 += window_size
                     
-                    if window_pos_2 > interval_end:
-                        window_pos_2 = interval_end
+                    # return the formatted string to write to file
+                    return str(str(pop) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_pi) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
+                
+                # function (defined here because scoping was complex)
+                # perform multicore calculation of pi over all windows
+                def compute_pi_multicore(window_pos_1_list):
+                    
+                    # create the multiprocessing pool
+                    p = multiprocessing.Pool(args.n_cores)
+                    
+                    # open the file for writing via the queuing system
+                    with open(pi_file, 'a') as f:
+                        for result in p.imap(calc_pi_window, window_pos_1_list):
+                            f.write(result)
     
-                # close output file and print complete message
-            outfile.close()
-    
+                # perform the multicore computation of pi
+                compute_pi_multicore(window_pos_1_list)
+            
             print("[pixy] Pi calculations for chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_pi.txt")
     
     
@@ -522,8 +484,12 @@ def main(args=None):
                 # initialize window_pos_2 
                 window_pos_2 = interval_start + window_size
     
-                # perform the dxy calculation for all windows in the range
-                for window_pos_1 in range (interval_start, interval_end, window_size):
+                # perform the dxy calculation for a single window
+                def calc_dxy_window(window_pos_1):
+                     # create the sencond window, clipping if it exceeds the end of the scaffold
+                    window_pos_2 = window_pos_1 + window_size -1
+                    if window_pos_2 > interval_end:
+                        window_pos_2 = interval_end
                     
                     if len(pos_array[(pos_array > window_pos_1 ) & (pos_array <window_pos_2)]) == 0:
                         avg_dxy, total_diffs, total_comps, total_missing, no_sites = "NA", "NA", "NA", "NA", 0
@@ -542,14 +508,21 @@ def main(args=None):
                         pop2_gt_region1 = popGTs[pop2]
                         avg_dxy, total_diffs, total_comps, total_missing = dxyTallyRegion(pop1_gt_region1, pop2_gt_region1)
                         
-                    outfile.write(str(pop1) + "\t" + str(pop2) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_dxy) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
-    
-                    window_pos_2 += window_size
+                    return(str(str(pop1) + "\t" + str(pop2) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_dxy) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n"))
+                
+                def compute_dxy_multicore(window_pos_1_list):
                     
-                    if window_pos_2 > interval_end:
-                        window_pos_2 = interval_end
+                    # create the multiprocessing pool
+                    p = multiprocessing.Pool(args.n_cores)
+                    
+                    # open the file for writing via the queuing system
+                    with open(dxy_file, 'a') as f:
+                        for result in p.imap(calc_dxy_window, window_pos_1_list):
+                            f.write(result)
     
-            outfile.close()
+                # perform the multicore computation of pi
+                compute_dxy_multicore(window_pos_1_list)
+    
             print("[pixy] Dxy calculations chromosome " + chromosome + " complete and written to " + args.outfile_prefix + "_dxy.txt")
     
         # FST:
