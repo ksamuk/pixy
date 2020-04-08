@@ -12,18 +12,21 @@ Below is a list of required and optional arguments that pixy accepts.
 --zarr_path            **Required.** Folder in which to build the Zarr array(s).
 --reuse_zarr           Use existing Zarr array(s) (saves time if re-running). [yes,no] 
 --populations            **Required.** Path to the populations file. See quick start for format.
---window_size           Window size in base pairs over which to calculate pi/dxy. Defaults to the whole chromosome.
 --chromosomes            A single-quoted, comma separated list of chromosome(s) (e.g. 'X,1,2'). Defaults to all chromosomes in the VCF.
+--window_size           Window size in base pairs over which to calculate pi/dxy. Defaults to the whole chromosome.
 --interval_start            The start of a specific interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.
 --interval_end            The end of a specific interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.
+
 --variant_filter_expression           **Required.** A comma separated list of filters contained in single quotes.
                                        (e.g. 'DP>=10,GQ>=20') to apply to SNPs.
 --invariant_filter_expression          **Required.** A comma separated list of filters contained in single quotes.
                                        (e.g. 'DP>=10,RGQ>=20') to apply to invariant sites.
---outfile_prefix            **Required.** Path and prefix for the output file. Output files will be named like: 
-                            path/to/outfile_pi_[popname].txt
 --bypass_filtration            Bypass all variant filtration (for data lacking FORMAT annotations, 
                                 use with extreme caution!)
+--fst_maf_filter       Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.
+--outfile_prefix            **Required.** Path and prefix for the output file. Output files will be named like: 
+                            path/to/outfile_pi_[popname].txt
+--n_cores           Number of CPU cores to use for pi and dxy calculations.
 
 An example:
 
@@ -37,3 +40,4 @@ An example:
     --variant_filter_expression 'DP>=10,GQ>=20,RGQ>=20' \
     --invariant_filter_expression 'DP>=10,RGQ>=20' \
     --outfile_prefix output/pixy_out
+    --n_cores 4
