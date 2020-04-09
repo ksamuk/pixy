@@ -22,7 +22,7 @@ Below is a list of required and optional arguments that pixy accepts.
 --invariant_filter_expression          **Required.** A comma separated list of filters contained in single quotes.
                                        (e.g. 'DP>=10,RGQ>=20') to apply to invariant sites.
 --bypass_filtration            Bypass all variant filtration (for data lacking FORMAT annotations, 
-                                use with extreme caution!)
+                                use with extreme caution!) [yes,no]
 --fst_maf_filter       Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.
 --outfile_prefix            **Required.** Path and prefix for the output file. Output files will be named like: 
                             path/to/outfile_pi_[popname].txt
