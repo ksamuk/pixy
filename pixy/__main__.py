@@ -15,7 +15,7 @@ import time
 import argparse
 import multiprocessing 
 
-from pixy_functions import *
+from .pixy_functions import *
 
 
 def main(args=None):
