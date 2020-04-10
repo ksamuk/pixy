@@ -14,6 +14,7 @@ import warnings
 import time
 import argparse
 import multiprocessing 
+import dill as pickle
 
 from itertools import combinations
 from collections import Counter
@@ -31,7 +32,7 @@ def main(args=None):
     help_image = "██████╗ ██╗██╗  ██╗██╗   ██╗\n" "██╔══██╗██║╚██╗██╔╝╚██╗ ██╔╝\n" "██████╔╝██║ ╚███╔╝  ╚████╔╝\n" "██╔═══╝ ██║ ██╔██╗   ╚██╔╝\n" "██║     ██║██╔╝ ██╗   ██║\n" "╚═╝     ╚═╝╚═╝  ╚═╝   ╚═╝\n" 
     
     help_text = 'pixy: sensible estimates of pi and dxy from a VCF'
-    version_text = 'version 0.94.02'
+    version_text = 'version 0.94.03'
     
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text+'\n'+version_text, formatter_class=argparse.RawTextHelpFormatter)
@@ -224,143 +225,184 @@ def main(args=None):
     
     # CORE PIXY FUNCTIONS
     
-    #For the given region: return average pi, # of differences, # of comparisons, and # missing.
+    # For the given region: return average pi, # of differences, # of comparisons, and # missing.
     # this function loops over every site in a region passed to it
+    
+    
     def tallyRegion(gt_region):
-            total_diffs = 0
-            total_comps = 0
-            total_missing = 0
-            for site in gt_region:
-                vec = site.flatten()
-                #now we have an individual site as a numpy.ndarray, pass it to the comparison function
-                site_diffs, site_comps, missing = compareGTs(vec)
-                total_diffs += site_diffs
-                total_comps += site_comps
-                total_missing += missing
-            if total_comps > 0:
-                avg_pi = total_diffs/total_comps
-            else:
-                avg_pi = 0
-            return(avg_pi, total_diffs, total_comps, total_missing)
+        total_diffs = 0
+        total_comps = 0
+        total_missing = 0
+        for site in gt_region:
+            vec = site.flatten()
     
-    #For the given region: return average dxy, # of differences, # of comparisons, and # missing.
+                # now we have an individual site as a numpy.ndarray, pass it to the comparison function
+    
+            (site_diffs, site_comps, missing) = compareGTs(vec)
+            total_diffs += site_diffs
+            total_comps += site_comps
+            total_missing += missing
+        if total_comps > 0:
+            avg_pi = total_diffs / total_comps
+        else:
+            avg_pi = 0
+        return (avg_pi, total_diffs, total_comps, total_missing)
+    
+    
+    # For the given region: return average dxy, # of differences, # of comparisons, and # missing.
     # this function loops over every site in a region passed to it
+    
     def dxyTallyRegion(pop1_gt_region, pop2_gt_region):
-    	total_diffs = 0
-    	total_comps = 0
-    	total_missing = 0
-    	for x in range(0,len(pop1_gt_region)):
-    		site1 = pop1_gt_region[x]
-    		site2 = pop2_gt_region[x]
-    		vec1 = site1.flatten()
-    		vec2 = site2.flatten()
-    		#now we have an individual site as 2 numpy.ndarrays, pass them to the comparison function
-    		site_diffs, site_comps, missing = dxyCompareGTs(vec1, vec2)
-    		total_diffs += site_diffs
-    		total_comps += site_comps
-    		total_missing += missing
-    	if total_comps > 0:
-    		avg_pi = total_diffs/total_comps
-    	else:
-    		avg_pi = 0
-    	return(avg_pi, total_diffs, total_comps, total_missing)
+        total_diffs = 0
+        total_comps = 0
+        total_missing = 0
+        for x in range(0, len(pop1_gt_region)):
+            site1 = pop1_gt_region[x]
+            site2 = pop2_gt_region[x]
+            vec1 = site1.flatten()
+            vec2 = site2.flatten()
     
-    #Return the number of differences, the number of comparisons, and missing data count.
-    def compareGTs(vec): #for pi
-    	c = Counter(vec)
-    	diffs = c[1]*c[0]
-    	gts = c[1]+c[0]
-    	missing = (len(vec))-gts  #anything that's not 1 or 0 is ignored and counted as missing
-    	comps = int(special.comb(gts,2))
-    	return(diffs,comps,missing)
+            # now we have an individual site as 2 numpy.ndarrays, pass them to the comparison function
     
-    def dxyCompareGTs(vec1, vec2): #for dxy
-    	c1 = Counter(vec1)
-    	c2 = Counter(vec2)
-    	gt1zeros = c1[0]
-    	gt1ones = c1[1]
-    	gts1 = c1[1]+c1[0]
-    	gt2zeros = c2[0]
-    	gt2ones = c2[1]
-    	gts2 = c2[1]+c2[0]
-    	missing = (len(vec1)+len(vec2))-(gts1+gts2)  #anything that's not 1 or 0 is ignored and counted as missing  
-    	diffs = (gt1zeros*gt2ones)+(gt1ones*gt2zeros)
-    	comps = gts1*gts2
-    	return(diffs,comps,missing)
+            (site_diffs, site_comps, missing) = dxyCompareGTs(vec1, vec2)
+            total_diffs += site_diffs
+            total_comps += site_comps
+            total_missing += missing
+        if total_comps > 0:
+            avg_pi = total_diffs / total_comps
+        else:
+            avg_pi = 0
+        return (avg_pi, total_diffs, total_comps, total_missing)
+    
+    
+    # Return the number of differences, the number of comparisons, and missing data count.
+    
+    def compareGTs(vec):  # for pi
+        c = Counter(vec)
+        diffs = c[1] * c[0]
+        gts = c[1] + c[0]
+        missing = len(vec) - gts  # anything that's not 1 or 0 is ignored and counted as missing
+        comps = int(special.comb(gts, 2))
+        return (diffs, comps, missing)
+    
+    
+    def dxyCompareGTs(vec1, vec2):  # for dxy
+        c1 = Counter(vec1)
+        c2 = Counter(vec2)
+        gt1zeros = c1[0]
+        gt1ones = c1[1]
+        gts1 = c1[1] + c1[0]
+        gt2zeros = c2[0]
+        gt2ones = c2[1]
+        gts2 = c2[1] + c2[0]
+        missing = len(vec1) + len(vec2) - (gts1 + gts2)  # anything that's not 1 or 0 is ignored and counted as missing
+        diffs = gt1zeros * gt2ones + gt1ones * gt2zeros
+        comps = gts1 * gts2
+        return (diffs, comps, missing)
+    
     
     # perform the dxy calculation for a single window
-    def calc_dxy_window(window_pos_1):
-    	 # create the sencond window, clipping if it exceeds the end of the scaffold
-    	window_pos_2 = window_pos_1 + window_size -1
-    	if window_pos_2 > interval_end:
-    		window_pos_2 = interval_end
-    	
-    	if len(pos_array[(pos_array > window_pos_1 ) & (pos_array <window_pos_2)]) == 0:
-    		avg_dxy, total_diffs, total_comps, total_missing, no_sites = "NA", "NA", "NA", "NA", 0
-    	else:
-    		loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
-    		gt_region1 = gt_array[loc_region]
-    		no_sites = len(gt_region1)
-    		
-    		# use the popGTs dictionary to keep track of this region's GTs for each population
-    		popGTs={}
-    		for name in pop_pair:
-    			gt_pop = gt_region1.take(popindices[name], axis=1)
-    			popGTs[name] = gt_pop
     
-    		pop1_gt_region1 = popGTs[pop1]
-    		pop2_gt_region1 = popGTs[pop2]
-    		avg_dxy, total_diffs, total_comps, total_missing = dxyTallyRegion(pop1_gt_region1, pop2_gt_region1)
-    		
-    	return(str(str(pop1) + "\t" + str(pop2) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_dxy) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n"))
+    def calc_dxy_window(window_pos_1):
+    
+         # create the sencond window, clipping if it exceeds the end of the scaffold
+    
+        window_pos_2 = window_pos_1 + window_size - 1
+        if window_pos_2 > interval_end:
+            window_pos_2 = interval_end
+    
+        if len(pos_array[(pos_array > window_pos_1) & (pos_array
+               < window_pos_2)]) == 0:
+            (avg_dxy, total_diffs, total_comps, total_missing, no_sites) =             ('NA', 'NA', 'NA', 'NA', 0)
+        else:
+            loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
+            gt_region1 = gt_array[loc_region]
+            no_sites = len(gt_region1)
+    
+            # use the popGTs dictionary to keep track of this region's GTs for each population
+    
+            popGTs = {}
+            for name in pop_pair:
+                gt_pop = gt_region1.take(popindices[name], axis=1)
+                popGTs[name] = gt_pop
+    
+            pop1_gt_region1 = popGTs[pop1]
+            pop2_gt_region1 = popGTs[pop2]
+            (avg_dxy, total_diffs, total_comps, total_missing) =             dxyTallyRegion(pop1_gt_region1, pop2_gt_region1)
+    
+        return str(str(pop1) + '\t' + str(pop2) + '\t' + str(chromosome)
+                   + '\t' + str(window_pos_1) + '\t' + str(window_pos_2)
+                   + '\t' + str(avg_dxy) + '\t' + str(no_sites) + '\t'
+                   + str(total_diffs) + '\t' + str(total_comps) + '\t'
+                   + str(total_missing) + '\n')
+    
     
     def compute_dxy_multicore(window_pos_1_list):
-    	
-    	# create the multiprocessing pool
-    	p = multiprocessing.Pool(args.n_cores)
-    	
-    	# open the file for writing via the queuing system
-    	with open(dxy_file, 'a') as f:
-    		for result in p.imap(calc_dxy_window, window_pos_1_list):
-    			f.write(result)
+    
+        # create the multiprocessing pool
+    
+        p = multiprocessing.Pool(args.n_cores)
+    
+        # open the file for writing via the queuing system
+    
+        with open(dxy_file, 'a') as f:
+            for result in p.imap(calc_dxy_window, window_pos_1_list):
+                f.write(result)
+    
     
     # function (defined here because scoping was complex)
     # calculate pi for a single window
-    def calc_pi_window(window_pos_1):
-    	 # create the sencond window, clipping if it exceeds the end of the scaffold
-    	window_pos_2 = window_pos_1 + window_size -1
-    	if window_pos_2 > interval_end:
-    		window_pos_2 = interval_end
-    	
-    	# if the window has no sites, assign all NAs,
-    	# otherwise calculate pi
-    	if len(pos_array[(pos_array > window_pos_1 ) & (pos_array <window_pos_2)]) == 0:
-    		avg_pi, total_diffs, total_comps, total_missing, no_sites = "NA", "NA", "NA", "NA", 0
-    	else:
-    	
-    		# pull out the genotypes for the window
-    		loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
-    		gt_region1 = gt_array[loc_region]
-    		no_sites = len(gt_region1)
     
-    		# subset the window for the individuals in each population 
-    		gt_pop = gt_region1.take(popindices[pop], axis=1)
-    		avg_pi, total_diffs, total_comps, total_missing = tallyRegion(gt_pop)
-    	
-    	# return the formatted string to write to file
-    	return str(str(pop) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_pi) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing) + "\n")
+    def calc_pi_window(window_pos_1):
+    
+         # create the sencond window, clipping if it exceeds the end of the scaffold
+    
+        window_pos_2 = window_pos_1 + window_size - 1
+        if window_pos_2 > interval_end:
+            window_pos_2 = interval_end
+    
+        # if the window has no sites, assign all NAs,
+        # otherwise calculate pi
+    
+        if len(pos_array[(pos_array > window_pos_1) & (pos_array
+               < window_pos_2)]) == 0:
+            (avg_pi, total_diffs, total_comps, total_missing, no_sites) =             ('NA', 'NA', 'NA', 'NA', 0)
+        else:
+    
+            # pull out the genotypes for the window
+    
+            loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
+            gt_region1 = gt_array[loc_region]
+            no_sites = len(gt_region1)
+    
+            # subset the window for the individuals in each population
+    
+            gt_pop = gt_region1.take(popindices[pop], axis=1)
+            (avg_pi, total_diffs, total_comps, total_missing) =             tallyRegion(gt_pop)
+    
+        # return the formatted string to write to file
+    
+        return str(str(pop) + '\t' + str(chromosome) + '\t'
+                   + str(window_pos_1) + '\t' + str(window_pos_2) + '\t'
+                   + str(avg_pi) + '\t' + str(no_sites) + '\t'
+                   + str(total_diffs) + '\t' + str(total_comps) + '\t'
+                   + str(total_missing) + '\n')
+    
     
     # function (defined here because scoping was complex)
     # perform multicore calculation of pi over all windows
+    
     def compute_pi_multicore(window_pos_1_list):
-    	
-    	# create the multiprocessing pool
-    	p = multiprocessing.Pool(args.n_cores)
-    	
-    	# open the file for writing via the queuing system
-    	with open(pi_file, 'a') as f:
-    		for result in p.imap(calc_pi_window, window_pos_1_list):
-    			f.write(result)
+    
+        # create the multiprocessing pool
+    
+        p = multiprocessing.Pool(args.n_cores)
+    
+        # open the file for writing via the queuing system
+    
+        with open(pi_file, 'a') as f:
+            for result in p.imap(calc_pi_window, window_pos_1_list):
+                f.write(result)
     
     
     
