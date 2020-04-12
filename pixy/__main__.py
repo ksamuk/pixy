@@ -29,7 +29,7 @@ def main(args=None):
     help_image = "██████╗ ██╗██╗  ██╗██╗   ██╗\n" "██╔══██╗██║╚██╗██╔╝╚██╗ ██╔╝\n" "██████╔╝██║ ╚███╔╝  ╚████╔╝\n" "██╔═══╝ ██║ ██╔██╗   ╚██╔╝\n" "██║     ██║██╔╝ ██╗   ██║\n" "╚═╝     ╚═╝╚═╝  ╚═╝   ╚═╝\n" 
     
     help_text = 'pixy: sensible estimates of pi and dxy from a VCF'
-    version_text = 'version 0.94.04'
+    version_text = 'version 0.94.05'
     
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text+'\n'+version_text, formatter_class=argparse.RawTextHelpFormatter)
@@ -43,10 +43,10 @@ def main(args=None):
     parser.add_argument('--chromosomes', type=str, nargs='?', default='all', help='A single-quoted, comma separated list of chromosome(s) (e.g. \'X,1,2\')', required=False)
     parser.add_argument('--interval_start', type=str, nargs='?', help='The start of the interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.')
     parser.add_argument('--interval_end', type=str, nargs='?', help='The end of the interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.')
-    parser.add_argument('--variant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,GQ>=20\') to apply to SNPs', required=True)
-    parser.add_argument('--invariant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,RGQ>=20\') to apply to invariant sites', required=True)
+    parser.add_argument('--variant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,GQ>=20\') to apply to SNPs', required=False)
+    parser.add_argument('--invariant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,RGQ>=20\') to apply to invariant sites', required=False)
     parser.add_argument('--outfile_prefix', type=str, nargs='?', help='Path and prefix for the output file, e.g. path/to/outfile')
-    parser.add_argument('--bypass_filtration', action='store_const', const='yes', default='no', help='Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme caution)')
+    parser.add_argument('--bypass_filtration', choices=['yes', 'no'], default='no', help='Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme caution)')
     parser.add_argument('--fst_maf_filter', default=0.0, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.')
     
     # ag1000g DATA
@@ -73,6 +73,7 @@ def main(args=None):
     
     # VALIDATE ARGUMENTS
     
+    print("[pixy] pixy " + version_text)
     print("[pixy] Validating inputs...")
     
     # expand all file paths
@@ -87,20 +88,27 @@ def main(args=None):
     # FILTER EXPRESSIONS
     # check if filter expressions are valid
     
-    # get the list of format fields and requested filter fields
-    format_fields = vcf_headers.formats.keys()
-    filter_fields = list()
+    if args.bypass_filtration=='no' and (args.variant_filter_expression is None or args.invariant_filter_expression is None):
+        raise Exception('[pixy] ERROR: One or more filter expression is missing. Provide two filter expressions, or set --bypass_filtration to \'yes\'') 
     
-    for x in args.variant_filter_expression.split(","):
-        filter_fields.append(re.sub("[^A-Za-z]+", "", x))
+    if args.bypass_filtration=='no':
+        # get the list of format fields and requested filter fields
+        format_fields = vcf_headers.formats.keys()
+        filter_fields = list()
     
-    for x in args.invariant_filter_expression.split(","):
-        filter_fields.append(re.sub("[^A-Za-z]+", "", x))
-        
-    missing = list(set(filter_fields)-set(format_fields))
+        for x in args.variant_filter_expression.split(","):
+            filter_fields.append(re.sub("[^A-Za-z]+", "", x))
     
-    if len(missing) >0:
-        raise Exception('[pixy] ERROR: the following genotype filters were requested but not occur in the VCF:', missing) 
+        for x in args.invariant_filter_expression.split(","):
+            filter_fields.append(re.sub("[^A-Za-z]+", "", x))
+    
+        missing = list(set(filter_fields)-set(format_fields))
+    
+        if len(missing) >0:
+            raise Exception('[pixy] ERROR: the following genotype filters were requested but not occur in the VCF:', missing) 
+    else:
+        print("[pixy] WARNING: --bypass_filtration is set to \'yes\' and genotype filtration will be not be performed.")
+    
     
     # CHROMOSOMES
     
@@ -216,7 +224,7 @@ def main(args=None):
     
     # time the calculations
     start_time = time.time()
-    print("[pixy] Started calculations at " + time.strftime("%H:%M:%S", time.localtime(start_time)) + " local time")
+    print("[pixy] Started calculations at " + time.strftime("%H:%M:%S", time.localtime(start_time)))
     
     for chromosome in chrom_list:
          
@@ -444,11 +452,11 @@ def main(args=None):
     
         # catch misspecified intervals
         if (interval_end > max(pos_array)):
-            warnings.warn("[pixy] WARNING: The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome and has been substituted ("+str(max(pos_array))+")")
+            print("[pixy] WARNING: The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome and has been substituted ("+str(max(pos_array))+")")
             interval_end = max(pos_array)
             
         if (interval_start < min(pos_array)):
-            warnings.warn("[pixy] WARNING: The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome and has been substituted ("+str(min(pos_array))+")")
+            print("[pixy] WARNING: The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome and has been substituted ("+str(min(pos_array))+")")
             interval_start = min(pos_array)
     
         try:           
@@ -614,7 +622,7 @@ def main(args=None):
     
     
     
-    print("\n[pixy] All calculations complete!")
+    print("\n[pixy] All calculations complete at " + time.strftime("%H:%M:%S", time.localtime(start_time)))
     end_time = (time.time() - start_time)
     print("[pixy] Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(end_time)))
     
