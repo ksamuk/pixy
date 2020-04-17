@@ -12,11 +12,12 @@ import operator
 import pandas
 import warnings
 import time
+import pathlib
 import argparse
 
+from scipy import special
 from itertools import combinations
 from collections import Counter
-from scipy import special
 
 def main(args=None):
 
@@ -26,10 +27,10 @@ def main(args=None):
     # argument parsing via argparse
     
     # the ascii help image
-    help_image = "██████╗ ██╗██╗  ██╗██╗   ██╗\n" "██╔══██╗██║╚██╗██╔╝╚██╗ ██╔╝\n" "██████╔╝██║ ╚███╔╝  ╚████╔╝\n" "██╔═══╝ ██║ ██╔██╗   ╚██╔╝\n" "██║     ██║██╔╝ ██╗   ██║\n" "╚═╝     ╚═╝╚═╝  ╚═╝   ╚═╝\n" 
+    help_image = "█▀▀█ ░▀░ █░█ █░░█\n" "█░░█ ▀█▀ ▄▀▄ █▄▄█\n" "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
     
     help_text = 'pixy: sensible estimates of pi and dxy from a VCF'
-    version_text = 'version 0.94.05'
+    version_text = 'version 0.94.1'
     
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text+'\n'+version_text, formatter_class=argparse.RawTextHelpFormatter)
@@ -45,7 +46,7 @@ def main(args=None):
     parser.add_argument('--interval_end', type=str, nargs='?', help='The end of the interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome.')
     parser.add_argument('--variant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,GQ>=20\') to apply to SNPs', required=False)
     parser.add_argument('--invariant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,RGQ>=20\') to apply to invariant sites', required=False)
-    parser.add_argument('--outfile_prefix', type=str, nargs='?', help='Path and prefix for the output file, e.g. path/to/outfile')
+    parser.add_argument('--outfile_prefix', type=str, nargs='?', default='./pixy_output', help='Path and prefix for the output file, e.g. path/to/outfile')
     parser.add_argument('--bypass_filtration', choices=['yes', 'no'], default='no', help='Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme caution)')
     parser.add_argument('--fst_maf_filter', default=0.0, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.')
     
@@ -82,6 +83,14 @@ def main(args=None):
     args.populations = os.path.expanduser(args.populations)
     args.outfile_prefix = os.path.expanduser(args.outfile_prefix)
     
+    # check if VCF and popfiles exist
+    
+    if os.path.exists(args.vcf) is not True:
+        raise Exception('[pixy] ERROR: The specified VCF ' + str(args.vcf) + ' does not exist') 
+    
+    if os.path.exists(args.populations) is not True:
+        raise Exception('[pixy] ERROR: The specified populations file ' + str(args.populations) + ' does not exist') 
+    
     # get vcf header info
     vcf_headers = allel.read_vcf_headers(args.vcf)
     
@@ -105,7 +114,7 @@ def main(args=None):
         missing = list(set(filter_fields)-set(format_fields))
     
         if len(missing) >0:
-            raise Exception('[pixy] ERROR: the following genotype filters were requested but not occur in the VCF:', missing) 
+            raise Exception('[pixy] ERROR: the following genotype filters were requested but not occur in the VCF: ', missing) 
     else:
         print("[pixy] WARNING: --bypass_filtration is set to \'yes\' and genotype filtration will be not be performed.")
     
@@ -129,7 +138,7 @@ def main(args=None):
         chrom_all = subprocess.check_output(cat_prog + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
         missing = list(set(chrom_list)-set(chrom_all))
         if len(missing) >0:
-            raise Exception('[pixy] ERROR: the following chromosomes were requested but not occur in the VCF:', missing) 
+            raise Exception('[pixy] ERROR: the following chromosomes were requested but not occur in the VCF: ', missing) 
     
     # INTERVALS
     # check if intervals are correctly specified
@@ -166,7 +175,7 @@ def main(args=None):
     try:
         samples_callset_index = [samples_list.index(s) for s in poppanel['ID']]
     except ValueError as e:
-        raise Exception('[pixy] ERROR: the following samples are listed in the population file but not in the VCF:', missing) from e
+        raise Exception('[pixy] ERROR: the following samples are listed in the population file but not in the VCF: ', missing) from e
     else:   
         poppanel['callset_index'] = samples_callset_index
     
@@ -176,7 +185,8 @@ def main(args=None):
         for name in popnames:
             popindices[name] = poppanel[poppanel.Population == name].callset_index.values
     
-    print ("[pixy] Preparing for calculation of summary statistics for " + str(len(chrom_list)) +" chromosome(s), and " + str(len(IDs)) + " sample(s)...")
+    print ("[pixy] Preparing for calculation of summary statistics: " + ','.join(map(str, args.stats)))
+    print ("[pixy] Data set contains " + str(len(popnames)) + " populations, " + str(len(chrom_list)) +" chromosome(s), and " + str(len(IDs)) + " sample(s)")
     
     
     
@@ -185,37 +195,44 @@ def main(args=None):
     if os.path.exists(re.sub("[^\/]+$", "", args.outfile_prefix)) is not True:
         os.mkdir(re.sub("[^\/]+$", "", args.outfile_prefix))
     
-    dxy_file = str(args.outfile_prefix) + "_dxy.txt"      
-    if os.path.exists(dxy_file):
-        os.remove(dxy_file)
-        
-    fst_file = str(args.outfile_prefix) + "_fst.txt"
-    if os.path.exists(fst_file):
-        os.remove(fst_file)
-    
-    pi_file = str(args.outfile_prefix) + "_pi.txt"
-    if os.path.exists(pi_file):
-        os.remove(pi_file)
-        
+            
     # initialize the output files for writing
     if 'pi' in args.stats:
+        
+        pi_file = str(args.outfile_prefix) + "_pi.txt"
+        
+        if os.path.exists(pi_file):
+            os.remove(pi_file)
+            
         outfile = open(pi_file, 'a')
         outfile.write("pop" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_pi" + "\t" + "no_sites" + "\t" + "count_diffs" + "\t" + "count_comparisons" + "\t" + "count_missing" + "\n")
         outfile.close()
     
     if 'dxy' in args.stats:
+        
+        dxy_file = str(args.outfile_prefix) + "_dxy.txt"     
+        
+        if os.path.exists(dxy_file):
+            os.remove(dxy_file)
+            
         outfile = open(dxy_file, 'a')
         outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_dxy" + "\t" + "no_sites" + "\t" + "count_diffs" + "\t" + "count_comparisons" + "\t" + "count_missing" + "\n")
         outfile.close()
     
     if 'fst' in args.stats:
+        
+        fst_file = str(args.outfile_prefix) + "_fst.txt"
+        
+        if os.path.exists(fst_file):
+            os.remove(fst_file)
+            
         outfile = open(fst_file, 'a')
         outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_wc_fst" + "\t" + "no_snps" + "\n")
         outfile.close()
     
     # initialize the folder structure for the zarr array
     if os.path.exists(args.zarr_path) is not True:
-        os.mkdir(args.zarr_path)
+        pathlib.Path(args.zarr_path).mkdir(parents=True, exist_ok=True)
     
     
     
@@ -451,6 +468,7 @@ def main(args=None):
             raise Exception("[pixy] ERROR: The specified interval start ("+str(interval_start)+") exceeds the interval end ("+str(interval_end)+")") from e
     
         # catch misspecified intervals
+        # TBD: harmonize this with the new interval method for the zarr array
         if (interval_end > max(pos_array)):
             print("[pixy] WARNING: The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome and has been substituted ("+str(max(pos_array))+")")
             interval_end = max(pos_array)
@@ -459,11 +477,8 @@ def main(args=None):
             print("[pixy] WARNING: The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome and has been substituted ("+str(min(pos_array))+")")
             interval_start = min(pos_array)
     
-        try:           
-            if ((interval_end - interval_start + 1) < window_size):
-                raise ValueError()      
-        except ValueError as e:
-            raise Exception("[pixy] ERROR: The specified interval ("+str(interval_start)+"-"+str(interval_end)+") is too small for the requested window size ("+str(window_size)+")") from e
+        if ((interval_end - interval_start + 1) < window_size):
+            print("[pixy] WARNING: The requested interval or total number of sites in the VCF ("+str(interval_start)+"-"+str(interval_end)+") is smaller than the requested window size ("+str(window_size)+")")
     
         # PI:
         # AVERAGE NUCLEOTIDE VARIATION WITHIN POPULATIONS
@@ -593,19 +608,26 @@ def main(args=None):
                 gt_array_fst = allel.GenotypeArray(gt_dask_fst).to_packed()
     
                 # flag & remove non-biallelic sites
-                non_bial_sites = np.where(np.logical_not(callset['/variants/numalt'][:] == 1))
-                gt_array_fst = np.delete(gt_array_fst, non_bial_sites, axis=0)
+                non_bial_sites = np.where(np.logical_not(callset['/variants/is_snp'][:] == 1))
+                gt_array_fst = np.delete(gt_array_fst, np.where(non_bial_sites), axis=0)
                 gt_array_fst = allel.GenotypeArray.from_packed(gt_array_fst)
             
                 #apply the maf filter (default is 0, i.e. no filter)
                 allele_counts= gt_array_fst.count_alleles()
                 allele_freqs = allele_counts.to_frequencies()
+       
                 gt_array_fst = np.delete(gt_array_fst, np.where(allele_freqs < args.fst_maf_filter), axis=0)
     
                 # also rebuild the position array for biallelic sites/maf filtered sites only
                 pos_array_fst = allel.SortedIndex(callset['/variants/POS'])
-                pos_array_fst = pos_array_fst[callset['/variants/numalt'][:] == 1]
+                pos_array_fst = pos_array_fst[callset['/variants/is_snp'][:] == 1]
                 pos_array_fst = np.delete(pos_array_fst, np.where(allele_freqs < args.fst_maf_filter), axis=0)
+                
+                # secondary check for biallelism
+                #non_bial_sites = np.logical_and(allele_freqs[:,0] == 1., allele_freqs[:,1] ==0.)
+                #gt_array_fst = np.delete(gt_array_fst, np.where(non_bial_sites), axis=0)
+                #pos_array_fst = np.delete(pos_array_fst, np.where(non_bial_sites), axis=0)
+    
          
                 # compute FST
                 # windowed_weir_cockerham_fst seems to generate (spurious?) warnings about div/0, so suppressing warnings

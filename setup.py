@@ -4,11 +4,12 @@ requirements = [
     'scikit-allel',
     'numpy',
     'pandas',
+	'dill',
 ]
 
 setup(
     name='pixy',
-    version='0.94.05',
+    version='0.94.1',
     packages=['pixy'],
     entry_points={
         'console_scripts': [
