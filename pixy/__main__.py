@@ -30,7 +30,7 @@ def main(args=None):
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n" "█░░█ ▀█▀ ▄▀▄ █▄▄█\n" "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
     
     help_text = 'pixy: sensible estimates of pi and dxy from a VCF'
-    version_text = 'version 0.94.1'
+    version_text = 'version 0.94.11'
     
     # initialize all the aruments
     parser = argparse.ArgumentParser(description=help_image+help_text+'\n'+version_text, formatter_class=argparse.RawTextHelpFormatter)
@@ -551,7 +551,7 @@ def main(args=None):
                 window_size = args.window_size
     
                 # initialize window_pos_2 
-                window_pos_2 = interval_start + window_size
+                window_pos_2 = (interval_start + window_size)-1
     
                 # perform the dxy calculation for all windows in the range
                 for window_pos_1 in range (interval_start, interval_end, window_size):
