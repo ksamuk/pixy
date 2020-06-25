@@ -22,7 +22,13 @@ from collections import Counter
 def main(args=None):
 
     if args is None:
-        args = sys.argv[1:]    version_text = 'version 0.95.0'
+        args = sys.argv[1:]    
+
+    # the ascii help image
+    help_image = "█▀▀█ ░▀░ █░█ █░░█\n" "█░░█ ▀█▀ ▄▀▄ █▄▄█\n" "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
+
+    help_text = 'pixy: sensible estimates of pi and dxy from a VCF'
+    version_text = 'version 0.95.0'
     
     # initialize arguments
     parser = argparse.ArgumentParser(description=help_image+help_text+'\n'+version_text, formatter_class=argparse.RawTextHelpFormatter)
