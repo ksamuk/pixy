@@ -3,13 +3,12 @@ from setuptools import setup
 requirements = [
     'scikit-allel',
     'numpy',
-    'pandas',
-	'dill',
+    'pandas'
 ]
 
 setup(
     name='pixy',
-    version='0.94.11',
+    version='0.95.0',
     packages=['pixy'],
     entry_points={
         'console_scripts': [

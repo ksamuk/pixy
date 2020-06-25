@@ -22,17 +22,9 @@ from collections import Counter
 def main(args=None):
 
     if args is None:
-        args = sys.argv[1:]    
+        args = sys.argv[1:]    version_text = 'version 0.95.0'
     
-    # argument parsing via argparse
-    
-    # the ascii help image
-    help_image = "█▀▀█ ░▀░ █░█ █░░█\n" "█░░█ ▀█▀ ▄▀▄ █▄▄█\n" "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
-    
-    help_text = 'pixy: sensible estimates of pi and dxy from a VCF'
-    version_text = 'version 0.94.11'
-    
-    # initialize all the aruments
+    # initialize arguments
     parser = argparse.ArgumentParser(description=help_image+help_text+'\n'+version_text, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--version', action='version', version=version_text)
     parser.add_argument('--stats', nargs='+', choices=['pi', 'dxy', 'fst'], help='Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)', required=True)
@@ -47,12 +39,15 @@ def main(args=None):
     parser.add_argument('--variant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,GQ>=20\') to apply to SNPs', required=False)
     parser.add_argument('--invariant_filter_expression', type=str, nargs='?', help='A single-quoted, comma separated list of genotype filters (e.g. \'DP>=10,RGQ>=20\') to apply to invariant sites', required=False)
     parser.add_argument('--outfile_prefix', type=str, nargs='?', default='./pixy_output', help='Path and prefix for the output file, e.g. path/to/outfile')
-    parser.add_argument('--bypass_filtration', choices=['yes', 'no'], default='no', help='Bypass all variant filtration (for data lacking FORMAT annotations, use with extreme caution)')
-    parser.add_argument('--fst_maf_filter', default=0.0, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.')
+    parser.add_argument('--bypass_filtration', choices=['yes', 'no'], default='no', help='Bypass all variant filtration (for data lacking FORMAT fields, use with caution)')
+    parser.add_argument('--bypass_invariant_check', choices=['yes', 'no'], default='no', help='Allow computation of stats without invariant sites, will result in wildly incorrect estimates most of the time. Use with extreme caution.')
+    parser.add_argument('--fst_maf_filter', default=0.05, type=float, nargs='?', help='Minor allele frequency filter for FST calculations, with value 0.0-1.0 (default 0.05).')
     
-    # ag1000g DATA
-    #args = parser.parse_args('--stats pi --vcf data/vcf/multi_chr.vcf.gz --zarr_path data/vcf/multi --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile_3.txt --variant_filter_expression DP>=10,GQ>20 --invariant_filter_expression DP>=10,RGQ>20 --fst_maf_filter 0.05 --outfile_prefix output/pixy_out'.split())
+    # ag1000g test data
+    # args = parser.parse_args('--stats fst --vcf data/vcf/multi_chr.vcf.gz --zarr_path data/vcf/multi --window_size 10000 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile_3.txt --variant_filter_expression DP>=10,GQ>20 --invariant_filter_expression DP>=10,RGQ>20 --outfile_prefix output/pixy_out'.split())
     
+    # filter test data
+    # args = parser.parse_args('--stats pi --vcf data/vcf/filter_test.vcf.gz --zarr_path data/vcf/filter_test --window_size 3 --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile_3.txt --variant_filter_expression DP>=10,GQ>20 --invariant_filter_expression DP>=10,RGQ>20 --fst_maf_filter 0.05 --outfile_prefix output/pixy_out'.split())
     
     # catch arguments from the command line
     args = parser.parse_args()
@@ -75,7 +70,7 @@ def main(args=None):
     # VALIDATE ARGUMENTS
     
     print("[pixy] pixy " + version_text)
-    print("[pixy] Validating inputs...")
+    print("[pixy] Validating VCF and input parameters (this may take some time)...")
     
     # expand all file paths
     args.vcf = os.path.expanduser(args.vcf)
@@ -83,7 +78,7 @@ def main(args=None):
     args.populations = os.path.expanduser(args.populations)
     args.outfile_prefix = os.path.expanduser(args.outfile_prefix)
     
-    # check if VCF and popfiles exist
+    # CHECK FOR EXISTANCE OF VCF AND POPFILES
     
     if os.path.exists(args.vcf) is not True:
         raise Exception('[pixy] ERROR: The specified VCF ' + str(args.vcf) + ' does not exist') 
@@ -91,11 +86,18 @@ def main(args=None):
     if os.path.exists(args.populations) is not True:
         raise Exception('[pixy] ERROR: The specified populations file ' + str(args.populations) + ' does not exist') 
     
+    # VALIDATE FILTER EXPRESSIONS
+    
     # get vcf header info
     vcf_headers = allel.read_vcf_headers(args.vcf)
     
-    # FILTER EXPRESSIONS
-    # check if filter expressions are valid
+    # skip invariant check if only asking for FST
+    if len(args.stats) == 1 and (args.stats[0] == 'fst'):
+        args.bypass_invariant_check = "yes"
+    
+    # if we are bypassing the invariant check, spoof in a invariant filter    
+    if args.bypass_invariant_check=="yes":
+        args.invariant_filter_expression="DP>=0"
     
     if args.bypass_filtration=='no' and (args.variant_filter_expression is None or args.invariant_filter_expression is None):
         raise Exception('[pixy] ERROR: One or more filter expression is missing. Provide two filter expressions, or set --bypass_filtration to \'yes\'') 
@@ -116,10 +118,10 @@ def main(args=None):
         if len(missing) >0:
             raise Exception('[pixy] ERROR: the following genotype filters were requested but not occur in the VCF: ', missing) 
     else:
-        print("[pixy] WARNING: --bypass_filtration is set to \'yes\' and genotype filtration will be not be performed.")
+        print("[pixy] WARNING: --bypass_filtration is set to \'yes\', genotype filtration will be not be performed.")
     
     
-    # CHROMOSOMES
+    # VALIDATE THE VCF
     
     # check if the vcf is zipped
     if re.search(".gz", args.vcf):
@@ -127,8 +129,24 @@ def main(args=None):
     else:
         cat_prog = "cat "
     
+    # check if the vcf contains any invariant sites
+    # a very basic check: just looks for at least one invariant site in the alt field
+    
+    if args.bypass_invariant_check=='no':
+        alt_list = subprocess.check_output(cat_prog + args.vcf + " | grep -v '#' | head -n 10000 | awk '{print $5}' | sort | uniq", shell=True).decode("utf-8").split()
+        if "." not in alt_list:
+            raise Exception('[pixy] ERROR: the provided VCF appears to contain no invariant sites (ALT = \".\"). This check can be bypassed via --bypass_invariant_check \'yes\'.') 
+    else:
+        if not (len(args.stats) == 1 and (args.stats[0] == 'fst')):
+            print("[pixy] EXTREME WARNING: --bypass_invariant_check is set to \'yes\', which assumes that your VCF contains invariant sites. Lack of invariant sites will result in incorrect estimates.")
+    
+    
     # check if requested chromosomes exist in vcf
     # defaults to all the chromosomes contained in the VCF (first data column)
+    
+    if args.chromosomes == 'all':
+        chrom_list = subprocess.check_output(cat_prog + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
+        chrom_all = chrom_list
     
     if args.chromosomes == 'all':
         chrom_list = subprocess.check_output(cat_prog + args.vcf + " | grep -v '#' | awk '{print $1}' | uniq", shell=True).decode("utf-8").split()
@@ -186,14 +204,14 @@ def main(args=None):
             popindices[name] = poppanel[poppanel.Population == name].callset_index.values
     
     print ("[pixy] Preparing for calculation of summary statistics: " + ','.join(map(str, args.stats)))
-    print ("[pixy] Data set contains " + str(len(popnames)) + " populations, " + str(len(chrom_list)) +" chromosome(s), and " + str(len(IDs)) + " sample(s)")
+    print ("[pixy] Data set contains " + str(len(popnames)) + " population(s), " + str(len(chrom_list)) +" chromosome(s), and " + str(len(IDs)) + " sample(s)")
     
     
     
     
     # initialize and remove any previous output files
-    if os.path.exists(re.sub("[^\/]+$", "", args.outfile_prefix)) is not True:
-        os.mkdir(re.sub("[^\/]+$", "", args.outfile_prefix))
+    if os.path.exists(re.sub(r"[^\/]+$", "", args.outfile_prefix)) is not True:
+        os.mkdir(re.sub(r"[^\/]+$", "", args.outfile_prefix))
     
             
     # initialize the output files for writing
@@ -284,95 +302,112 @@ def main(args=None):
     
         # check if bypassing filtration, otherwise filter
         if args.bypass_filtration=='no':
-            # intialize the filtration array (as a list)
-            filters = []
-    
-            #print("Creating filters...")
-    
-            # split the filtration expressions by commas
-            # parse out each component
-            # apply the filter
-            # TBD: handle cases where the specified filter isn't in the callset
+            
+            # VARIANT SITE FILTERS
+            var_filters = []
+            
+            # iterate over each requested variant filter
             for x in args.variant_filter_expression.split(","):
                 stat = re.sub("[^A-Za-z]+", "", x)
                 value = int(re.sub("[^0-9]+", "", x))
                 compare = re.sub("[A-Za-z0-9]+", "", x)
     
-                # check if the requested annotation exists in the VCF
+                # check if the requested filter/format exists in the VCF
+                try: 
+                    stat_index = calldata_fields.index(stat)
+                except ValueError as e:
+                    raise Exception("[pixy] ERROR: The requested filter \'" + stat + "\' is not annotated in the input VCF FORMAT field") from e
+                else: 
+                    if type(var_filters) is list:
+                        var_filters = ops[compare](callset['/calldata/' + stat][:], value)
+                    elif type(var_filters) is not list:
+                        var_filters = np.logical_and(var_filters, ops[compare](callset['/calldata/' + stat][:], value))
+            
+            # create a mask for variants only
+            # is snp is a site level (1d) array
+            # np.tile below creates a column of "is_snp" once for each sample 
+            # (i.e. makes it the same dimensions as the genotype table)
+            is_snp = np.array([callset['/variants/is_snp'][:].flatten()]).transpose()
+            snp_mask = np.tile(is_snp, (1,var_filters.shape[1]))
+            
+            # force only variant sites (snps, remember we ignore indels) to be included in the filter
+            var_filters = np.logical_and(var_filters, snp_mask)
+            
+            # INVARIANT SITE FILTERS
+            invar_filters = []
+            
+            for x in args.invariant_filter_expression.split(","):
+                stat = re.sub("[^A-Za-z]+", "", x)
+                value = int(re.sub("[^0-9]+", "", x))
+                compare = re.sub("[A-Za-z0-9]+", "", x)
+    
+                # check if the requested filter/format exists in the VCF
                 try: 
                     stat_index = calldata_fields.index(stat)
                 except ValueError as e:
                     raise Exception("[pixy] ERROR: The requested filter \'" + stat + "\' is not annotated in the input VCF") from e
                 else: 
+                    if type(invar_filters) is list:
+                        invar_filters = ops[compare](callset['/calldata/' + stat][:], value)
+                    elif type(var_filters) is not list:
+                        invar_filters = np.logical_and(invar_filters, ops[compare](callset['/calldata/' + stat][:], value))
+            
+            # create a mask for invariant sites by inverting the snp filter
+            # join that to the invariant sites filter
+            
+            invar_filters = np.logical_and(invar_filters, np.invert(snp_mask))
     
-                    # check if this is the first run through the loop
-                    # if so, either catch GQ and RGQ as separate filters or create the initial filter
-                    # on subsequent runs ('filters' is not a list), only catch GQ and RGQ or update the filter (logical AND)
-                    if type(filters) is list:
-                        if stat == 'GQ':
-                            GQ_filter = ops[compare](callset['/calldata/' + stat][:], value)
-                        elif stat == 'RGQ':
-                            RGQ_filter = ops[compare](callset['/calldata/' + stat][:], value)
-                        else:
-                            # this creates the initial filter array
-                            filters = ops[compare](callset['/calldata/' + stat][:], value)
-                    elif type(filters) is not list:
-                        if stat == 'GQ':
-                            GQ_filter = ops[compare](callset['/calldata/' + stat][:], value)
-                        elif stat == 'RGQ':
-                            RGQ_filter = ops[compare](callset['/calldata/' + stat][:], value)
-                        else:
-                            # this updates the filter array with additional filtration criteria
-                            filters = np.logical_and(filters, ops[compare](callset['/calldata/' + stat][:], value))
-    
-            # check if GQ and RQG exist
-            # if they both exist, perform a logical OR and join them into the filter
-            # otherwise, perform a logical AND to join either one into the filter
-    
-            GQ_exists = 'GQ_filter' in args
-            RGQ_exists = 'RGQ_filter' in args
-    
-            if GQ_exists & RGQ_exists:
-                filters = np.logical_and(filters, np.logical_or(GQ_filter, RGQ_filter))
-            elif GQ_exists:
-                filters = np.logical_and(filters, GQ_filter)
-            elif RGQ_exists:
-                filters = np.logical_and(filters, RGQ_filter)
-    
-            # finally, invert the whole array 
-            # this is for convenience/brevity in the next section
-            filters = np.invert(filters)
-    
+            # join the variant and invariant filter masks (logical OR)
+            filters = np.logical_or(invar_filters, var_filters)
+                   
         # applying the filter to the data
-        # all the filters are in a boolean array ('filters') 
+        # all the filters are in a boolean array ('filters' above) 
     
-        # recode the gt matrix as a Dask array (saves memory)
-        gt_dask = allel.GenotypeDaskArray(callset['/calldata/GT'])
-    
+        # first, recode the gt matrix as a Dask array (saves memory) -> packed
         # create a packed genotype array 
         # this is a array with dims snps x samples
         # genotypes are represented by single byte codes 
         # critically, as the same dims as the filters array below
-        gt_array = allel.GenotypeArray(gt_dask).to_packed()
+        
+        gt_array = allel.GenotypeArray(allel.GenotypeDaskArray(callset['/calldata/GT'])).to_packed()
     
-        # only apply filter if not bypassing filtration
+        # apply filters
+        # only if not bypassing filtration
         if args.bypass_filtration=='no':
-            # set all genotypes that fail filters to 'missing'
-            # 239 = -1 (i.e. missing) for packed arrays
-            gt_array[filters] = 239
-    
-        # remove sites with >1 alt allele from the filtered gt array
-        gt_array = np.delete(gt_array, np.where(callset['/variants/numalt'][:] > 1), axis=0)
-    
+            # set all genotypes that fail filters (the inversion of the array) 
+            # to 'missing', 239 = -1 (i.e. missing) for packed arrays
+            gt_array[np.invert(filters)] = 239
+        
         # convert the packed array back to a GenotypeArray
         gt_array = allel.GenotypeArray.from_packed(gt_array)
     
         # build the position array
         pos_array = allel.SortedIndex(callset['/variants/POS'])
+        
+        # a mask for snps and invariant sites
+        snp_invar_mask = np.logical_or(np.logical_and(callset['/variants/is_snp'][:] == 1, callset['/variants/numalt'][:] == 1), callset['/variants/numalt'][:] == 0)
+        
+        # remove rows that are NOT snps or invariant sites from the genotype array
+        gt_array = np.delete(gt_array, np.where(np.invert(snp_invar_mask)), axis=0)
+        gt_array = allel.GenotypeArray(gt_array)
     
-        # remove everything but biallelic snps and monomorphic sites from the position array
-        pos_array = pos_array[callset['/variants/numalt'][:] < 2]
-    
+        # select rows that ARE snps or invariant sites in the position array
+        pos_array = pos_array[snp_invar_mask]
+        
+        # filter output for degbug
+        # samples = callset['/samples'][:]
+        # print(pos_array)
+        # print(gt_array.shape)
+        # print(gt_array)
+        # np.savetxt("testing/filters/" + chromosome + '_snp_mask.csv', snp_mask, delimiter=',', fmt='%1d')
+        # np.savetxt("testing/filters/" + chromosome + '_invar_mask.csv', np.invert(snp_mask), delimiter=',', fmt='%1d')
+        # np.savetxt("testing/filters/" + chromosome + '_var_filter.csv', var_filters, delimiter=',', fmt='%1d')
+        # np.savetxt("testing/filters/" + chromosome + '_invar_filter.csv', var_filters, delimiter=',', fmt='%1d')
+        # np.savetxt("testing/filters/" + chromosome + '_complete_filter.csv', filters, delimiter=',', fmt='%1d')
+        # np.savetxt("testing/filters/" + chromosome + '_filtered_genotypes.csv', gt_array.to_gt().decode('utf-8'), delimiter=',', fmt='%1s')
+        # np.savetxt("testing/filters/" + chromosome + '_complete_positions.csv', pos_array, delimiter=',', fmt='%1d')
+        # np.savetxt("testing/filters/" + chromosome + '_complete_samples.csv', samples, delimiter=',', fmt='%1s')
+        
         #Basic functions for comparing the genotypes at each site in a region: counts differences out of sites with data
     
         #For the given region: return average pi, # of differences, # of comparisons, and # missing.
@@ -457,7 +492,7 @@ def main(args=None):
             interval_end = int(args.interval_end)
     
         if (args.interval_start is None):
-                interval_start = min(pos_array)
+            interval_start = min(pos_array)
         else:
             interval_start = int(args.interval_start)
         
@@ -470,11 +505,11 @@ def main(args=None):
         # catch misspecified intervals
         # TBD: harmonize this with the new interval method for the zarr array
         if (interval_end > max(pos_array)):
-            print("[pixy] WARNING: The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome and has been substituted ("+str(max(pos_array))+")")
+            print("[pixy] WARNING: The specified interval end ("+str(interval_end)+") exceeds the last position of the chromosome and has been substituted with " + str(max(pos_array)))
             interval_end = max(pos_array)
             
         if (interval_start < min(pos_array)):
-            print("[pixy] WARNING: The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome and has been substituted ("+str(min(pos_array))+")")
+            print("[pixy] WARNING: The specified interval start ("+str(interval_start)+") begins before the first position of the chromosome and has been substituted with " + str(min(pos_array)))
             interval_start = min(pos_array)
     
         if ((interval_end - interval_start + 1) < window_size):
@@ -485,9 +520,6 @@ def main(args=None):
     
         # Compute pi over a chosen interval and window size
     
-        # TBD:
-        # - write out summary of program parameters file* think about how this should work
-        
         if (args.populations is not None) and ('pi' in args.stats):
     
             # open the pi output file for writing
@@ -595,40 +627,30 @@ def main(args=None):
             # determine all the possible population pairings
             pop_names=list(popindices.keys())
             fst_pop_list = list(combinations(pop_names, 2))
+                      
+            #calculate maf 
+            allele_counts = gt_array.count_alleles()
+            allele_freqs = allele_counts.to_frequencies()
+            maf_array = allele_freqs[:,1] > args.fst_maf_filter
+            
+            # apply the maf filter to the genotype array]
+            gt_array_fst = gt_array[maf_array]
+            gt_array_fst = allel.GenotypeArray(gt_array_fst)
+    
+            # apply the maf filter to the position array
+            pos_array_fst = pos_array[maf_array]
+            
+            # debug output
+            # np.savetxt("testing/filters/" + chromosome + '_maf_array.csv', maf_array, delimiter=',', fmt='%1d')
+            # np.savetxt("testing/filters/" + chromosome + '_fst_genotypes.csv', gt_array_fst.to_gt().decode('utf-8'), delimiter=',', fmt='%1s')
+            # np.savetxt("testing/filters/" + chromosome + '_fst_positions.csv', pos_array_fst, delimiter=',', fmt='%1d')
     
             # for each pair, compute fst
             for pop_pair in fst_pop_list:
     
                 # the indices for the individuals in each population
                 fst_pop_indicies=[popindices[pop_pair[0]].tolist(), popindices[pop_pair[1]].tolist()]
-    
-                # rebuild the GT array for variant sites only
-                # this is done for speed (also FST is undefined for monomorphic sites)
-                gt_dask_fst = allel.GenotypeDaskArray(callset['/calldata/GT'])
-                gt_array_fst = allel.GenotypeArray(gt_dask_fst).to_packed()
-    
-                # flag & remove non-biallelic sites
-                non_bial_sites = np.where(np.logical_not(callset['/variants/is_snp'][:] == 1))
-                gt_array_fst = np.delete(gt_array_fst, np.where(non_bial_sites), axis=0)
-                gt_array_fst = allel.GenotypeArray.from_packed(gt_array_fst)
-            
-                #apply the maf filter (default is 0, i.e. no filter)
-                allele_counts= gt_array_fst.count_alleles()
-                allele_freqs = allele_counts.to_frequencies()
-       
-                gt_array_fst = np.delete(gt_array_fst, np.where(allele_freqs < args.fst_maf_filter), axis=0)
-    
-                # also rebuild the position array for biallelic sites/maf filtered sites only
-                pos_array_fst = allel.SortedIndex(callset['/variants/POS'])
-                pos_array_fst = pos_array_fst[callset['/variants/is_snp'][:] == 1]
-                pos_array_fst = np.delete(pos_array_fst, np.where(allele_freqs < args.fst_maf_filter), axis=0)
                 
-                # secondary check for biallelism
-                #non_bial_sites = np.logical_and(allele_freqs[:,0] == 1., allele_freqs[:,1] ==0.)
-                #gt_array_fst = np.delete(gt_array_fst, np.where(non_bial_sites), axis=0)
-                #pos_array_fst = np.delete(pos_array_fst, np.where(non_bial_sites), axis=0)
-    
-         
                 # compute FST
                 # windowed_weir_cockerham_fst seems to generate (spurious?) warnings about div/0, so suppressing warnings
                 # (this assumes that the scikit-allel function is working as intended)
