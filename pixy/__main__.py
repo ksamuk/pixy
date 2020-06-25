@@ -400,20 +400,6 @@ def main(args=None):
         # select rows that ARE snps or invariant sites in the position array
         pos_array = pos_array[snp_invar_mask]
         
-        # filter output for degbug
-        # samples = callset['/samples'][:]
-        # print(pos_array)
-        # print(gt_array.shape)
-        # print(gt_array)
-        # np.savetxt("testing/filters/" + chromosome + '_snp_mask.csv', snp_mask, delimiter=',', fmt='%1d')
-        # np.savetxt("testing/filters/" + chromosome + '_invar_mask.csv', np.invert(snp_mask), delimiter=',', fmt='%1d')
-        # np.savetxt("testing/filters/" + chromosome + '_var_filter.csv', var_filters, delimiter=',', fmt='%1d')
-        # np.savetxt("testing/filters/" + chromosome + '_invar_filter.csv', var_filters, delimiter=',', fmt='%1d')
-        # np.savetxt("testing/filters/" + chromosome + '_complete_filter.csv', filters, delimiter=',', fmt='%1d')
-        # np.savetxt("testing/filters/" + chromosome + '_filtered_genotypes.csv', gt_array.to_gt().decode('utf-8'), delimiter=',', fmt='%1s')
-        # np.savetxt("testing/filters/" + chromosome + '_complete_positions.csv', pos_array, delimiter=',', fmt='%1d')
-        # np.savetxt("testing/filters/" + chromosome + '_complete_samples.csv', samples, delimiter=',', fmt='%1s')
-        
         #Basic functions for comparing the genotypes at each site in a region: counts differences out of sites with data
     
         #For the given region: return average pi, # of differences, # of comparisons, and # missing.
@@ -646,11 +632,6 @@ def main(args=None):
             # apply the maf filter to the position array
             pos_array_fst = pos_array[maf_array]
             
-            # debug output
-            # np.savetxt("testing/filters/" + chromosome + '_maf_array.csv', maf_array, delimiter=',', fmt='%1d')
-            # np.savetxt("testing/filters/" + chromosome + '_fst_genotypes.csv', gt_array_fst.to_gt().decode('utf-8'), delimiter=',', fmt='%1s')
-            # np.savetxt("testing/filters/" + chromosome + '_fst_positions.csv', pos_array_fst, delimiter=',', fmt='%1d')
-    
             # for each pair, compute fst
             for pop_pair in fst_pop_list:
     
