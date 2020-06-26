@@ -6,9 +6,9 @@ Step by Step Installation and Usage
     pixy is currently only available for Linux and macOS systems.
     
  
-1. Generate a VCF with Invariant Sites
+1. Generate a VCF with Invariant Sites and perform any pre-filtering
 ======
-If you did not already generate an 'allsites' VCF (VCF with invariant sites), see the guide here: https://pixy.readthedocs.io/en/latest/invar/allsitesQuickstart.html
+If you did not already generate an 'allsites' VCF (VCF with invariant sites), see the guide here: https://pixy.readthedocs.io/en/latest/invar/allsitesQuickstart.html Note that while pixy provides some limited filtering expressions, VCF filtering can be complex. Thus, we recommend applying one of the several tools dedicated to performing such operations on VCFs, such as BCFtools: http://samtools.github.io/bcftools/bcftools.html
 
 .. note::
     When working with whole genome data, we suggest you generate *separate invariant sites VCFs for each chromosome*. This is to prevent
