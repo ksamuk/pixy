@@ -28,6 +28,7 @@ To our knowledge, all major software methods for computing pi and dxy from VCFs 
    installation
    quickstart
    arguments
+   examples
 
 Tutorials
 ==================
