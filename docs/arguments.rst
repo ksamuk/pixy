@@ -23,6 +23,7 @@ Below is a list of required and optional arguments that pixy accepts.
                                        (e.g. 'DP>=10,RGQ>=20') to apply to invariant sites.
 --bypass_filtration            Bypass all variant filtration (for data lacking FORMAT annotations, 
                                 use with extreme caution!) [yes,no]
+--bypass_invariant_check            Bypass the check for invariant sites. Use with caution!
 --fst_maf_filter       Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.
 --outfile_prefix            **Required.** Path and prefix for the output file. Output files will be named like: 
                             path/to/outfile_pi_[popname].txt
@@ -40,4 +41,3 @@ An example:
     --variant_filter_expression 'DP>=10,GQ>=20,RGQ>=20' \
     --invariant_filter_expression 'DP>=10,RGQ>=20' \
     --outfile_prefix output/pixy_out
-    --n_cores 4
