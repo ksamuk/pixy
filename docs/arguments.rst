@@ -27,7 +27,6 @@ Below is a list of required and optional arguments that pixy accepts.
 --fst_maf_filter       Minor allele frequency filter for FST calculations, with value 0.0-1.0. Sites with MAF less than this value will be excluded.
 --outfile_prefix            **Required.** Path and prefix for the output file. Output files will be named like: 
                             path/to/outfile_pi_[popname].txt
---n_cores           Number of CPU cores to use for pi and dxy calculations.
 
 An example:
 
