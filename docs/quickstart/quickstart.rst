@@ -8,11 +8,18 @@ Step by Step Installation and Usage
  
 1. Generate a VCF with Invariant Sites and perform any pre-filtering
 ======
-If you did not already generate an 'allsites' VCF (VCF with invariant sites), see the guide here: https://pixy.readthedocs.io/en/latest/invar/allsitesQuickstart.html Note that while pixy provides some limited filtering expressions, VCF filtering can be complex. Thus, we recommend applying one of the several tools dedicated to performing such operations on VCFs, such as BCFtools: http://samtools.github.io/bcftools/bcftools.html
+If you did not already generate an 'allsites' VCF (VCF with invariant sites), see the guide here: https://pixy.readthedocs.io/en/latest/invar/allsitesQuickstart.html 
 
 .. note::
     When working with whole genome data, we suggest you generate *separate invariant sites VCFs for each chromosome*. This is to prevent
     memory limitation issues down the line. This is less of an issue for reduced representation sequencing, naturally.
+
+Note that while pixy provides some limited filtering expressions, VCF filtering can be complex. Thus, we recommend applying one of the several tools dedicated to performing such operations on VCFs, such as BCFtools: http://samtools.github.io/bcftools/bcftools.html
+
+.. note::
+    You will likely want to a least apply site filters based on the number of missing individuals, minor allele frequency, site quality score, and depth. This guide https://speciationgenomics.github.io/filtering_vcfs/ is a good starting place. You might also want to remove sites with HWE violations, unusually high osberved heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations.
+
+
 
 2. Install Anaconda
 ======
