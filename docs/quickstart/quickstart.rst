@@ -14,11 +14,25 @@ If you did not already generate an 'allsites' VCF (VCF with invariant sites), se
     When working with whole genome data, we suggest you generate *separate invariant sites VCFs for each chromosome*. This is to prevent
     memory limitation issues down the line. This is less of an issue for reduced representation sequencing, naturally.
 
-Note that while pixy provides some limited filtering expressions, VCF filtering can be complex. Thus, we recommend applying one of the several tools dedicated to performing such operations on VCFs, such as BCFtools: http://samtools.github.io/bcftools/bcftools.html
+Note that while pixy provides limited genotype-level filtering, VCF filtering can be complex. Thus, we recommend applying one of the several tools dedicated to performing such operations on VCFs, such as BCFtools: http://samtools.github.io/bcftools/bcftools.html
 
-.. note::
-    You will likely want to a least apply site filters based on the number of missing individuals, minor allele frequency, site quality score, and depth. This guide https://speciationgenomics.github.io/filtering_vcfs/ is a good starting place. You might also want to remove sites with HWE violations, unusually high osberved heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations.
+##### Site-level filtration
+The goal of site-level filtration is to remove sites that show evidence of sequencing errors, duplicated/paralogous sites, or issues with mapping. You will likely want to a least apply site-level filters based on the number of missing individuals, minor allele frequency, site quality score, and depth (minimum and maxmium). This guide https://speciationgenomics.github.io/filtering_vcfs/ is a good starting place. 
 
+Here is an example using VCFtools. The specific values (especially for min/max-meanDP) will vary based on your dataset. 
+
+.. code:: console
+    vcftools --gzvcf my_vcf.vcf.gz \
+    --remove-indels \
+    --maf 0.05 \
+    --max-missing 0.8 \
+    --minQ 30 \
+    --min-meanDP 10 \
+    --max-meanDP 100 \
+    --hwe 0.001 \
+    --recode --stdout | gzip -c > my_filtered_vcf.vcf.gz
+
+You might also want to filter out sites with HWE violations, unusually high osberved heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations.
 
 
 2. Install Anaconda
@@ -84,14 +98,26 @@ Run pixy! An example is shown below.
     --invariant_filter_expression 'DP>=10,RGQ>=20' \
     --outfile_prefix output/pixy_out
 
+If your VCF is pre-filtered, you can also bypass genotype filtration:
+
+.. code:: console
+
+    pixy --stats pi fst dxy \
+    --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
+    --zarr_path data/zarr/ag1000 \
+    --chromosomes 'X' \
+    --window_size 10000 \
+    --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
+    --bypass_filtration yes \
+    --outfile_prefix output/pixy_out
+
 .. note::
-    pixy ignores non-biallelic sites. If you want to compute pi with polyallelic sites and/or INDELs, please let us know! 
+    pixy ignores non-biallelic sites and INDELs, even if they are left in the VCF after pre-filtering. 
 
 7. Profit
 ======
 
 Parse the output files and enjoy your unbiased estimates of pi and dxy!
-
 
 
 8. Stay up to date
