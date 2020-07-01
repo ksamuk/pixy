@@ -23,6 +23,7 @@ The goal of site-level filtration is to remove sites that show evidence of seque
 Here is an example using VCFtools. The specific values (especially for min/max-meanDP) will vary based on your dataset: 
 
 .. code:: console
+
     vcftools --gzvcf my_vcf.vcf.gz \
     --remove-indels \
     --maf 0.05 \
