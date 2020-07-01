@@ -16,10 +16,11 @@ If you did not already generate an 'allsites' VCF (VCF with invariant sites), se
 
 Note that while pixy provides limited genotype-level filtering, VCF filtering can be complex. Thus, we recommend applying one of the several tools dedicated to performing such operations on VCFs, such as BCFtools: http://samtools.github.io/bcftools/bcftools.html
 
-##### Site-level filtration
-The goal of site-level filtration is to remove sites that show evidence of sequencing errors, duplicated/paralogous sites, or issues with mapping. You will likely want to a least apply site-level filters based on the number of missing individuals, minor allele frequency, site quality score, and depth (minimum and maxmium). This guide https://speciationgenomics.github.io/filtering_vcfs/ is a good starting place. 
+Site-level filtration
+------------------------
+The goal of site-level filtration is to remove sites that show evidence of sequencing errors, duplication, or other issues with mapping. You will likely want to a least apply site-level filters based on the number of missing individuals, minor allele frequency, site quality score, and depth (minimum and maxmium). This guide https://speciationgenomics.github.io/filtering_vcfs/ is a good starting place. 
 
-Here is an example using VCFtools. The specific values (especially for min/max-meanDP) will vary based on your dataset. 
+Here is an example using VCFtools. The specific values (especially for min/max-meanDP) will vary based on your dataset: 
 
 .. code:: console
     vcftools --gzvcf my_vcf.vcf.gz \
@@ -29,10 +30,9 @@ Here is an example using VCFtools. The specific values (especially for min/max-m
     --minQ 30 \
     --min-meanDP 10 \
     --max-meanDP 100 \
-    --hwe 0.001 \
     --recode --stdout | gzip -c > my_filtered_vcf.vcf.gz
 
-You might also want to filter out sites with HWE violations, unusually high osberved heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations.
+You might also want to filter out sites with strong HWE violations (try --hwe 0.001 with VCFtools), unusually high osberved heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations. These last two considerations are particularly important if your study organism has high levels of paralogy (e.g. re-diploidized after whole genome duplication as in many plant and fish species).
 
 
 2. Install Anaconda
