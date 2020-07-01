@@ -33,7 +33,7 @@ Here is an example using VCFtools. The specific values (especially for min/max-m
     --max-meanDP 100 \
     --recode --stdout | gzip -c > my_filtered_vcf.vcf.gz
 
-You might also want to filter out sites with strong HWE violations (try --hwe 0.001 with VCFtools), unusually high osberved heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations. These last two considerations are particularly important if your study organism has high levels of paralogy (e.g. re-diploidized after whole genome duplication as in many plant and fish species).
+You might also want to filter out sites with strong HWE violations (try --hwe 0.001 with VCFtools), unusually high observed heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations. These last two considerations are particularly important if your study organism has high levels of paralogy (e.g. re-diploidized after whole genome duplication as in many plant and fish species).
 
 
 2. Install Anaconda
