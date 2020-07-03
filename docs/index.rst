@@ -20,6 +20,10 @@ Why should I use this?
 =======================
 To our knowledge, all major software methods for computing pi and dxy from VCFs produce biased estimates in the presence of missing data. This is because these methods make the (often implicit) simplifying assumption that if a site (or genotype) is missing, it counts as a "0" (an invariant site), BUT also contributes to the denominator (the total number of sites and/or genotypes). This can result in a substantial deflation in estimates of pi and dxy, a bias that scales with the amount of missing data. 
 
+How should I cite pixy?
+=======================
+If you use pixy, please cite our preprint here: https://www.biorxiv.org/content/10.1101/2020.06.27.175091v1 Note that pixy is currently in active development and has not undergone peer review.
+
 .. toctree::
    :caption: Utility documentation
    :maxdepth: 2
