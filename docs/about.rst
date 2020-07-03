@@ -18,7 +18,8 @@ case of two populations (denoted 'x' and 'y'):
 
 .. note::
     pixy is currently in active development and is not ready for general use. 
-    The software will be fully described in a forthcoming publication.
+    Our preprint has not yet undergone full peer-review but is available and citable here:
+    https://www.biorxiv.org/content/10.1101/2020.06.27.175091v1
 
 Common pitfalls in calculating π and dxy
 #####################
