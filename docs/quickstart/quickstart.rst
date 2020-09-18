@@ -59,7 +59,7 @@ If your VCF contains both variant and invariant sites (as it should at this poin
     tabix test_invariant.vcf.gz
     tabix test_variant.vcf.gz
 
-    # combine the two VCFs using vcftools concat
+    # combine the two VCFs using bcftools concat
     bcftools concat \
     --allow-overlaps \
     test_variant.vcf.gz test_invariant.vcf.gz \
