@@ -53,7 +53,7 @@ If your VCF contains both variant and invariant sites (as it should at this poin
     vcftools --gzvcf test.vcf.gz \
     --mac 1 \
     [add other filters for variant sites here] \ 
-    --recode --stdout | bgzip -c >  test_variant.vcf.gz
+    --recode --stdout | bgzip -c > test_variant.vcf.gz
 
     # index both vcfs using tabix
     tabix test_invariant.vcf.gz
