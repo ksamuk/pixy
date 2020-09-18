@@ -60,7 +60,10 @@ If your VCF contains both variant and invariant sites (as it should at this poin
     tabix test_variant.vcf.gz
 
     # combine the two VCFs using vcftools concat
-    bcftools concat --allow-overlaps test_variant.vcf.gz test_invariant.vcf.gz -O z -o test_filtered.vcf.gz
+    bcftools concat \
+    --allow-overlaps \
+    test_variant.vcf.gz test_invariant.vcf.gz \
+    -O z -o test_filtered.vcf.gz
 
 
 2. Install Anaconda
