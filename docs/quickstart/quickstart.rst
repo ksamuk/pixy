@@ -34,9 +34,9 @@ Here is an example using VCFtools. The specific values (especially for min/max-m
  
 You might also want to filter out sites with strong HWE violations (try --hwe 0.001 with VCFtools), unusually high observed heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations. These last two considerations are particularly important if your study organism has high levels of paralogy (e.g. re-diploidized after whole genome duplication as in many plant and fish species). Again, be mindful that your invariant sites will also be affected by these filters.
  
-Preserving invariant sites during filtering
+Preserving invariant sites during filtration
 ------------------------
-If your VCF contains both variant and invariant sites (as it should at this point), applying population genetic based filters (e.g. MAF or HWE) will result in the loss of your invariant sites. To avoid this, filter the invariant and variant sites separately, and concatenate the two resulting files. Below is an example of one way to achieve this:
+If your VCF contains both variant and invariant sites (as it should at this point), applying population genetic based filters (e.g. MAF or HWE) will result in the loss of your invariant sites. To avoid this, filter the invariant and variant sites separately and concatenate the two resulting files. Below is an example of one way to achieve this:
  
  .. code:: console
 
