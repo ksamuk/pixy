@@ -5,7 +5,7 @@
 
 `pixy` is a command-line tool for painlessly estimating average nucleotide diversity within (π) and between (d<sub>xy</sub>) populations from a VCF. In particular, pixy facilitates the use of VCFs containing invariant (monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub> in the face of missing data (i.e. always).
 
-The manuscript describing pixy is now published in Molecular Ecology Resources here: https://doi.org/10.1111/1755-0998.13326
+The manuscript describing pixy is now published in Molecular Ecology Resources: https://doi.org/10.1111/1755-0998.13326
 
 ## Authors
 Kieran Samuk and Katharine Korunes <p>
