@@ -22,7 +22,14 @@ To our knowledge, all major software methods for computing pi and dxy from VCFs 
 
 How should I cite pixy?
 =======================
-If you use pixy, please cite our preprint here: https://www.biorxiv.org/content/10.1101/2020.06.27.175091v1 Note that pixy is currently in active development and has not undergone peer review.
+If you use pixy in your research, please cite the manuscript below, as well the Zenodo DOI of specific version of pixy used for your project..
+
+**Manuscript:**
+Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. Accepted Author Manuscript. https://doi.org/10.1111/1755-0998.13326
+
+**Zenodo DOI for various versions of pixy:**
+Go to https://zenodo.org/record/4432294 and find the DOI that matches the version used (the current version is shown first). 
+
 
 .. toctree::
    :caption: Utility documentation
