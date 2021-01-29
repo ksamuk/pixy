@@ -17,7 +17,7 @@ case of two populations (denoted 'x' and 'y'):
   comparison between populations x and y.
 
 .. note::
-    pixy is currently in active development. If you use pixy, please cite the Zenodo DOI that matches the version used (the current version shown first here: https://zenodo.org/record/4432294) as well as our paper: Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. Accepted Author Manuscript. https://doi.org/10.1111/1755-0998.13326
+    If you use pixy, please cite the Zenodo DOI that matches the version used (the current version shown first here: https://zenodo.org/record/4432294) as well as our paper: Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. Accepted Author Manuscript. https://doi.org/10.1111/1755-0998.13326
 
 
 pixy avoids common pitfalls in computing pi and dxy
@@ -31,7 +31,7 @@ This results in a deflated estimate of π. In Case 2, missing data are simply om
 (the final denominator) and the component denominators for each site (the n choose 2 terms). This results in an unbiased estimate of π. 
 The adjusted π method (Case 2) is implemented for VCFs in pixy. Invariant sites are represented as sites with no ALT allele, and greyed-out sites are those that failed to pass a genotype filter requiring a minimum number of reads covering the site (Depth>=10 in this case).
  
-=======================
+
 .. image:: pixy_Figure1.png
    :width: 400
    :align: center
