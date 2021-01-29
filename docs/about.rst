@@ -17,27 +17,33 @@ case of two populations (denoted 'x' and 'y'):
   comparison between populations x and y.
 
 .. note::
-    pixy is currently in active development and is not ready for general use. 
-    Our preprint has not yet undergone full peer-review but is available and citable here:
-    https://www.biorxiv.org/content/10.1101/2020.06.27.175091v1
+    pixy is currently in active development. If you use pixy, please cite the Zenodo DOI that matches the version used (the current version shown first here: https://zenodo.org/record/4432294) as well as our paper: Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. Accepted Author Manuscript. https://doi.org/10.1111/1755-0998.13326
 
-Common pitfalls in calculating π and dxy
+
+pixy avoids common pitfalls in computing pi and dxy
 #####################
 
 Both π and dxy measure the average number of differences between sequences per nucleotide not per SNP. As such, one must include 
-monomorphic/invariant sites when tallying differences between sequences. Prior to the genomic era, such sites were almost always explicitly 
-included in datasets because sequence data was in FASTA format (e.g. Sanger reads). However, most modern genomics tools encode variants as 
+monomorphic/invariant sites when tallying differences between sequences. Many modern genomics tools encode variants as 
 VCFs which by design often omit invariant sites. With variants-only VCFs, there is often no way to distinguish missing sites from invariant 
-sites. Further, when one does include invariant sites in a VCF, it generally results in very large files that are difficult to manipulate 
-with standard tools.
+sites. The schematic below illustrates this problem and how pixy avoids it. In Case 1, all missing data is assumed to be present but invariant. 
+This results in a deflated estimate of π. In Case 2, missing data are simply omitted from the calculation, both in terms of the number of sites 
+(the final denominator) and the component denominators for each site (the n choose 2 terms). This results in an unbiased estimate of π. 
+The adjusted π method (Case 2) is implemented for VCFs in pixy. Invariant sites are represented as sites with no ALT allele, and greyed-out sites are those that failed to pass a genotype filter requiring a minimum number of reads covering the site (Depth>=10 in this case).
+ 
+=======================
+.. image:: pixy_Figure1.png
+   :width: 400
+   :align: center
+
+.. centered::
+   *Fig 1 from Korunes & Samuk 2021.* 
+
 
 Better π and dxy calculation with pixy
 #####################
 
-pixy provides the following solutions to problems inherent in computing π and dxy from a VCF:
-
-1. Fast and efficient handing of invariant sites VCFs via conversion to on-disk chunked databases (Zarr format).
-2. Standardized individual-level filtration of variant and invariant genotypes.
-3. Computation of π and dxy for arbitrary numbers of populations
-4. Computes all statistics in arbitrarily sized windows, and output contains all raw information for all computations (e.g. numerators and denominators).
-5. The majority of this is made possible by extensive use of the existing data structures and functions found in the brilliant python library scikit-allel
+* Fast and efficient handing of invariant sites VCFs
+* Computation of π and dxy for arbitrary numbers of populations
+* Computes all statistics in arbitrarily sized windows, and output contains all raw information for all computations (e.g. numerators and denominators).
+* The majority of this is made possible by extensive use of the existing data structures and functions found in the brilliant python library scikit-allel
