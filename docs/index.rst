@@ -14,11 +14,13 @@ Welcome to pixy's documentation!
 
 What is pixy?
 ===============
-pixy is a command line tool for calculating the population genetic summary statistics **pi** (average per site heterozygosity) and **dxy** (average number of nucleotide differences between populations per site) from a VCF file. Many major software methods for computing pi and dxy from VCFs produce biased estimates in the presence of missing data. This is because these methods make the (often implicit) simplifying assumption that if a site (or genotype) is missing, it counts as a "0" (an invariant site), BUT also contributes to the denominator (the total number of sites and/or genotypes). This can result in a substantial deflation in estimates of pi and dxy, a bias that scales with the amount of missing data. pixy is specifically designed to work with VCFs containing invariant sites and provide unbiased estimates in the presence of missing data. See pixy's paper (https://doi.org/10.1111/1755-0998.13326) for more details.
+pixy is a command line tool for calculating the population genetic summary statistics **pi** (average per site heterozygosity) and **dxy** (average number of nucleotide differences between populations per site) from a VCF file. 
+
+Many tools for computing pi and dxy from VCFs produce biased estimates in the presence of missing data. This is because these methods often make the simplifying assumption that if a site (or genotype) is missing, it counts as "0" (invariant), BUT also contributes to the denominator (the total number of sites and/or genotypes). This can result in a substantial deflation in estimates of pi and dxy, a bias that scales with the amount of missing data. pixy is specifically designed to work with VCFs containing invariant sites and provide unbiased estimates in the presence of missing data. See pixy's paper (https://doi.org/10.1111/1755-0998.13326) for more details.
 
 How should I cite pixy?
 =======================
-If you use pixy in your research, please cite the manuscript below, as well the Zenodo DOI of specific version of pixy used for your project..
+If you use pixy in your research, please cite the manuscript below, as well the Zenodo DOI of specific version of pixy used for your project.
 
 **Manuscript:**
 Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. Accepted Author Manuscript. https://doi.org/10.1111/1755-0998.13326
