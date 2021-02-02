@@ -22,7 +22,7 @@ Go to https://zenodo.org/record/4432294 and find the DOI that matches the versio
 
 ## Documentation
 
-https://pixy.readthedocs.io/en/latest/
+https://pixy.readthedocs.io/
 
 ## Installation
 
