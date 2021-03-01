@@ -86,6 +86,7 @@ Install pixy via the conda-forge channel.
 .. code:: console
 
     conda install --yes -c conda-forge pixy
+    conda install --yes -c bioconda htslib
 
 To see a list of arguments and test the pixy installation, type:
 
@@ -121,26 +122,10 @@ Run pixy! An example is shown below.
 
     pixy --stats pi fst dxy \
     --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
-    --zarr_path data/zarr/ag1000 \
-    --chromosomes 'X' \
-    --window_size 10000 \
     --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
-    --variant_filter_expression 'DP>=10,GQ>=20,RGQ>=20' \
-    --invariant_filter_expression 'DP>=10,RGQ>=20' \
-    --outfile_prefix output/pixy_out
-
-If your VCF is pre-filtered, you can also bypass genotype filtration:
-
-.. code:: console
-
-    pixy --stats pi fst dxy \
-    --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
-    --zarr_path data/zarr/ag1000 \
-    --chromosomes 'X' \
     --window_size 10000 \
-    --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
-    --bypass_filtration yes \
-    --outfile_prefix output/pixy_out
+    --n_cores 4 \
+    --chromosomes 'X' 
 
 .. note::
     pixy ignores non-biallelic sites and INDELs, even if they are left in the VCF after pre-filtering. 
