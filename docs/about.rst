@@ -38,13 +38,3 @@ Notable features of pixy
 * Computation of π and dxy for arbitrary numbers of populations
 * Computes all statistics in arbitrarily sized windows, and output contains all raw information for all computations (e.g. numerators and denominators).
 * The majority of this is made possible by extensive use of the existing data structures and functions found in the brilliant python library scikit-allel
-
-Citing pixy
-#####################
-If you use pixy in your research, please cite the manuscript below, as well the Zenodo DOI of specific version of pixy used for your project.
-
-**Manuscript:**
-Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. Accepted Author Manuscript. https://doi.org/10.1111/1755-0998.13326
-
-**Zenodo DOI for various versions of pixy:**
-Go to https://zenodo.org/record/4432294 and find the DOI that matches the version used (the current version is shown first).
