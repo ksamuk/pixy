@@ -4,9 +4,10 @@ Installation
 
 Via Anaconda
 ============
-pixy is currently available for installation on Linux/OSX systems via conda-forge. To install pixy using conda::
+pixy is currently available for installation on Linux/OSX systems via conda-forge. You can install it using following two conda install commands:
 
     conda install -c conda-forge pixy
+    conda install -c bioconda htslib
 
 You can test the installation by running::
 
