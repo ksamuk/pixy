@@ -38,29 +38,30 @@ The performance increase and stability of numerical results can be seen in the f
     <div align="center" style="margin: 0 auto;width:600px;text-align: left;"><i><b> Figure 2</b> Comparison of numerical results between pixy 0.95.02 and 1.0.0.beta1. Data points are 10kb windows of pi, dxy, and fst for a 24Mb chromosome from the Ag1000 dataset.  All results for core summary statistics are identical. </i></div></br>
 
 Detailed changelog
-======
+===================
 
 Major changes
 ------------
 
 - pixy calculations can now be fully parallelized by specifying ``--n_cores [number of cores]`` at the command line. 
-    - Implemented using the multiprocessing module, which is now a hard dependency.
-    - Supported under both Linux and MacOS (using fork and spawn modes respectively).
+ - Implemented using the multiprocessing module, which is now a hard dependency.
+ - Supported under both Linux and MacOS (using fork and spawn modes respectively).
     
 - We've vectorized many of the core computations performed by pixy using numpy, resulting in significant performance gains.
 
+
 - The memory usage of pixy is now vastly lower, more intelligently handled, and configurable by the user (via the --chunk_size argument). 
-    - Large windows (e.g. whole chromosomes) are dynamically split into chunks and reassembled after summarization. 
-    - Small windows are assigned to larger chunks to prevent I/O bottlenecks associated with frequently re-reading the source VCF.
+ - Large windows (e.g. whole chromosomes) are dynamically split into chunks and reassembled after summarization. 
+ - Small windows are assigned to larger chunks to prevent I/O bottlenecks associated with frequently re-reading the source VCF.
 
 New features
 -------------
 
 - Support for BED files specifying windows over which to calculate pi/dxy/fst. These windows can be heterogenous in size.
-    - This enables precisely matching pixy output with the output of e.g. another program
+ - This enables precisely matching pixy output with the output of e.g. another program
 
 - Support for a tab-separate 'sites file' specifying sites (CHROM, POS) where summary statistics should be exclusively calculated
-    - This also enables e.g. estimates of pi using only 4-fold degenerate sites, or for only a particular class of genes, etc.
+ - This also enables e.g. estimates of pi using only 4-fold degenerate sites, or for only a particular class of genes, etc.
     
 - Basic support for site-level statistics (1bp scale, but note that these are much slower to calculate compared to windowed statistcs)
 
