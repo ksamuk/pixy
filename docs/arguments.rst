@@ -5,18 +5,20 @@ Arguments
 Below is a list of required and optional arguments that pixy accepts. 
 
 Required:
+--------------
 
---stats        Which statistics to calculate from the VCF 
-               (pi, dxy, and/or fst, separated by spaces)
+--stats         Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)
 --vcf           Path to the input VCF (bgzipped and tabix indexed).
 --populations   Path to the populations file. See quick start for format.
 
 In addition, one of either:
+--------------
 
 --window_size           Window size in base pairs over which to calculate pi/dxy. Defaults to whole chromosomes/contigs.
 --bed_file           Path to a headerless .BED file containing regions (chrom, chromStart, chromEnd) over which to calculate summary statistics
 
 Optional arguments:
+--------------
 
 --n_cores           Number of CPUs to utilize for parallel processing (default=1).
 --output_folder           Folder where output will be written, e.g. path/to/output_folder, defaults to current working directory.

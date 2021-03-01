@@ -8,7 +8,10 @@ Step by Step Installation and Usage
  
 1. Generate a VCF with Invariant Sites and perform filtering
 ======
-If you did not already generate an 'allsites' VCF (VCF with invariant sites), see the guide here: https://pixy.readthedocs.io/en/latest/invar/allsitesQuickstart.html 
+
+
+
+If you did not already generate an 'allsites' VCF (VCF with invariant sites), `see the guide here <https://pixy.readthedocs.io/en/latest/invar/generating_invar.html>`_.
 
 .. note::
     When working with whole genome data, we suggest you generate *separate invariant sites VCFs for each chromosome*. This is to prevent

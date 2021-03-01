@@ -1,8 +1,12 @@
 ************
-Quickstart Guide for Generating pixy Input
+Generating invariant sites VCFs
 ************
 
-pixy facilitates the correct computation of π and dxy by allowing users to input data in a standard file format: Variant Call Format (VCF). AllSites VCFs contain invariant (AKA monomorphic) sites in addition to variant sites. Several commonly used, well-documented programs can generate AllSites VCFs. Here, we provide a quickstart guide for generating AllSites VCFs using two of the most widely-used tools for variant discovery and manipulation: BCFtools and GATK. Either of these tools can be run given only a set of aligned data (BAM files) and the reference sequence used to align them. **BCFtools and GATK are also well-equipped to filter VCFs, and we recommend taking advantage of this to filter your data prior to analysis with pixy.**
+pixy facilitates the correct computation of π and dxy by allowing users to input data in a standard file format: Variant Call Format (VCF). AllSites VCFs contain invariant (AKA monomorphic) sites in addition to variant sites. Several commonly used, well-documented programs can generate AllSites VCFs. 
+
+Here, we provide a quickstart guide for generating AllSites VCFs using two of the most widely-used tools for variant discovery and manipulation: BCFtools and GATK. Either of these tools can be run given only a set of aligned data (BAM files) and the reference sequence used to align them. 
+
+**BCFtools and GATK are also well-equipped to filter VCFs, and we recommend taking advantage of this to filter your data prior to analysis with pixy.**
 
 .. note::
     **Utilizing genomic intervals for improved runtime:** If generation of an AllSites VCF is time-consuming, we recommend parallelizing your pipeline by breaking analyses down into smaller genomic regions. In our test datasets, we ran individual chromosomes in parallel. Depending on the size of chromosomes in a dataset, it may be beneficial to break down chromosomes into smaller intervals for variant calling. Genomic intervals can be specified using the -L parameter in GATK or the -r parameter in bcftools mpileup.

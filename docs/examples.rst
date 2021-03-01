@@ -26,8 +26,10 @@ Focusing on a specific genomic interval
     --interval_end 400000 \
     --window_size 10000
 
-Using a .BED file to define windows (can be any size, and non-uniform).
+Using a .BED file to define windows
 ----------------
+
+When defined with a BED file, windows can be any size, and non-uniform.
 
 .. code:: console
 
@@ -39,7 +41,7 @@ Using a .BED file to define windows (can be any size, and non-uniform).
 Using a sites file to limit calculations to specific sites 
 ----------------
 
-With a list of 4-fold degenerate sites, this could be used to obtain 4-fold degenerate pi.
+Sites files define individual sites that will be included in the calculations. This can be used to obtain 4-fold degenerate pi, or statistics for particular classes of genomic elements (genes, introns, etc.).
 
 .. code:: console
 
@@ -48,7 +50,7 @@ With a list of 4-fold degenerate sites, this could be used to obtain 4-fold dege
     --populations Ag1000_sampleIDs_popfile.txt \
     --sites_file valid_sites.txt 
 
-Extracting site-level estimates of pi, fst and dxy for a region
+Site-level estimates
 ----------------
 
 Note: site level estimates will be much slower to calculate than windowed estimates.
