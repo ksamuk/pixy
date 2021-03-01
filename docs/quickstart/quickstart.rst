@@ -6,7 +6,7 @@ Step by Step Installation and Usage
     pixy is currently only available for Linux and macOS systems.
     
  
-1. Generate a VCF with Invariant Sites and perform any pre-filtering
+1. Generate a VCF with Invariant Sites and perform filtering
 ======
 If you did not already generate an 'allsites' VCF (VCF with invariant sites), see the guide here: https://pixy.readthedocs.io/en/latest/invar/allsitesQuickstart.html 
 
@@ -14,11 +14,14 @@ If you did not already generate an 'allsites' VCF (VCF with invariant sites), se
     When working with whole genome data, we suggest you generate *separate invariant sites VCFs for each chromosome*. This is to prevent
     memory limitation issues down the line. This is less of an issue for reduced representation sequencing, naturally.
 
-Note that while pixy provides limited genotype-level filtering, VCF filtering can be complex. Thus, we recommend applying one of the several tools dedicated to performing such operations on VCFs, such as BCFtools: http://samtools.github.io/bcftools/bcftools.html
+We recommend using the standard tools dedicated to performing such operations on VCFs: VCFtools and BCFtools (both available on bioconda).
 
 Site-level filtration
 ------------------------
-The goal of site-level filtration is to remove sites that show evidence of sequencing errors, duplication, or other issues with mapping. You will likely want to a least apply site-level filters based on the number of missing individuals, site quality score, and depth (minimum and maxmium). This guide https://speciationgenomics.github.io/filtering_vcfs/ is a good starting place. 
+A full treatment of VCF filtering for population genetics is beyond our scope here, but for a good start see: https://speciationgenomics.github.io/filtering_vcfs/.
+
+At minumum, we reccomend filtering your VCF (a) using the GATK best practices filters (hard or otherwise) and (b) performing further filtering for missingness, site quality score, and mean depth (minimum and maxmium). 
+Depending on your goal, you might also consider filtering out sites with strong HWE violations (try --hwe 0.001 with VCFtools), unusually high observed heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations. These last two considerations are particularly important if your study organism has high levels of paralogy (e.g. re-diploidized after whole genome duplication as in many plant and fish species). Again, be mindful that your invariant sites will also be affected by these filters.
 
 Here is an example using VCFtools. The specific values (especially for min/max-meanDP) will vary based on your dataset: 
 
@@ -28,13 +31,12 @@ Here is an example using VCFtools. The specific values (especially for min/max-m
     --remove-indels \
     --max-missing 0.8 \
     --minQ 30 \
-    --min-meanDP 10 \
-    --max-meanDP 100 \
+    --min-meanDP 20 \
+    --max-meanDP 500 \
     --recode --stdout | gzip -c > my_filtered_vcf.vcf.gz
  
-You might also want to filter out sites with strong HWE violations (try --hwe 0.001 with VCFtools), unusually high observed heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations. These last two considerations are particularly important if your study organism has high levels of paralogy (e.g. re-diploidized after whole genome duplication as in many plant and fish species). Again, be mindful that your invariant sites will also be affected by these filters.
  
-Preserving invariant sites during filtration
+Preserving invariant sites when applying population genetic filters
 ------------------------
 If your VCF contains both variant and invariant sites (as it should at this point), applying population genetic based filters (e.g. MAF or HWE) will result in the loss of your invariant sites. To avoid this, filter the invariant and variant sites separately and concatenate the two resulting files. Below is an example of one way to achieve this:
  
@@ -64,6 +66,7 @@ If your VCF contains both variant and invariant sites (as it should at this poin
     --allow-overlaps \
     test_variant.vcf.gz test_invariant.vcf.gz \
     -O z -o test_filtered.vcf.gz
+ 
 
 
 2. Install Anaconda
@@ -81,7 +84,7 @@ Create and activate a new conda environment for working with pixy:
 
 4. Install pixy
 ======
-Install pixy via the conda-forge channel. 
+Install pixy via the conda-forge channel. Also install the required htslib package from bioconda.
 
 .. code:: console
 
