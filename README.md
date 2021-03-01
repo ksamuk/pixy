@@ -1,4 +1,4 @@
-``pixy``<img src="https://raw.githubusercontent.com/ksamuk/pixy/master/docs/pixy_logo.png" align="right" width="20%">
+``pixy``<img src="https://raw.githubusercontent.com/ksamuk/pixy/master/docs/images/pixy_logo.png" align="right" width="20%">
 ====================
 
 [![DOI](https://zenodo.org/badge/181987337.svg)](https://zenodo.org/badge/latestdoi/181987337) ![version](https://img.shields.io/badge/version-0.95.02-blue) [![MIT License](https://img.shields.io/apm/l/atomic-design-ui.svg?)](https://github.com/tterb/atomic-design-ui/blob/master/LICENSEs) 
