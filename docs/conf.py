@@ -68,6 +68,9 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = None
 
+# Disable smart quotes (converts double dash to en dash, evil)
+smartquotes = False
+
 
 # -- Options for HTML output -------------------------------------------------
 
