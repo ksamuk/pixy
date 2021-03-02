@@ -7,7 +7,7 @@ Below is a list of required and optional arguments that pixy accepts.
 Required:
 --------------
 
-**~-~-stats [pi|fst|dxy]**
+**-\\-stats [pi|fst|dxy]**
     Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)
 
 **-\\\\-vcf [path/to/vcf.vcf.gz]**
