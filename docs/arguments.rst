@@ -7,13 +7,13 @@ Below is a list of required and optional arguments that pixy accepts.
 Required:
 --------------
 
-**\-\-stats [pi|fst|dxy]**
+**`--`stats [pi|fst|dxy]**
     Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)
 
-**\-\-vcf [path/to/vcf.vcf.gz]**
+**`--`vcf [path/to/vcf.vcf.gz]**
     Path to the input VCF (bgzipped and tabix indexed).
 
-**\-\-populations [path/to/populations_file.txt]**
+**`--`populations [path/to/populations_file.txt]**
     Path to the populations file. See quick start for format.
 
 
