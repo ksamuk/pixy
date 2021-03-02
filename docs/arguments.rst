@@ -34,7 +34,7 @@ Optional arguments:
     Folder where output will be written, e.g. path/to/output_folder, defaults to current working directory.
 **-\\-output_prefix [prefix]**
     Optional prefix for output file(s), e.g. \'output\' will result in writing to [output folder]/output_pi.txt, defaults to \'pixy\'.
-**-\\-chromosomes [quoted list of strings]**
+**-\\-chromosomes ['list,of,chromosomes']**
     A single-quoted, comma separated list of chromosome(s) (e.g. 'X,1,2'). Defaults to all chromosomes in the VCF.
 **-\\-interval_start [integer]**
     The start of a specific interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome. Defaults to 1.
@@ -46,13 +46,13 @@ Optional arguments:
     Approximate number of sites to read from VCF at any given time.  Defaults to 100000. Smaller numbers can reduce memory use.
 **-\\-bypass_invariant_check [no|yes]**
     Bypass the check for invariant sites. Use with caution!
-**-\\-version [flag]**
+**-\\-version**
     Print the pixy version number.
-**-\\-citation [flag]**
+**-\\-citation**
     Print the citation for pixy.
-**-\\-help [flag]**
+**-\\-help**
     Print the help message. 
-**-\\-silent [flag]**
+**-\\-silent**
     Suppress all console output (flag, no value required).
 
 An example:
