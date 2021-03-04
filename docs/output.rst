@@ -81,16 +81,17 @@ Plotting results
 
     library(ggplot2)
 
-    # Provide path to input. Can be pi or Dxy:
+    # Provide path to input. Can be pi or Dxy. 
+    # NOTE: this is the only line you should have to edit to run this code:
     inp<-read.table("pixy_dxy.txt",sep="\t",header=T)
 
-    # Set the order for the chromosomes: first numerical order, then any non-numerical chromosomes
+    # Find the chromosome names and order them: first numerical order, then any non-numerical chromosomes
     #   e.g., chr1, chr2, chr22, chrX
     chroms <- unique(inp$chromosome)
     chrOrder <- sort(chroms)
     inp$chrOrder <- factor(inp$chromosome,levels=chrOrder)
 
-    # Plot pi for each population
+    # Plot pi for each population found in the input file
     # Saves a copy of each plot in the working directory
     if("avg_pi" %in% colnames(inp)){
         pops <- unique(inp$pop)
@@ -111,7 +112,7 @@ Plotting results
         print("Pi not found in this file")
     }
 
-    # Plot Dxy for each combination of populations
+    # Plot Dxy for each combination of populations found in the input file
     # Saves a copy of each plot in the working directory
     if("avg_dxy" %in% colnames(inp)){
         # Get each unique combination of populations
