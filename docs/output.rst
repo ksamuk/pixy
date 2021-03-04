@@ -74,7 +74,7 @@ Working with pixy output data
 Plotting results
 ------------------------
 
-.. code:: console
+.. code:: r
 
     # Example R Script for simple output plots 
     # Here, we use pi and dxy output files directly from pixy.
