@@ -73,16 +73,19 @@ Working with pixy output data
 
 Plotting results
 ------------------------
+
 .. code:: console
-    # In this R script, we demonstrate how to generate simple plots 
-    # directly from pixy's pi and dxy output files.
+
+    # Example R Script for simple output plots 
+    # Here, we use pi and dxy output files directly from pixy.
 
     library(ggplot2)
 
     # Provide path to input. Can be pi or Dxy:
     inp<-read.table("pixy_dxy.txt",sep="\t",header=T)
 
-    # We'll plot the chromosomes in order: first numerically, then with any non-numerical chromosomes at the end: e.g., chr1, chr2, chr22, chrX
+    # Set the order for the chromosomes: first numerical order, then any non-numerical chromosomes
+    #   e.g., chr1, chr2, chr22, chrX
     chroms <- unique(inp$chromosome)
     chrOrder <- sort(chroms)
     inp$chrOrder <- factor(inp$chromosome,levels=chrOrder)
