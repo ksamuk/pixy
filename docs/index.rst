@@ -36,6 +36,7 @@ Many tools for computing pi and dxy from VCFs produce biased estimates in the pr
     guide/pixy_guide
     examples
     output
+    plotting
 
 How should I cite pixy?
 ------------

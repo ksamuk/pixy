@@ -7,3 +7,4 @@ data/vcf
 *.ipynb_*
 .ipynb_checkpoints/*
 output/*
+docs/_build
