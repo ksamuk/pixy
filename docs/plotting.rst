@@ -68,11 +68,52 @@ This results in a data frame (pixy_df) that looks like this:
     BFS  KES          X            1        10000           no_snps 1.310000e+02
     BFS  KES          X        10001        20000           avg_dxy 2.453347e-03
     BFS  KES          X        10001        20000        avg_wc_fst 1.479964e-01
+    
+Single chromosome view
+================
+
+We are often interested in local patterns of diversity along individual chromosomes. The below code plots the three main summary statistics calculated by pixy (pi, Dxy, FST) along a single chromosome. A custom labelling function is also provided to handle symbols/subscripts in the summary statistic's labels.
+
+.. code:: r
+
+    # custom labeller for special characters in pi/dxy/fst
+    pixy_labeller <- as_labeller(c(avg_pi = "pi", 
+                                 avg_dxy = "D[XY]", 
+                                 avg_wc_fst = "F[ST]"),
+                                 default = label_parsed)
+    
+    # plotting summary statistics along a single chromosome
+    pixy_df %>%
+      filter(chromosome == 1) %>%
+      filter(statistic %in% c("avg_pi", "avg_dxy", "avg_wc_fst")) %>%
+      mutate(chr_position = ((window_pos_1 + window_pos_2)/2)/1000000) %>%
+      ggplot(aes(x = chr_position, y = value, color = statistic))+
+      geom_line(size = 0.25)+
+      facet_grid(statistic ~ ., 
+                 scales = "free_y", switch = "x", space = "free_x",
+                 labeller = labeller(statistic = pixy_labeller, 
+                                     value = label_value))+
+      xlab("Position on Chromosome (Mb)")+
+      ylab("Statistic Value")+
+      theme_bw()+
+      theme(panel.spacing = unit(0.1, "cm"),
+            strip.background = element_blank(),
+            strip.placement = "outside",
+            legend.position = "none")+
+      scale_x_continuous(expand = c(0, 0))+ 
+      scale_y_continuous(expand = c(0, 0))+
+      scale_color_brewer(palette = "Set1")
+	  
+This results in the following plot :
+
+.. image:: images/chromosome_plot.png
+   :width: 600
+   :align: center
 	
 A genome-wide plot of summary statistics
 ================
 
-The function below, which can be modified for any dataset, plots the three main summary statistics calculated by pixy (pi, Dxy, FST), across 23 chromosomes. Some common features of these types of plots (alterating chromosome colors, enforced chromosome order, axis limits, and custom labelling) are included. 
+We can also visualize patterns of diversity at the genome wide scale. While finer scale patterns are lost, this can be useful for identifying chrosomal scale variation (e.g. depressed diversity on sex chromosomes), or visualizing the distribution of loci of interest (e.g. FST outliers, or GWAS hits).  Some common features of these types of plots (alterating chromosome colors, enforced chromosome order, axis limits) are included. 
 
 .. code:: r
 
@@ -114,43 +155,4 @@ This results in the following plot (using simulated data):
    :width: 600
    :align: center
 
-A zoomed in view of a single chromosome
-================
 
-We are often interested in more specific, local patterns of diversity than are visible in a genome-wide view. The below code plots the three same summary statistics, but limited to a single chromosome. 
-
-.. code:: r
-
-    # custom labeller for special characters in pi/dxy/fst
-    pixy_labeller <- as_labeller(c(avg_pi = "pi", 
-                                 avg_dxy = "D[XY]", 
-                                 avg_wc_fst = "F[ST]"),
-                                 default = label_parsed)
-    
-    # plotting summary statistics along a single chromosome
-    pixy_df %>%
-      filter(chromosome == 1) %>%
-      filter(statistic %in% c("avg_pi", "avg_dxy", "avg_wc_fst")) %>%
-      mutate(chr_position = ((window_pos_1 + window_pos_2)/2)/1000000) %>%
-      ggplot(aes(x = chr_position, y = value, color = statistic))+
-      geom_line(size = 0.25)+
-      facet_grid(statistic ~ ., 
-                 scales = "free_y", switch = "x", space = "free_x",
-                 labeller = labeller(statistic = pixy_labeller, 
-                                     value = label_value))+
-      xlab("Position on Chromosome (Mb)")+
-      ylab("Statistic Value")+
-      theme_bw()+
-      theme(panel.spacing = unit(0.1, "cm"),
-            strip.background = element_blank(),
-            strip.placement = "outside",
-            legend.position = "none")+
-      scale_x_continuous(expand = c(0, 0))+ 
-      scale_y_continuous(expand = c(0, 0))+
-      scale_color_brewer(palette = "Set1")
-	  
-This results in the following plot :
-
-.. image:: images/chromosome_plot.png
-   :width: 600
-   :align: center
