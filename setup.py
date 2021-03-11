@@ -1,14 +1,18 @@
 from setuptools import setup
 
 requirements = [
-    'scikit-allel',
+    'scikit-allel'
+    'pandas',
     'numpy',
-    'pandas'
+    'python',
+    'multiprocess',
+    'scipy',
+    'numcodecs'
 ]
 
 setup(
     name='pixy',
-    version='0.95.0',
+    version='1.0.0.beta1',
     packages=['pixy'],
     entry_points={
         'console_scripts': [
@@ -23,6 +27,6 @@ setup(
     install_requires=requirements,
     keywords='pixy',
     classifiers=[
-        'Programming Language :: Python :: 3.6'
+        'Programming Language :: Python :: 3.7.1'
     ]
 )
