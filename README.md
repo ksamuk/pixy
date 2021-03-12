@@ -18,7 +18,7 @@ If you use `pixy` in your research, please cite the manuscript below, as well th
 Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. Accepted Author Manuscript. https://doi.org/10.1111/1755-0998.13326
 
 **Zenodo DOI for various versions of pixy**<br>
-Go to https://zenodo.org/record/4432294 and find the DOI that matches the version used (the current version is shown first).
+Go to https://zenodo.org/record/4596999 and find the DOI that matches the version used (the current version is shown first).
 
 ## Documentation
 
