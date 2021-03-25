@@ -188,6 +188,12 @@ def read_and_filter_genotypes(args, chromosome, window_pos_1, window_pos_2, site
         # if a list of target sites was specified, mask out all non-target sites
         if sites_list_chunk is not None:
             gt_array = mask_non_target_sites(gt_array, pos_array, sites_list_chunk)
+        
+        # extra 'none' check to catch cases where every site was removed by the mask
+        if len(gt_array) == 0:
+            callset_is_none = True
+            gt_array = None
+            pos_array = None
 
     return callset_is_none, gt_array, pos_array
 
@@ -199,7 +205,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
     callset_is_none, gt_array, pos_array = read_and_filter_genotypes(args, chromosome, chunk_pos_1, chunk_pos_2, sites_list_chunk)
 
     # if computing FST, pre-compute a filtered array of variants (only)
-    if (not callset_is_none) and (args.populations is not None) and ('fst' in args.stats):
+    if (not callset_is_none) and (args.populations is not None) and ('fst' in args.stats) and (len(gt_array) != 0):
         
         # compute allel freqs 
         allele_counts = gt_array.count_alleles()
@@ -211,6 +217,8 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
         # filter gt and position arrays for biallelic variable sites
         gt_array_fst = gt_array[variants_array]
         pos_array_fst = pos_array[variants_array]
+    else:
+        gt_array_fst = None
 
     # loop over the windows within the chunk and compute summary stats
     for window_index in range(0, len(window_list_chunk)):
@@ -227,6 +235,20 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
             # pull out the genotypes for the window
             loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
             gt_region = gt_array[loc_region]
+            
+            # double check that the region is not empty after subsetting
+            try:
+                loc_region
+            except:
+                loc_region = None
+                
+            try:
+                gt_region
+            except:
+                gt_region = None
+
+            if (len(gt_region) == 0 or (loc_region is None) or (gt_region is None)):
+                window_is_empty = True
 
         # PI:
         # AVERAGE NUCLEOTIDE DIFFERENCES WITHIN POPULATIONS
@@ -242,12 +264,17 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                     
                     # subset the window for the individuals in each population 
                     gt_pop = gt_region.take(popindices[pop], axis=1)
-
-                    # number of sites genotyped in the population
-                    # not directly used in the calculation
-                    no_sites = np.count_nonzero(np.sum(gt_pop.count_alleles(max_allele = 1), 1))
                     
-                    avg_pi, total_diffs, total_comps, total_missing = pixy.calc.calc_pi(gt_pop)
+                    # if the population specific window for this region is empty, report it as such
+                    if (len(gt_pop) == 0):
+                        avg_pi, total_diffs, total_comps, total_missing, no_sites = "NA", "NA", "NA", "NA", 0
+                    
+                    # otherise compute pi as normal
+                    else:
+                        # number of sites genotyped in the population
+                        # not directly used in the calculation
+                        no_sites = np.count_nonzero(np.sum(gt_pop.count_alleles(max_allele = 1), 1))
+                        avg_pi, total_diffs, total_comps, total_missing = pixy.calc.calc_pi(gt_pop)
 
                 # create a string of the pi results to write to file
                 #klk added NA so that pi/dxy/fst have the same # of columns
@@ -285,22 +312,27 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                     pop1_gt_region = popGTs[pop1]
                     pop2_gt_region = popGTs[pop2]
                     
-                    # for number of sites (not used in calculation), report the 
-                    # number of sites that have at least one genotype in BOTH populations
-                    pop1_sites = np.sum(pop1_gt_region.count_alleles(max_allele = 1), 1) > 0
-                    pop2_sites = np.sum(pop2_gt_region.count_alleles(max_allele = 1), 1) > 0
-                    no_sites = np.sum(np.logical_and(pop1_sites, pop2_sites))
-                    
-                    avg_dxy, total_diffs, total_comps, total_missing = pixy.calc.calc_dxy(pop1_gt_region, pop2_gt_region)
+                    # if either of the two population specific windows for this region are empty, report it missing
+                    if (len(pop1_gt_region) == 0 or len(pop2_gt_region) == 0):
+                        avg_dxy, total_diffs, total_comps, total_missing, no_sites = "NA", "NA", "NA", "NA", 0
+                        
+                    # otherwise compute dxy as normal
+                    else:
+                        # for number of sites (not used in calculation), report the 
+                        # number of sites that have at least one genotype in BOTH populations
+                        pop1_sites = np.sum(pop1_gt_region.count_alleles(max_allele = 1), 1) > 0
+                        pop2_sites = np.sum(pop2_gt_region.count_alleles(max_allele = 1), 1) > 0
+                        no_sites = np.sum(np.logical_and(pop1_sites, pop2_sites))
+                        avg_dxy, total_diffs, total_comps, total_missing = pixy.calc.calc_dxy(pop1_gt_region, pop2_gt_region)
 
                     # create a string of for the dxy results
-                    pixy_result = "dxy" + "\t" + str(pop1) + "\t" + str(pop2) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_dxy) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing)
+                pixy_result = "dxy" + "\t" + str(pop1) + "\t" + str(pop2) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_dxy) + "\t" + str(no_sites) + "\t" + str(total_diffs) + "\t" + str(total_comps) + "\t" + str(total_missing)
 
-                    # append the result to the multiline output string
-                    if 'pixy_output' in locals():
-                        pixy_output = pixy_output + "\n" + pixy_result
-                    else:
-                        pixy_output = pixy_result
+                # append the result to the multiline output string
+                if 'pixy_output' in locals():
+                    pixy_output = pixy_output + "\n" + pixy_result
+                else:
+                    pixy_output = pixy_result
 
 
         # FST:
@@ -370,10 +402,12 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                 else:
                     pixy_output = pixy_result
 
-        # OUTPUT
-        # if in mc mode, put the results in the writing queue
-        # otherwise just write to file
-
+    # OUTPUT
+    # if in mc mode, put the results in the writing queue
+    # otherwise just write to file
+    
+    # ensure the output variable exists in some form
+            
     if(args.n_cores > 1):
         q.put(pixy_output)
 

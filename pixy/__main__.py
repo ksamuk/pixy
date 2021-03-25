@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.0.2.beta1'
+    version = '1.0.3.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -336,7 +336,7 @@ def main():
         outfile = open(dxy_file, 'a')
         outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_dxy" + "\t" + "no_sites" + "\t" + "count_diffs" + "\t" + "count_comparisons" + "\t" + "count_missing" + "\n")
 
-        if aggregate: #put winsizes back together for each population to make final_window_size
+        if aggregate: # put winsizes back together for each population to make final_window_size
            
             for chromosome in chrom_list:
                 outdxy = outgrouped.get_group(("dxy",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
