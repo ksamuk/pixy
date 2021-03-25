@@ -100,7 +100,10 @@ def calc_fst(gt_array_fst, fst_pop_indicies):
     n_sites = len(gt_array_fst)
     
     # compute fst
-    fst = a / (a + b + c)
+    if (a + b + c) > 0:
+        fst = a / (a + b + c)
+    else:
+        fst = "NA"
     
     return(fst, a, b, c, n_sites)
     

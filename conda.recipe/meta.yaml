@@ -1,5 +1,5 @@
 {% set name = "pixy" %}
-{% set version = "0.94.04" %}
+{% set version = "1.0.2.beta1" %}
 
 package:
   name: {{ name|lower }}
@@ -13,26 +13,27 @@ source:
 build:
   number: 0
   script: "{{ PYTHON }} -m pip install . -vv"
-  skip: True  # [win or py<36]
+  skip: True  # [win or py<37]
   entry_points:
     - pixy = pixy.__main__:main
 
 requirements:
   host:
-    - python
-    - setuptools
+    - python=3.7
     - pip
+    - setuptools
+    - numpy
   run:
     - scikit-allel
-    - tqdm
     - pandas
     - numpy
-    - zarr
-    - python
-
+    - python=3.7
+    - multiprocess
+    - scipy
+    - numcodecs
+    
 test:
   commands:
-    - pixy --help
     - pixy --version
 
 about:

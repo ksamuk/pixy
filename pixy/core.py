@@ -351,7 +351,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                 else:
                     # if there are no variable sites in the window, output NA/0 
                     if not aggregate:
-                        fst, window_positions, n_snps = "NA",[[window_pos_1,window_pos_2]],0
+                        fst, window_positions, n_snps = ["NA"],[[window_pos_1,window_pos_2]],[0]
                     else:
                         fst, window_positions, n_snps, a, b, c = "NA",[[window_pos_1,window_pos_2]], 0, "NA", "NA", "NA"
                 # create an output string for the FST results
@@ -363,6 +363,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                         pixy_result = "fst" + "\t" + str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(wind[0]) + "\t" + str(wind[1]) + "\t" + str(fst) + "\t" + str(snps)+ "\tNA\tNA\tNA"
 
                 # append the result to the multiline output string
+                    
                 if 'pixy_output' in locals():
                     pixy_output = pixy_output + "\n" + pixy_result
 
@@ -573,11 +574,13 @@ def check_and_validate_args(args):
             bed_df.columns = ['chrom', 'chromStart', 'chromEnd']
             bed_chrom = list(bed_df['chrom'])
             missing = list(set(bed_chrom)-set(chrom_all))
+            chrom_list = list(set(chrom_all) & set(bed_chrom))
 
         if len(missing) >0:
             check_message = "WARNING"
             print(check_message)
             print('[pixy] WARNING: the following chromosomes in the BED file do not occur in the VCF and will be ignored: ' + str(missing))
+        
             
     if args.sites_file is not None:
         sites_df = pandas.read_csv(args.sites_file, sep='\t', header=None)
@@ -589,6 +592,7 @@ def check_and_validate_args(args):
             sites_df.columns = ['CHROM', 'POS']
             chrom_sites = list(sites_df['CHROM'])
             missing = list(set(chrom_sites)-set(chrom_all))
+            chrom_list = list(set(chrom_all) & set(chrom_sites))
             
         if len(missing) >0:
             check_message = "WARNING"

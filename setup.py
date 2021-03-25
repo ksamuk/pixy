@@ -12,7 +12,7 @@ requirements = [
 
 setup(
     name='pixy',
-    version='1.0.0.beta1',
+    version='1.0.2.beta1',
     packages=['pixy'],
     entry_points={
         'console_scripts': [
