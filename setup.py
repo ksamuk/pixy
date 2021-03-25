@@ -1,7 +1,7 @@
 from setuptools import setup
 
 requirements = [
-    'scikit-allel'
+    'scikit-allel',
     'pandas',
     'numpy',
     'python',
