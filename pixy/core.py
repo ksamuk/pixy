@@ -359,7 +359,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
                 # if the genotype matrix is not empty, compute FST
                 # other wise return NA
-                if(not callset_is_none and gt_array_fst is not None and len(gt_array_fst) > 0) :
+                if(not callset_is_none and gt_array_fst is not None and len(gt_array_fst) > 0 and not window_is_empty) :
                     
                     # compute an ad-hoc window size
                     fst_window_size = (window_pos_2 - window_pos_1)
