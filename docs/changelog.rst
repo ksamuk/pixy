@@ -2,6 +2,10 @@
 Changelog
 ************
 
+Explanations of major changes to pixy are listed below. 
+
+For up to date info on minor versions and bugfixes, see the current release changelog at https://github.com/ksamuk/pixy/releases
+
 pixy 1.0.0
 ==============
 
@@ -87,8 +91,3 @@ Other Bugfixes
 - Total computation time is now properly displayed (issue ref).
 - For FST: regions with no variant sites will now have "NA" in the output file, instead of not being represented.
 
-
-Previous versions
-==============
-
-For previous versions, see the release changelog at https://github.com/ksamuk/pixy/releases
