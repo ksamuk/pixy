@@ -44,6 +44,8 @@ Optional arguments:
     Path to a tab separated file containing a headerless list of sites (CHROM, POS) to (exclusively) include in calculations 
 **-\\-chunk_size [integer]**
     Approximate number of sites to read from VCF at any given time.  Defaults to 100000. Smaller numbers can reduce memory use.
+**-\\-fst_type [wc|hudson]**
+    FST estimator to use, one of either: 'wc' (Weir and Cockerham 1984) or 'hudson' (Hudson 1992, Bhatia et al. 2013). Defaults to 'wc'
 **-\\-bypass_invariant_check [no|yes]**
     Bypass the check for invariant sites. Use with caution!
 **-\\-version**

@@ -53,8 +53,8 @@ def calc_pi(gt_array):
 def calc_dxy(pop1_gt_array, pop2_gt_array):
     
     # the counts of each of the two alleles in each population at each site
-    pop1_allele_counts = pop1_gt_array.count_alleles(max_allele=1)
-    pop2_allele_counts = pop2_gt_array.count_alleles(max_allele=1)
+    pop1_allele_counts = pop1_gt_array.count_alleles(max_allele = 1)
+    pop2_allele_counts = pop2_gt_array.count_alleles(max_allele = 1)
     
     # the number of (haploid) samples in each population
     pop1_n_haps = pop1_gt_array.n_samples * pop1_gt_array.ploidy
@@ -88,22 +88,53 @@ def calc_dxy(pop1_gt_array, pop2_gt_array):
 # (need variance components for proper aggregation)
 # for single sites, this is the final FST calculation
 # in aggregation mode, we just want a,b,c and n_sites for aggregating and fst
-def calc_fst(gt_array_fst, fst_pop_indicies):
+def calc_fst(gt_array_fst, fst_pop_indicies, fst_type):
     
     # compute basic (multisite) FST via scikit allel
-    a, b, c = allel.weir_cockerham_fst(gt_array_fst, subpops = fst_pop_indicies)
     
-    # compute variance component sums
-    a = np.nansum(a).tolist()
-    b = np.nansum(b).tolist()
-    c = np.nansum(c).tolist()
-    n_sites = len(gt_array_fst)
+    # WC 84
+    if fst_type == "wc":
+        a, b, c = allel.weir_cockerham_fst(gt_array_fst, subpops = fst_pop_indicies)
+        
+        # compute variance component sums
+        a = np.nansum(a).tolist()
+        b = np.nansum(b).tolist()
+        c = np.nansum(c).tolist()
+        n_sites = len(gt_array_fst)
     
-    # compute fst
-    if (a + b + c) > 0:
-        fst = a / (a + b + c)
-    else:
-        fst = "NA"
+        # compute fst
+        if (a + b + c) > 0:
+            fst = a / (a + b + c)
+        else:
+            fst = "NA"
     
-    return(fst, a, b, c, n_sites)
+        return(fst, a, b, c, n_sites)
+    
+    # Hudson 92
+    if fst_type == "hudson":
+        
+        # following scikit allel docs
+        # allel counts for each population
+        ac1 = gt_array_fst.count_alleles(subpop = fst_pop_indicies[0])
+        ac2 = gt_array_fst.count_alleles(subpop = fst_pop_indicies[1])
+        
+        #hudson fst has two components (numerator & denominator)
+        num, den = allel.hudson_fst(ac1, ac2)
+        c = 0 # for compatibility with aggregation code for WC 84
+        
+        # compute variance component sums
+        num = np.nansum(num).tolist()
+        den = np.nansum(den).tolist()
+        n_sites = len(gt_array_fst)
+        
+        # compute fst
+        if (num + den) > 0:
+            fst = num / den
+        else:
+            fst = "NA"
+        
+        # same abc format as WC84, where 'a' is the numerator and 
+        # 'b' is the demoninator, and 'c' is a zero placeholder
+        return(fst, num, den, c, n_sites)
+    
     

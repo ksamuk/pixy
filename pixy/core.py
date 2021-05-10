@@ -25,7 +25,7 @@ from itertools import combinations
 from collections import Counter
 
 # function for re-aggregating subwindows from the temporary output
-def aggregate_output(df_for_stat, stat, chromosome, window_size):
+def aggregate_output(df_for_stat, stat, chromosome, window_size, fst_type):
     outsorted = df_for_stat.sort_values([4]) #sort by position
     interval_start = df_for_stat[4].min()
     interval_end = df_for_stat[4].max()
@@ -46,7 +46,12 @@ def aggregate_output(df_for_stat, stat, chromosome, window_size):
     if stat == 'pi' or stat == 'dxy':
         outsorted[stat] = outsorted[8]/outsorted[9]
     elif stat == 'fst':
-        outsorted[stat] = outsorted[8]/(outsorted[8] + outsorted[9] + outsorted[10])
+        if fst_type == 'wc':
+            outsorted[stat] = outsorted[8]/(outsorted[8] + outsorted[9] + outsorted[10])
+        elif fst_type == 'hudson':
+            # 'a' is the numerator of hudson and 'b' is the denominator
+            # (there is no 'c')
+            outsorted[stat] = outsorted[8]/(outsorted[9])
     
     outsorted[stat].fillna('NA', inplace=True)
     outsorted["chromosome"]=chromosome
@@ -157,7 +162,7 @@ def read_and_filter_genotypes(args, chromosome, window_pos_1, window_pos_2, site
     
     # read in data from the source VCF for the current window
     callset = allel.read_vcf(args.vcf, region = window_region, fields = ['CHROM', 'POS', 'calldata/GT', 'variants/is_snp', 'variants/numalt'])
-
+    
     # keep track of whether the callset was empty (no sites for this range in the VCF)
     # used by compute_summary_stats to add info about completely missing sites
     if callset is None:
@@ -366,7 +371,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                     
                     if fst_window_size == 0:
                         # if computing for a single site, use the single site function from scikit-allel (!!)
-                        fst, a, b, c, n_snps = pixy.calc.calc_fst(gt_array_fst, fst_pop_indicies)
+                        fst, a, b, c, n_snps = pixy.calc.calc_fst(gt_array_fst, fst_pop_indicies, args.fst_type)
                         fst = fst
                         window_positions = [[window_pos_1, window_pos_2]]
                         n_snps = [1]
@@ -377,7 +382,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                             # otherwise, compute FST using the scikit-allel window fst function
                             fst, window_positions, n_snps = allel.windowed_weir_cockerham_fst(pos_array_fst, gt_array_fst, subpops = fst_pop_indicies, size = fst_window_size, start = window_pos_1, stop = window_pos_2)
                         else:
-                            fst, a, b, c, n_snps = pixy.calc.calc_fst(gt_array_fst, fst_pop_indicies)
+                            fst, a, b, c, n_snps = pixy.calc.calc_fst(gt_array_fst, fst_pop_indicies, args.fst_type)
                             window_positions = [[window_pos_1, window_pos_2]]
 
                 else:
@@ -437,9 +442,10 @@ def check_and_validate_args(args):
     args.vcf = os.path.expanduser(args.vcf)
     args.populations = os.path.expanduser(args.populations)
     
-    output_folder = os.path.expanduser(os.getcwd() + "/" + args.output_folder)
     if args.output_folder != '':
-        output_folder = output_folder + "/"
+        output_folder = args.output_folder + "/"
+    else:
+        output_folder = os.path.expanduser(os.getcwd() + "/")
         
     output_prefix = output_folder + args.output_prefix
     
@@ -600,8 +606,15 @@ def check_and_validate_args(args):
 
         # read in the bed file and extract the chromosome column
         bed_df = pandas.read_csv(args.bed_file, sep='\t', header=None)
+        
+        if bed_df.isnull().values.any():
+            check_message = "ERROR"
+            print(check_message)
+            raise Exception('[pixy] ERROR: your bed file contains missing data, confirm all rows have three fields (chrom, pos1, pos2).') 
 
         if len(bed_df.columns) != 3:
+            check_message = "ERROR"
+            print(check_message)
             raise Exception('[pixy] ERROR: The bed file has the wrong number of columns (should be 3, is ' + str(len(bed_df.columns)) + ')') 
         
         else:
@@ -618,6 +631,11 @@ def check_and_validate_args(args):
             
     if args.sites_file is not None:
         sites_df = pandas.read_csv(args.sites_file, sep='\t', header=None)
+        
+        if sites_df.isnull().values.any():
+            check_message = "ERROR"
+            print(check_message)
+            raise Exception('[pixy] ERROR: your sites file contains missing data, confirm all rows have two fields (chrom, pos).') 
         
         if len(sites_df.columns) != 2:
             raise Exception('[pixy] ERROR: The sites file has the wrong number of columns (should be 2, is ' + str(len(sites_df.columns)) + ')') 
@@ -648,7 +666,13 @@ def check_and_validate_args(args):
     # read in the list of samples/populations
     poppanel = pandas.read_csv(args.populations, sep='\t', usecols=[0,1], names=['ID', 'Population'])
     poppanel['ID'] = poppanel['ID'].astype(str)
-    poppanel.head()
+    
+    # check for missing values
+    
+    if poppanel.isnull().values.any():
+        check_message = "ERROR"
+        print(check_message)
+        raise Exception('[pixy] ERROR: your populations file contains missing data, confirm all samples have population IDs (and vice versa).') 
 
     # get a list of samples from the callset
     samples_list = vcf_headers.samples
@@ -662,15 +686,22 @@ def check_and_validate_args(args):
     try:
         samples_callset_index = [samples_list.index(s) for s in poppanel['ID']]
     except ValueError as e:
+        check_message = "ERROR"
+        print(check_message)
         raise Exception('[pixy] ERROR: the following samples are listed in the population file but not in the VCF: ', missing) from e
     else:   
         poppanel['callset_index'] = samples_callset_index
 
-            # use the popindices dictionary to keep track of the indices for each population
+        # use the popindices dictionary to keep track of the indices for each population
         popindices={}
         popnames = poppanel.Population.unique()
         for name in popnames:
             popindices[name] = poppanel[poppanel.Population == name].callset_index.values
+            
+    if len(popnames) == 1 and ("fst" in args.stats or "dxy" in args.stats):
+        check_message = "ERROR"
+        print(check_message)
+        raise Exception('[pixy] ERROR: calcuation of fst and/or dxy requires at least two populations to be defined in the population file.') 
     
     print("OK")
     print("[pixy] All initial checks past!")

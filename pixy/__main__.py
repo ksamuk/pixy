@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.0.4.beta1'
+    version = '1.1.0.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -68,15 +68,18 @@ def main():
     optional.add_argument('--interval_end', type=str, nargs='?', help='The end of the interval over which to calculate stats.\nOnly valid when calculating over a single chromosome.\nDefaults to the last position for a chromosome.', required=False)
     optional.add_argument('--sites_file', type=str, nargs='?', help='Path to a headerless tab separated file with columns [CHROM POS].\nThis defines sites where summary stats should be calculated.\nCan be combined with the --bed_file and --window_size options.', required=False)
     optional.add_argument('--chunk_size', type=int, nargs='?', default=100000, help='Approximate number of sites to read from VCF at any given time (default=100000).\nLarger numbers reduce I/O operations at the cost of memory.', required=False)
+    
+    optional.add_argument('--fst_type', choices=['wc', 'hudson'], default='wc', help='FST estimator to use, one of either: \n\'wc\' (Weir and Cockerham 1984) or\n\'hudson\' (Hudson 1992, Bhatia et al. 2013) \nDefaults to \'wc\'.', required=False)
     optional.add_argument('--bypass_invariant_check', choices=['yes', 'no'], default='no', help='Allow computation of stats without invariant sites (default=no).\nWill result in wildly incorrect estimates most of the time.\nUse with extreme caution!', required=False)
     optional.add_argument('--version', action='version', version=help_image+'version ' + version, help='Print the version of pixy in use.')
     optional.add_argument('--citation', action='version', version=citation, help='Print the citation for pixy.')
-    optional.add_argument('--silent', action='store_true', help='Suppress all console output (flag, no value required)')
+    optional.add_argument('--silent', action='store_true', help='Suppress all console output.')
     optional.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
     optional.add_argument('--keep_temp_file', action='store_true', help=argparse.SUPPRESS)
 
 
     
+
     
     # catch arguments from the command line
     # automatically uncommented when a release is built
@@ -96,7 +99,15 @@ def main():
     print("[pixy] See documentation at https://pixy.readthedocs.io/en/latest/")
     popnames, popindices, chrom_list, IDs, temp_file, output_folder, output_prefix, bed_df, sites_df = pixy.core.check_and_validate_args(args)
 
-    print ("\n[pixy] Preparing for calculation of summary statistics: " + ', '.join(map(str, args.stats)))
+    print("\n[pixy] Preparing for calculation of summary statistics: " + ', '.join(map(str, args.stats)))
+    
+    if 'fst' in args.stats:
+        if args.fst_type == 'wc':
+            fst_cite = 'Weir and Cockerham (1984)' 
+        elif args.fst_type == 'hudson':
+            fst_cite = 'Hudson (1992)' 
+        print("[pixy] Using "+ fst_cite + "\'s estimator of FST.")
+               
     print ("[pixy] Data set contains " + str(len(popnames)) + " population(s), " + str(len(chrom_list)) +" chromosome(s), and " + str(len(IDs)) + " sample(s)")
 
     if args.window_size is not None:
@@ -189,8 +200,9 @@ def main():
                 if not (interval_end % window_size == 0):
                     interval_end = interval_end + (window_size - (interval_end % window_size))
                 
+                # creat the start and stops for each window
                 window_pos_1_list = [*range(interval_start, int(interval_end), window_size)]
-                window_pos_2_list = [*range(window_size, int(interval_end) + 1, window_size)]
+                window_pos_2_list = [*range(interval_start + (window_size -1), int(interval_end) + window_size, window_size)]
             
             window_list = [list(a) for a in zip(window_pos_1_list,window_pos_2_list)]
             
@@ -313,7 +325,7 @@ def main():
             for chromosome in chrom_list:
                 outpi = outgrouped.get_group(("pi",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
                 outpi.drop([0,2], axis=1, inplace=True) #get rid of "pi" and placeholder (NA) columns
-                outsorted = pixy.core.aggregate_output(outpi, stat, chromosome, window_size)
+                outsorted = pixy.core.aggregate_output(outpi, stat, chromosome, window_size, args.fst_type)
                 outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA') #write
                 
         else:
@@ -343,7 +355,7 @@ def main():
             for chromosome in chrom_list:
                 outdxy = outgrouped.get_group(("dxy",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
                 outdxy.drop([0], axis=1, inplace=True) #get rid of "dxy"
-                outsorted = pixy.core.aggregate_output(outdxy, stat, chromosome, window_size)
+                outsorted = pixy.core.aggregate_output(outdxy, stat, chromosome, window_size, args.fst_type)
                 outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA') #write
                 
         else:
@@ -366,14 +378,14 @@ def main():
             os.remove(fst_file)
 
         outfile = open(fst_file, 'a')
-        outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_wc_fst" + "\t" + "no_snps" + "\n")
+        outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_" + args.fst_type + "_fst" + "\t" + "no_snps" + "\n")
  
         if aggregate: #put winsizes back together for each population to make final_window_size
            
             for chromosome in chrom_list:
                 outfst = outgrouped.get_group(("fst",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
                 outfst.drop([0], axis=1, inplace=True) #get rid of "fst"
-                outsorted = pixy.core.aggregate_output(outfst, stat, chromosome, window_size)
+                outsorted = pixy.core.aggregate_output(outfst, stat, chromosome, window_size, args.fst_type)
                 outsorted = outsorted.iloc[:,:-3] #drop components (for now)
                 outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA') #write
                 
@@ -428,6 +440,16 @@ if __name__ == "__main__":
             
    main()   
                 
+
+
+
+
+
+
+
+
+
+
 
 
 
