@@ -605,7 +605,11 @@ def check_and_validate_args(args):
             raise Exception('[pixy] ERROR: --interval_start, --interval_end, and --window_size are not valid when a BED file of windows is provided.') 
 
         # read in the bed file and extract the chromosome column
-        bed_df = pandas.read_csv(args.bed_file, sep='\t', header=None)
+        bed_df = pandas.read_csv(args.bed_file, sep='\t', usecols=[0,1,2], names=['chrom', 'pos1', 'pos2'])
+        bed_df['chrom'] = bed_df['chrom'].astype(str)
+        
+        # force chromosomes to strings
+        
         
         if bed_df.isnull().values.any():
             check_message = "ERROR"
@@ -630,7 +634,8 @@ def check_and_validate_args(args):
         
             
     if args.sites_file is not None:
-        sites_df = pandas.read_csv(args.sites_file, sep='\t', header=None)
+        sites_df = pandas.read_csv(args.sites_file, sep='\t', usecols=[0,1], names=['chrom', 'pos'])
+        sites_df['chrom'] = sites_df['chrom'].astype(str)
         
         if sites_df.isnull().values.any():
             check_message = "ERROR"

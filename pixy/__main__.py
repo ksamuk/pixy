@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.1.0.beta1'
+    version = '1.1.1.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -303,7 +303,12 @@ def main():
         pool.join()
     
     # split and aggregate temp file to individual files
-    outpanel = pandas.read_csv(temp_file, sep='\t', header=None)
+    
+    try:
+        outpanel = pandas.read_csv(temp_file, sep='\t', header=None)
+    except pandas.errors.EmptyDataError:
+        raise Exception('[pixy] ERROR: pixy failed to write output. Confirm that your bed files and intervals refer to existing chromosomes and positions in the VCF.')
+        
     outpanel[3] = outpanel[3].astype(str) # force chromosome IDs to string
     outgrouped = outpanel.groupby([0,3]) #groupby statistic, chromosome
     
