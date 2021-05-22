@@ -4,7 +4,6 @@ requirements = [
     'scikit-allel',
     'pandas',
     'numpy',
-    'python',
     'multiprocess',
     'scipy',
     'numcodecs'
