@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.1.1.beta1'
+    version = '1.2.0.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -205,6 +205,7 @@ def main():
                 window_pos_2_list = [*range(interval_start + (window_size -1), int(interval_end) + window_size, window_size)]
             
             window_list = [list(a) for a in zip(window_pos_1_list,window_pos_2_list)]
+
             
             # Set aggregate to true if 1) the window size is larger than the chunk size OR 2) the window size wasn't specified, but the chrom is longer than the cutoff
             if (window_size > args.chunk_size) or ((args.window_size is None) and ((interval_end - interval_start) > args.chunk_size) ): 
@@ -445,16 +446,6 @@ if __name__ == "__main__":
             
    main()   
                 
-
-
-
-
-
-
-
-
-
-
 
 
 

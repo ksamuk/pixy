@@ -222,6 +222,8 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
         # filter gt and position arrays for biallelic variable sites
         gt_array_fst = gt_array[variants_array]
         pos_array_fst = pos_array[variants_array]
+        
+
     else:
         gt_array_fst = None
 
@@ -230,7 +232,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
         window_pos_1 = window_list_chunk[window_index][0]
         window_pos_2 = window_list_chunk[window_index][1]
-        
+
         if pos_array is None:
             window_is_empty = True
         elif (len(pos_array[(pos_array >= window_pos_1 ) & (pos_array <= window_pos_2)]) == 0):
@@ -348,14 +350,14 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
         if (args.populations is not None) and ('fst' in args.stats):
 
             # determine all the possible population pairings
-            pop_names=list(popindices.keys())
+            pop_names = list(popindices.keys())
             fst_pop_list = list(combinations(pop_names, 2))
 
             # for each pair, compute fst using the filtered gt_array
             for pop_pair in fst_pop_list:
 
                 # the indices for the individuals in each population
-                fst_pop_indicies=[popindices[pop_pair[0]].tolist(), popindices[pop_pair[1]].tolist()]
+                fst_pop_indicies = [popindices[pop_pair[0]].tolist(), popindices[pop_pair[1]].tolist()]
 
                 # compute FST
                 # windowed_weir_cockerham_fst seems to generate (spurious?) warnings about div/0, so suppressing warnings
@@ -364,23 +366,46 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
                 # if the genotype matrix is not empty, compute FST
                 # other wise return NA
+
+
                 if(not callset_is_none and gt_array_fst is not None and len(gt_array_fst) > 0 and not window_is_empty) :
                     
                     # compute an ad-hoc window size
                     fst_window_size = (window_pos_2 - window_pos_1)
                     
+                    # if computing for a single site, use the single site function from scikit-allel
                     if fst_window_size == 0:
-                        # if computing for a single site, use the single site function from scikit-allel (!!)
-                        fst, a, b, c, n_snps = pixy.calc.calc_fst(gt_array_fst, fst_pop_indicies, args.fst_type)
-                        fst = fst
-                        window_positions = [[window_pos_1, window_pos_2]]
-                        n_snps = [1]
+                        
+                        # find the target site in the fst_pos_array (or set to None)
+                        try:
+                            pos_array_fst_site = pos_array_fst.locate_key(window_pos_1)
+                        except:
+                            pos_array_fst_site = None
+                        
+                        # if the target is valid, compute FST
+                        if pos_array_fst_site is not None:
+                            gt_array_fst_site = gt_array_fst[pos_array_fst_site] # pull out genotypes of the target site
+                            gt_array_fst_site = allel.GenotypeArray([gt_array_fst_site, gt_array_fst_site]) # hack to allow calc_fst on single sites
+                            fst, a, b, c, n_snps = pixy.calc.calc_fst(gt_array_fst_site, fst_pop_indicies, args.fst_type)
+                            fst = [fst]
+                            window_positions = [[window_pos_1, window_pos_2]]
+                            n_snps = [1]
+                        
+                        else:
+                            fst, window_positions, n_snps = ["NA"],[[window_pos_1,window_pos_2]],[0]
                         
                     else:
                         
+                        # otherwise, compute FST using the scikit-allel window fst functions or the pixy "direct" method if aggregating
                         if not aggregate:
-                            # otherwise, compute FST using the scikit-allel window fst function
-                            fst, window_positions, n_snps = allel.windowed_weir_cockerham_fst(pos_array_fst, gt_array_fst, subpops = fst_pop_indicies, size = fst_window_size, start = window_pos_1, stop = window_pos_2)
+                            
+                            if args.fst_type  == "wc":
+                                fst, window_positions, n_snps = allel.windowed_weir_cockerham_fst(pos_array_fst, gt_array_fst, subpops = fst_pop_indicies, size = fst_window_size, start = window_pos_1, stop = window_pos_2)
+                            
+                            if args.fst_type  == "hudson":
+                                ac1 = gt_array_fst.count_alleles(subpop = fst_pop_indicies[0])
+                                ac2 = gt_array_fst.count_alleles(subpop = fst_pop_indicies[1])
+                                fst, window_positions, n_snps = allel.windowed_hudson_fst(pos_array_fst, ac1, ac2, size = fst_window_size, start = window_pos_1, stop = window_pos_2)
                         else:
                             fst, a, b, c, n_snps = pixy.calc.calc_fst(gt_array_fst, fst_pop_indicies, args.fst_type)
                             window_positions = [[window_pos_1, window_pos_2]]
@@ -395,6 +420,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                 if aggregate:
                     pixy_result = "fst" + "\t" + str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(fst) + "\t" + str(n_snps)+ "\t" + str(a) + "\t" + str(b) +"\t" + str(c)
                 else:
+
                     for fst,wind,snps in zip(fst, window_positions, n_snps):
                         # append trailing NAs so that pi/dxy/fst have the same # of columns
                         pixy_result = "fst" + "\t" + str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(wind[0]) + "\t" + str(wind[1]) + "\t" + str(fst) + "\t" + str(snps)+ "\tNA\tNA\tNA"
