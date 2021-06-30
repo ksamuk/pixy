@@ -36,6 +36,9 @@ Here is an example using VCFtools. The specific values (especially for min/max-m
     --min-meanDP 20 \
     --max-meanDP 500 \
     --recode --stdout | gzip -c > my_filtered_vcf.vcf.gz
+    
+.. note::
+    As of GATK version 4.2.0.0, GenotypeGVCFs only assigns QUAL scores to invariant sites if there are no missing genotypes. If you wish to filter on QUAL, invariant and variant     sites will need to be filtered **separately**, with the QUAL filter only applied to variant sites (see below for details).
  
  
 Optional: Population genetic filters
