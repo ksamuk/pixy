@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.2.1.beta1'
+    version = '1.2.2.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -79,7 +79,6 @@ def main():
 
 
     
-
     
     # catch arguments from the command line
     # automatically uncommented when a release is built
@@ -305,13 +304,27 @@ def main():
     
     # split and aggregate temp file to individual files
     
+    # check if there is any output to process
+    # halt execution if not
     try:
         outpanel = pandas.read_csv(temp_file, sep='\t', header=None)
     except pandas.errors.EmptyDataError:
-        raise Exception('[pixy] ERROR: pixy failed to write output. Confirm that your bed files and intervals refer to existing chromosomes and positions in the VCF.')
+        raise Exception('[pixy] ERROR: pixy failed to write any output. Confirm that your bed/sites files and intervals refer to existing chromosomes and positions in the VCF.')
         
+    # check if particular stats failed to generate output     
+    successful_stats = np.unique(outpanel[0])
+    
+    # if not all requested stats were generated, produce a warning 
+    # and then remove the failed stats from the args list
+    if set(args.stats) != set(successful_stats):
+        missing_stats = list(set(args.stats) - set(successful_stats))
+        print('\n[pixy] WARNING: pixy failed to find any valid gentoype data to calculate the following summary statistics: ' + ', '.join(missing_stats) + ". No output file will be created for these statistics.")
+        args.stats = set(successful_stats)
+
+    
     outpanel[3] = outpanel[3].astype(str) # force chromosome IDs to string
     outgrouped = outpanel.groupby([0,3]) #groupby statistic, chromosome
+
     
     # enforce chromosome IDs as strings
     chrom_list = list(map(str, chrom_list))
@@ -422,7 +435,7 @@ def main():
     leftover_tmp_files = list(filter(r.match, outfolder_files))
 
     if len(output_files) == 0:
-        raise Exception('[pixy] ERROR: pixy failed to write any output files. Write access to the temporary file may have changed during execution.')
+        print('\n[pixy] WARNING: pixy failed to write any output files. Your VCF may not contain valid genotype data, or it was removed via filtering using the specified sites/bed file (if any).')
  
     # print completion message
     end_time = time.time()
