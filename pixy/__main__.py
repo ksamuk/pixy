@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.2.0.beta1'
+    version = '1.2.1.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -265,7 +265,7 @@ def main():
                 chunk_pos_2 = max(window_list_chunk, key=lambda x: x[1])[1]
                 
                 # launch a summary stats job for this chunk
-                job = pool.apply_async(pixy.core.compute_summary_stats, args = (args, popnames, popindices, temp_file, chromosome, chunk_pos_1, chunk_pos_2, window_list_chunk, q, sites_list_chunk, aggregate))
+                job = pool.apply_async(pixy.core.compute_summary_stats, args = (args, popnames, popindices, temp_file, chromosome, chunk_pos_1, chunk_pos_2, window_list_chunk, q, sites_list_chunk, aggregate, args.window_size))
                 jobs.append(job)
 
             # launch all the jobs onto the pool
@@ -295,7 +295,7 @@ def main():
                 q = "NULL"
                 
                 # compute summary stats for all windows in the chunk window list
-                pixy.core.compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chunk_pos_1, chunk_pos_2, window_list_chunk, q, sites_list_chunk, aggregate)
+                pixy.core.compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chunk_pos_1, chunk_pos_2, window_list_chunk, q, sites_list_chunk, aggregate, args.window_size)
     
     # clean up any remaining jobs and stop the listener
     if (args.n_cores > 1):

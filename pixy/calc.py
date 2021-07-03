@@ -136,5 +136,34 @@ def calc_fst(gt_array_fst, fst_pop_indicies, fst_type):
         # same abc format as WC84, where 'a' is the numerator and 
         # 'b' is the demoninator, and 'c' is a zero placeholder
         return(fst, num, den, c, n_sites)
+
+# simplified version of above to handle the case 
+# of per-site estimates of FST over whole chunks
+
+def calc_fst_persite(gt_array_fst, fst_pop_indicies, fst_type):
     
+    # compute basic (multisite) FST via scikit allel
+    
+    # WC 84
+    if fst_type == "wc":
+        a, b, c = allel.weir_cockerham_fst(gt_array_fst, subpops = fst_pop_indicies)
+
+        fst = (np.sum(a, axis=1) / (np.sum(a, axis=1) + np.sum(b, axis=1) + np.sum(c, axis=1)))
+    
+        return(fst)
+    
+    # Hudson 92
+    elif fst_type == "hudson":
+        
+        # following scikit allel docs
+        # allel counts for each population
+        ac1 = gt_array_fst.count_alleles(subpop = fst_pop_indicies[0])
+        ac2 = gt_array_fst.count_alleles(subpop = fst_pop_indicies[1])
+        
+        #hudson fst has two components (numerator & denominator)
+        num, den = allel.hudson_fst(ac1, ac2)
+        
+        fst = num/den
+
+        return(fst)
     
