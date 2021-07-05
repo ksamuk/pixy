@@ -12,7 +12,7 @@ Kieran Samuk and Katharine Korunes <p>
 Duke University
  
 ## Citation
-If you use `pixy` in your research, please cite the manuscript below, as well the [Zenodo DOI](https://zenodo.org/badge/latestdoi/181987337) of specific version of pixy used for your project..
+If you use `pixy` in your research, please cite the manuscript below, as well the [Zenodo DOI](https://zenodo.org/badge/latestdoi/181987337) of the specific version of pixy used for your project..
 
 **Manuscript**<br>
 Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. https://doi.org/10.1111/1755-0998.13326
