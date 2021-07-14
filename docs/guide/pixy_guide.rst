@@ -11,7 +11,7 @@ Step by Step Installation and Usage
 
 
 
-If you did not already generate an 'allsites' VCF (VCF with invariant sites), `see the guide here <https://pixy.readthedocs.io/en/1.0.0.beta1/generating_invar/generating_invar.html>`_.
+If you did not already generate an 'allsites' VCF (VCF with invariant sites), `see the guide here <https://pixy.readthedocs.io/en/latest/generating_invar/generating_invar.html>`_.
 
 .. note::
     When working with whole genome data, we suggest you generate *separate invariant sites VCFs for each chromosome*. This is to prevent
