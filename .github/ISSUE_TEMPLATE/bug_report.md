@@ -10,13 +10,12 @@ assignees: ''
 **Describe the bug**
 A clear and concise description of what the bug is.
 
-**The pixy command and error message**
-Please copy and paste the following: 
-(1) The command you used to run pixy, including all arguments.
-(2) The error message you received (if any).
+**A reproducible example of the bug**
+Please include the following so we can debug the issue:
+(1) The full command you used to run pixy, including all arguments
+(2) A subset of your VCF (the smallest subset needed to demonstrate the problem) 
+(3) The full populations file
+(4) Any other files needed to reproduce the problem (sites, bed file, etc.)
 
 **OS information**
 Linux/MacOS/etc.
-
-**Sample files**
-Depending on the issue, it may be helpful to include snippets of your VCF/populations file/BED file.
