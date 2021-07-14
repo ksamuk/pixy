@@ -32,7 +32,6 @@ Here is an example using VCFtools. The specific values (especially for min/max-m
     vcftools --gzvcf my_vcf.vcf.gz \
     --remove-indels \
     --max-missing 0.8 \
-    --minQ 30 \
     --min-meanDP 20 \
     --max-meanDP 500 \
     --recode --stdout | gzip -c > my_filtered_vcf.vcf.gz
