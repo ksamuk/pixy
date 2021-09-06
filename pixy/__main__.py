@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.2.3.beta1'
+    version = '1.2.4.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -79,6 +79,7 @@ def main():
 
 
     
+    args = parser.parse_args("--debug --chromosomes nDi.2.2.scaf00001,nDi.2.2.scaf00550 --window_size 10000 --stats pi fst --vcf testing/debugging_data/fst_bug/D_immitis.cohort.ALL.10K.vcf.gz --populations testing/debugging_data/fst_bug/aus_usa.txt --output_folder testing/notebook_output".split())
     
     # catch arguments from the command line
     # automatically uncommented when a release is built
@@ -398,28 +399,59 @@ def main():
 
         outfile = open(fst_file, 'a')
         outfile.write("pop1" + "\t" + "pop2" + "\t" + "chromosome" + "\t" + "window_pos_1" + "\t" + "window_pos_2" + "\t" + "avg_" + args.fst_type + "_fst" + "\t" + "no_snps" + "\n")
+        
+        # keep track of chrosomes with no fst data
+        chroms_with_no_data = []
  
         if aggregate: #put winsizes back together for each population to make final_window_size
            
             for chromosome in chrom_list:
-                outfst = outgrouped.get_group(("fst",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
-                outfst.drop([0], axis=1, inplace=True) #get rid of "fst"
-                outsorted = pixy.core.aggregate_output(outfst, stat, chromosome, window_size, args.fst_type)
-                outsorted = outsorted.iloc[:,:-3] #drop components (for now)
-                outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA') #write
+                
+                # logic to accodomate cases where pi/dxy have stats for a chromosome, but fst does not
+                chromosome_has_data = True
+                
+                # if there are no valid fst estimates, set chromosome_has_data = False
+                try:
+                    outfst = outgrouped.get_group(("fst",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
+                except KeyError:
+                    chroms_with_no_data.append(chromosome)
+                    chromosome_has_data = False
+                    
+                    pass
+                
+                if chromosome_has_data:
+                    outfst.drop([0], axis=1, inplace=True) #get rid of "fst"
+                    outsorted = pixy.core.aggregate_output(outfst, stat, chromosome, window_size, args.fst_type)
+                    outsorted = outsorted.iloc[:,:-3] #drop components (for now)
+                    outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA') #write
                 
         else:
             for chromosome in chrom_list:
-                outfst = outgrouped.get_group(("fst",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
-                outfst.drop([0], axis=1, inplace=True) #get rid of "fst" 
-                outsorted = outfst.sort_values([4]) #sort by position
-                # make sure sites (but not components like pi/dxy)
-                cols = [7]
-                outsorted[cols] = outsorted[cols].astype('Int64')
-                outsorted = outsorted.iloc[:,:-3] #drop components (for now)
-                outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA')
+                
+                # logic to accodomate cases where pi/dxy have stats for a chromosome, but fst does not
+                chromosome_has_data = True
+                
+                # if there are no valid fst estimates, set chromosome_has_data = False
+                try:
+                    outfst = outgrouped.get_group(("fst",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
+                except KeyError:
+                    chroms_with_no_data.append(chromosome)
+                    chromosome_has_data = False
+                    pass
+                
+                if chromosome_has_data:
+                    outfst.drop([0], axis=1, inplace=True) #get rid of "fst" 
+                    outsorted = outfst.sort_values([4]) #sort by position
+                    # make sure sites (but not components like pi/dxy)
+                    cols = [7]
+                    outsorted[cols] = outsorted[cols].astype('Int64')
+                    outsorted = outsorted.iloc[:,:-3] #drop components (for now)
+                    outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA')
         
         outfile.close()
+
+        if len(chroms_with_no_data) >= 1:
+            print('\n[pixy] NOTE: ' + 'The following chromosomes/scaffolds did not have sufficient data to estimate FST: ' + ', '.join(chroms_with_no_data))
     
     # remove the temp file(s)
     if (args.keep_temp_file is not True):

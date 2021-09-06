@@ -394,8 +394,8 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
             
             # check for valid sites in the FST (variant only) data position array
             if pos_array_fst is not None:
+                
                 if np.logical_and(pos_array_fst >= window_pos_1, pos_array_fst <= window_pos_2).any():
-
                     # if there are valid sites, determine all the possible population pairings
                     pop_names = list(popindices.keys())
                     fst_pop_list = list(combinations(pop_names, 2))
@@ -434,13 +434,13 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                                 fst, a, b, c, n_snps = pixy.calc.calc_fst(gt_array_fst, fst_pop_indicies, args.fst_type)
                                 window_positions = [[window_pos_1, window_pos_2]]
 
-                        #else:
-                        #    # if there are no variable sites in the window, output NA/0 
-                        #    # edit: i think it actually makes more sense to just omit these sites
-                        #    if not aggregate:
-                        #        fst, window_positions, n_snps = ["NA"],[[window_pos_1,window_pos_2]],[0]
-                        #    else:
-                        #        fst, window_positions, n_snps, a, b, c = "NA",[[window_pos_1,window_pos_2]], 0, "NA", "NA", "NA"
+                        else:
+                            # if there are no variable sites in the window, output NA/0 
+                            # edit: i think it actually makes more sense to just omit these sites
+                            if not aggregate:
+                                fst, window_positions, n_snps = ["NA"],[[window_pos_1,window_pos_2]],[0]
+                            else:
+                                fst, window_positions, n_snps, a, b, c = "NA",[[window_pos_1,window_pos_2]], 0, "NA", "NA", "NA"
 
                         # create an output string for the FST results
 
@@ -462,6 +462,23 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
                         else:
                             pixy_output = pixy_result
+                            
+                #else:
+                #    # if there are no variable sites in the window, output NA/0 
+                #    # edit: i think it actually makes more sense to just omit these sites
+                #    if not aggregate:
+                #        fst, window_positions, n_snps = ["NA"],[[window_pos_1,window_pos_2]],[0]
+                #        pixy_result = "fst" + "\t" + str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(wind[0]) + "\t" + str(wind[1]) + "\t" + str(fst) + "\t" + str(snps)+ "\tNA\tNA\tNA"
+                #    else:
+                #        fst, window_positions, n_snps, a, b, c = "NA",[[window_pos_1,window_pos_2]], 0, "NA", "NA", "NA"
+                #        pixy_result = "fst" + "\t" + str(pop_pair[0]) + "\t" + str(pop_pair[1]) + "\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(fst) + "\t" + str(n_snps)+ "\t" + str(a) + "\t" + str(b) +"\t" + str(c)
+                #    
+                #    if 'pixy_output' in locals():
+                #        pixy_output = pixy_output + "\n" + pixy_result
+                #
+                #    else:
+                #        pixy_output = pixy_result
+
                         
                   
 
