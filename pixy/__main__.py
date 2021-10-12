@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.2.4.beta1'
+    version = '1.2.5.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -76,10 +76,6 @@ def main():
     optional.add_argument('--silent', action='store_true', help='Suppress all console output.')
     optional.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
     optional.add_argument('--keep_temp_file', action='store_true', help=argparse.SUPPRESS)
-
-
-    
-    args = parser.parse_args("--debug --chromosomes nDi.2.2.scaf00001,nDi.2.2.scaf00550 --window_size 10000 --stats pi fst --vcf testing/debugging_data/fst_bug/D_immitis.cohort.ALL.10K.vcf.gz --populations testing/debugging_data/fst_bug/aus_usa.txt --output_folder testing/notebook_output".split())
     
     # catch arguments from the command line
     # automatically uncommented when a release is built
@@ -170,9 +166,17 @@ def main():
                 
             # otherwise, get the interval from the VCF's POS column
             else:
-                chrom_max = subprocess.check_output("tabix " + args.vcf + " " + chromosome + " | cut -f 2 | tail -n 1", shell=True).decode("utf-8").split()
-                interval_start = 1
-                interval_end = int(chrom_max[0])
+                if args.sites_file is None:
+                    chrom_max = subprocess.check_output("tabix " + args.vcf + " " + chromosome + " | cut -f 2 | tail -n 1", shell=True).decode("utf-8").split()
+                    interval_start = 1
+                    interval_end = int(chrom_max[0])
+                else:
+                    sites_df = pandas.read_csv(args.sites_file, sep='\t', usecols=[0,1], names=['CHROM', 'POS'])
+                    sites_pre_list = sites_df[sites_df['CHROM'] == chromosome]
+                    sites_pre_list = sorted(sites_pre_list['POS'].tolist())
+                    interval_start = min(sites_pre_list)
+                    interval_end = max(sites_pre_list)
+          
 
             # final check if intervals are valid
             try:     
@@ -190,23 +194,26 @@ def main():
              # window size
             window_size = args.window_size
             
-            # if the interval is smaller than one window, make a list of length 1
-            if (interval_end - interval_start) <= window_size:
-                window_pos_1_list = [interval_start]
-                window_pos_2_list = [interval_start + window_size - 1]
+            # in the case were window size = 1, AND there is a sites file, use the sites file as the 'windows'
+            if window_size == 1 and args.sites_file is not None:
+                window_list = [list(a) for a in zip(sites_pre_list,sites_pre_list)]
             else:
-                # if the interval_end is not a perfect multiple of the window size
-                # bump the interval_end up to the nearest multiple of window size
-                if not (interval_end % window_size == 0):
-                    interval_end = interval_end + (window_size - (interval_end % window_size))
-                
-                # creat the start and stops for each window
-                window_pos_1_list = [*range(interval_start, int(interval_end), window_size)]
-                window_pos_2_list = [*range(interval_start + (window_size -1), int(interval_end) + window_size, window_size)]
-            
-            window_list = [list(a) for a in zip(window_pos_1_list,window_pos_2_list)]
+                # if the interval is smaller than one window, make a list of length 1
+                if (interval_end - interval_start) <= window_size:
+                    window_pos_1_list = [interval_start]
+                    window_pos_2_list = [interval_start + window_size - 1]
+                else:
+                    # if the interval_end is not a perfect multiple of the window size
+                    # bump the interval_end up to the nearest multiple of window size
+                    if not (interval_end % window_size == 0):
+                        interval_end = interval_end + (window_size - (interval_end % window_size))
 
-            
+                    # create the start and stops for each window
+                    window_pos_1_list = [*range(interval_start, int(interval_end), window_size)]
+                    window_pos_2_list = [*range(interval_start + (window_size -1), int(interval_end) + window_size, window_size)]
+
+                window_list = [list(a) for a in zip(window_pos_1_list,window_pos_2_list)]
+
             # Set aggregate to true if 1) the window size is larger than the chunk size OR 2) the window size wasn't specified, but the chrom is longer than the cutoff
             if (window_size > args.chunk_size) or ((args.window_size is None) and ((interval_end - interval_start) > args.chunk_size) ): 
                 aggregate = True
@@ -390,7 +397,7 @@ def main():
         
         outfile.close()
 
-    if 'fst' in args.stats:
+    if 'fst' in args.stats: 
         stat = 'fst'
         fst_file = str(output_prefix) + "_fst.txt"
 
