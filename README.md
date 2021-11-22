@@ -8,9 +8,8 @@
 The [manuscript describing pixy](https://doi.org/10.1111/1755-0998.13326) is now published in Molecular Ecology Resources.
 
 ## Authors
-Kieran Samuk and Katharine Korunes <p>
-Duke University
- 
+Kieran Samuk (UC Riverside) and Katharine Korunes (Duke University) <p>
+
 ## Citation
 If you use `pixy` in your research, please cite the manuscript below, as well the [Zenodo DOI](https://zenodo.org/badge/latestdoi/181987337) of the specific version of pixy used for your project..
 
