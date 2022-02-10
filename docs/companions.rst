@@ -33,6 +33,8 @@ BED file
 
 The BED file is used to manually defined genome regions over which to calculate summary statistics. It is specified at the command line with the ``--bed_file``.
 
+Note that pixy expects intervals to be one indexed, *not* zero indexed as many typical BED files are. If your BED file is zero indexed, you'll need to convert the intervals (e.g. by adding 1 to the start and end).
+
 *Format*
 
 A headerless, tab separated file with the first column containing a chromosome ID, the second column containing the first position of a window, and the third column containing the last potion of the window. Each row = one window.

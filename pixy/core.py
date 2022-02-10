@@ -193,7 +193,7 @@ def read_and_filter_genotypes(args, chromosome, window_pos_1, window_pos_2, site
         # if a list of target sites was specified, mask out all non-target sites
         if sites_list_chunk is not None:
             gt_array = mask_non_target_sites(gt_array, pos_array, sites_list_chunk)
-        
+
         # extra 'none' check to catch cases where every site was removed by the mask
         if len(gt_array) == 0:
             callset_is_none = True
@@ -208,6 +208,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
     
     # read in the genotype data for the chunk
     callset_is_none, gt_array, pos_array = read_and_filter_genotypes(args, chromosome, chunk_pos_1, chunk_pos_2, sites_list_chunk)
+
 
     # if computing FST, pre-compute a filtered array of variants (only)
     if 'fst' in args.stats:
@@ -275,6 +276,8 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
         window_pos_1 = window_list_chunk[window_index][0]
         window_pos_2 = window_list_chunk[window_index][1]
+ 
+        
 
         if pos_array is None:
             window_is_empty = True
@@ -299,6 +302,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
             if (len(gt_region) == 0 or (loc_region is None) or (gt_region is None)):
                 window_is_empty = True
+            
 
         # PI:
         # AVERAGE NUCLEOTIDE DIFFERENCES WITHIN POPULATIONS
@@ -702,6 +706,7 @@ def check_and_validate_args(args):
             bed_df.columns = ['chrom', 'chromStart', 'chromEnd']
             bed_chrom = list(bed_df['chrom'])
             missing = list(set(bed_chrom)-set(chrom_all))
+            chrom_all = list(set(chrom_all) & set(bed_chrom))
             chrom_list = list(set(chrom_all) & set(bed_chrom))
 
         if len(missing) >0:

@@ -5,7 +5,7 @@
 
 .. raw:: html
 
-    <div align="center"><h1> pixy 1.2.5.beta1 </h1></div>
+    <div align="center"><h1> pixy 1.2.6.beta1 </h1></div>
 
 .. image:: images/pixy_logo.png
    :width: 200

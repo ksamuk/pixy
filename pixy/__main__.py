@@ -42,7 +42,7 @@ def main():
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.2.5.beta1'
+    version = '1.2.6.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -76,6 +76,10 @@ def main():
     optional.add_argument('--silent', action='store_true', help='Suppress all console output.')
     optional.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
     optional.add_argument('--keep_temp_file', action='store_true', help=argparse.SUPPRESS)
+
+
+    
+    #args = parser.parse_args("--debug --bed_file testing/debugging_data/tal/bed_test.bed --sites_file testing/debugging_data/tal/sites_test.txt  --stats pi --vcf testing/debugging_data/tal/sample_vcf.gz --populations testing/debugging_data/tal/popfile.txt --output_folder testing/notebook_output".split())
     
     # catch arguments from the command line
     # automatically uncommented when a release is built
@@ -172,6 +176,7 @@ def main():
                     interval_end = int(chrom_max[0])
                 else:
                     sites_df = pandas.read_csv(args.sites_file, sep='\t', usecols=[0,1], names=['CHROM', 'POS'])
+                    sites_df['CHROM'] = sites_df['CHROM'].astype(str)
                     sites_pre_list = sites_df[sites_df['CHROM'] == chromosome]
                     sites_pre_list = sorted(sites_pre_list['POS'].tolist())
                     interval_start = min(sites_pre_list)
@@ -239,8 +244,10 @@ def main():
         # if using a sites file, assign sites to chunks, as with windows above
         if args.sites_file is not None:
             sites_df = pandas.read_csv(args.sites_file, sep='\t', usecols=[0,1], names=['CHROM', 'POS'])
+            sites_df['CHROM'] = sites_df['CHROM'].astype(str)
             sites_pre_list = sites_df[sites_df['CHROM'] == chromosome]
             sites_pre_list = sites_pre_list['POS'].tolist()
+            
             sites_list = pixy.core.assign_sites_to_chunks(sites_pre_list, args.chunk_size)
         else:
             sites_df = None
