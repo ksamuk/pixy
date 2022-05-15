@@ -17,7 +17,7 @@ def count_diff_comp_missing(row, n_haps):
     diffs = row[1] * row[0] 
     gts = row[1] + row[0]
     comps = int(special.comb(gts, 2))
-    missing =  n_haps - gts
+    missing = int(special.comb(n_haps, 2)) - comps
     return diffs, comps, missing
 
 # function for vectorized calculation of pi from a pre-filtered scikit-allel genotype matrix
@@ -39,6 +39,11 @@ def calc_pi(gt_array):
     total_diffs = diff_comp_missing_sums[0]
     total_comps = diff_comp_missing_sums[1]
     total_missing = diff_comp_missing_sums[2]
+    
+    # alternative method for calculating total_missing
+    # produces the same result as original method (included as sanity check)
+    # total_possible = ((n_haps * (n_haps-1))/2) * len(allele_counts)
+    # total_missing = total_possible - total_comps
     
     # if there are valid data (comparisons between genotypes) at the site, compute average dxy
     # otherwise return NA

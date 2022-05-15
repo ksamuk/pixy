@@ -39,10 +39,12 @@ def main():
     # argument parsing via argparse
 
     # the ascii help image
-    help_image = "█▀▀█ ░▀░ █░█ █░░█\n"     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n"     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
+    help_image = "█▀▀█ ░▀░ █░█ █░░█\n" \
+    "█░░█ ▀█▀ ▄▀▄ █▄▄█\n" \
+    "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
     help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
-    version = '1.2.6.beta1'
+    version = '1.2.7.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
     # initialize arguments
@@ -77,9 +79,6 @@ def main():
     optional.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
     optional.add_argument('--keep_temp_file', action='store_true', help=argparse.SUPPRESS)
 
-
-    
-    #args = parser.parse_args("--debug --bed_file testing/debugging_data/tal/bed_test.bed --sites_file testing/debugging_data/tal/sites_test.txt  --stats pi --vcf testing/debugging_data/tal/sample_vcf.gz --populations testing/debugging_data/tal/popfile.txt --output_folder testing/notebook_output".split())
     
     # catch arguments from the command line
     # automatically uncommented when a release is built
@@ -124,7 +123,8 @@ def main():
     # time the calculations
     start_time = time.time()
     print("[pixy] Started calculations at " + time.strftime("%H:%M:%S on %Y-%m-%d", time.localtime(start_time)))
-    print("[pixy] Using " + str(args.n_cores) + " out of " + str(mp.cpu_count()) + " available CPU cores\n")    
+    print("[pixy] Using " + str(args.n_cores) + " out of " + str(mp.cpu_count()) + " available CPU cores\n")\
+    
     # if in mc mode, set up multiprocessing 
     if (args.n_cores > 1):
         
