@@ -18,7 +18,7 @@ Within population nucleotide diversity (pi)
 
 ``window_pos_2`` - The last position of the genomic window
 
-``avg_pi`` - Average per site nucleotide diversity for the window
+``avg_pi`` - Average per site nucleotide diversity for the window. More specifically, pixy computes the *weighted average nucleotide diversity per site* for all sites in the window, where the weights are determined by the number of genotyped samples at each site.
 
 ``no_sites`` - The total number of sites in the window that have at least one valid genotype. This statistic is included for the user, and not directly used in any calculations.
 
