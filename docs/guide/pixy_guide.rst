@@ -123,8 +123,17 @@ For example:
     ERS224168	KES
     ERS224314	KES
 
-    
-6. Run pixy
+6. Compress and Index your VCF 
+======
+
+If you have not already, use bgzip and tabix to compress and index your VCF:
+
+.. code:: console
+
+    bgzip [your.file.vcf]
+    tabix [your.file.vcf.gz]
+
+7. Run pixy
 ======
 
 Run pixy! An example is shown below.
@@ -141,13 +150,13 @@ Run pixy! An example is shown below.
 .. note::
     pixy ignores non-biallelic sites and INDELs, even if they are left in the VCF after pre-filtering. 
 
-7. Profit
+8. Profit
 ======
 
 Parse the output files and enjoy your unbiased estimates of pi and dxy!
 
 
-8. Stay up to date
+9. Stay up to date
 ======
 
 You can keep pixy up to date by re-running:
