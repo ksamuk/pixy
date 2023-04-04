@@ -48,3 +48,6 @@ For information in installing conda, see here:
 anaconda (more features and initial modules): https://docs.anaconda.com/anaconda/install/
 
 miniconda (lighter weight): https://docs.conda.io/en/latest/miniconda.html
+
+## A note on accuracy
+We have made every effort to ensure that pixy provides accurate and unbiased results. As described in the paper, we use population genetic simulations, where the true value of parameters is exactly known, to assess the performance of pixy. However, because of the huge biological and methodological parameter space around preparing VCFs, it is not possible to guarantee that pixy will specifically work for your organism of interest. As such, it is ultimately up to the investigator to check that pixy is performing as expected for their use case, e.g. by simulating their data-generation process, including missingness. 
