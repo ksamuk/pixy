@@ -194,4 +194,17 @@ def calc_watterson_theta(gt_array):
     weighted_sites = np.sum((N[n] * (n/max(N, key = N.get))) for n in N)
 
 # return averaged Watterson's theta, raw watterson's theta, and weighted site count
-    return(watterson_theta/weighted_sites, watterson_theta, weighted_sites)    
+    return(watterson_theta/weighted_sites, watterson_theta, weighted_sites)
+
+def calc_pi_alt(gt_array):
+
+# counts of each of the two alleles at each site
+    allele_counts = gt_array.count_alleles(max_allele = 1)
+
+# calculate mean pairwise differences and sum these together
+    mpd = allel.mean_pairwise_difference(allele_counts, fill = 0)
+    mpd_sum = np.sum(mpd)
+
+# return this as raw pi
+# this process is essentially the scikit-allel pi calculation
+    return(mpd_sum)
