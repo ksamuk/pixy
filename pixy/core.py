@@ -38,12 +38,12 @@ def aggregate_output(df_for_stat, stat, chromosome, window_size, fst_type):
     outsorted['window_pos_2'] = (edges[assignments+1])
  
     #group by population, window
-    if stat == 'pi': #pi only has one population field
-        outsorted = outsorted.groupby([1,'window_pos_1','window_pos_2'], as_index=False, dropna=False).agg({7:'sum',8:'sum',9:'sum',10:'sum'}).reset_index()
+    if stat == 'pi' or stat == 'watterson_theta' or stat == 'tajima_d': #pi, Watterson's theta, and Tajima's D only has one population field
+    outsorted = outsorted.groupby([1,'window_pos_1','window_pos_2'], as_index=False, dropna=False).agg({7:'sum',8:'sum',9:'sum',10:'sum'}).reset_index()
     elif stat == 'dxy' or stat == 'fst': #dxy and fst have 2 population fields
         outsorted = outsorted.groupby([1,2,'window_pos_1','window_pos_2'], as_index=False, dropna=False).agg({7:'sum',8:'sum',9:'sum',10:'sum'}).reset_index()   
         
-    if stat == 'pi' or stat == 'dxy':
+    if stat == 'pi' or stat == 'dxy' or stat == 'watterson_theta' or stat == 'tajima_d'::
         outsorted[stat] = outsorted[8]/outsorted[9]
     elif stat == 'fst':
         if fst_type == 'wc':
@@ -57,17 +57,17 @@ def aggregate_output(df_for_stat, stat, chromosome, window_size, fst_type):
     outsorted["chromosome"]=chromosome
     
     #reorder columns
-    if stat == 'pi': #pi only has one population field
+    if stat == 'pi' or stat == 'watterson_theta' or stat == 'tajima_d': #pi, Watterson's theta and Tajima's D only have one population field
         outsorted = outsorted[[1, 'chromosome', 'window_pos_1','window_pos_2',stat, 7, 8, 9, 10]] 
     else: #dxy and fst have 2 population fields
         outsorted = outsorted[[1,2,'chromosome', 'window_pos_1','window_pos_2',stat, 7, 8, 9, 10]]
 
-    # make sure sites, comparisons, missing get written as integers 
-    if stat == 'pi' or stat == 'dxy':
+    # make sure sites, comparisons, missing get written as floats
+    if stat == 'pi' or stat == 'dxy' or stat == 'watterson_theta' or stat == 'tajima_d':
         cols = [7,8,9,10]
     elif stat == 'fst':
         cols = [7]    
-    outsorted[cols] = outsorted[cols].astype('Int64')
+    outsorted[cols] = outsorted[cols].astype('float64')
     return outsorted
 
 # function for breaking down large windows into chunks
