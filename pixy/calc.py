@@ -237,4 +237,4 @@ def calc_tajima_d(gt_array):
 # return Tajima's D calculation using raw pi and Watterson's theta calculations above
 # also return the raw pi calculation, raw Watterson's theta, and standard deviation of their covariance individually
 # note that the "raw" values of pi and Watterson's theta are needed for Tajima's D, not the ones incorporating sites
-    return((calc_alt(gt_array) - calc_watterson_theta(gt_array)[1]) / d_stdev, calc_pi_alt(gt_array), calc_watterson_theta(gt_array)[1], d_stdev)
+    return((calc_pi_alt(gt_array) - calc_watterson_theta(gt_array)[1]) / d_stdev, calc_pi_alt(gt_array), calc_watterson_theta(gt_array)[1], d_stdev)
