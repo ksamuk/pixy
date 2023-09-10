@@ -483,8 +483,42 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                 #    else:
                 #        pixy_output = pixy_result
 
-                        
-                  
+        # WATTERSON'S THETA:
+        # GENETIC DIVERSITY CALCULATED FROM NUMBER OF SEGREGATING (VARIANT) SITES
+
+        if (args.populations is not None) and ('watterson_theta' in args.stats):
+
+            for pop in popnames:
+                # if the window has no sites in the VCF, assign all NAs,
+                # otherwise calculate Watterson's theta
+                if window_is_empty:
+                    avg_watterson_theta, watterson_theta, weighted_sites, no_sites, no_var_sites = "NA", "NA", "NA", "NA", "NA"
+                else:
+
+                    # subset the window for the individuals in each population 
+                    gt_pop = gt_region.take(popindices[pop], axis=1)
+
+                    # if the population specific window for this region is empty, report it as such
+                    if (len(gt_pop) == 0):
+                        avg_watterson_theta, watterson_theta, weighted_sites, no_sites, no_var_sites = "NA", "NA", "NA", "NA", "NA"
+
+                    # otherise compute Watterson's theta as normal
+                    else:
+                        # alleles are counted, variant alleles are extracted
+                        # number (no) of sites is count of sites with more than zero alleles
+                        # also give number of variant sites
+                        allele_counts = gt_pop.count_alleles(max_allele = 1)
+                        variant_counts = allele_counts[allele_counts[:,1] != 0]
+                        no_sites = np.count_nonzero(np.sum(allele_counts, 1))
+                        no_var_sites = np.count_nonzero(np.sum(variant_counts, 1))
+                        avg_watterson_theta, watterson_theta, weighted_sites = calc.calc_watterson_theta(gt_pop)                        
+                # create a string of the Watterson's theta results to write to file
+                #klk added NA so that pi/dxy/fst have the same # of columns, npb has kept this for watterson theta
+                pixy_result = "watterson_theta" + "\t" + str(pop) + "\tNA\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_watterson_theta) + "\t" + str(no_sites) + "\t" + str(no_var_sites) + "\t" + str(watterson_theta) + "\t" + str(weighted_sites)
+                if 'pixy_output' in locals():
+                    pixy_output = pixy_output + "\n" + pixy_result
+                else:
+                    pixy_output = pixy_result                  
 
     # OUTPUT
     # if in mc mode, put the results in the writing queue
