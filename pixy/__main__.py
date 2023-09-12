@@ -43,7 +43,7 @@ def main():
     "█░░█ ▀█▀ ▄▀▄ █▄▄█\n" \
     "█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
-    help_text = 'pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites'
+    help_text = 'pixy: unbiased estimates of pi, dxy, fst, Watterson\'s theta, and Tajima\'s from VCFs with invariant sites'
     version = '1.2.7.beta1'
     citation = 'Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326.'
 
