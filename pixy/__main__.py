@@ -510,7 +510,7 @@ def main():
         if aggregate: #put winsizes back together for each population to make final_window_size
 
             for chromosome in chrom_list:
-                outtd = outgrouped.get_group(("tajima_d",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
+                outtajimad = outgrouped.get_group(("tajima_d",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
                 outtajima_d.drop([0,2], axis=1, inplace=True) #get rid of "tajima_d" and placeholder (NA) columns
                 outsorted = core.aggregate_output(outtajima_d, stat, chromosome, window_size, args.fst_type)
                 outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA') #write
@@ -520,7 +520,7 @@ def main():
                 outtajima_d = outgrouped.get_group(("tajima_d",chromosome)).reset_index(drop = True) #get this statistic, this chrom only
                 outtajima_d.drop([0,2], axis=1, inplace=True) #get rid of "theta" and placeholder (NA) columns
                 outsorted = outtajima_d.sort_values([4]) #sort by position
-                # make sure sites, comparisons, missing get written as integers 
+                # make sure sites, comparisons, missing get written as floats
                 cols = [7,8,9,10]
                 outsorted[cols] = outsorted[cols].astype('float64')
                 outsorted.to_csv(outfile, sep="\t", mode='a', header=False, index=False, na_rep='NA') #write

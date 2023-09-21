@@ -492,7 +492,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                 # if the window has no sites in the VCF, assign all NAs,
                 # otherwise calculate Watterson's theta
                 if window_is_empty:
-                    avg_watterson_theta, watterson_theta, weighted_sites, no_sites, no_var_sites = "NA", "NA", "NA", "NA", "NA"
+                    avg_watterson_theta, watterson_theta, weighted_sites, no_sites, no_var_sites = "NA", "NA", "NA", 0, 0
                 else:
 
                     # subset the window for the individuals in each population 
@@ -500,7 +500,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
                     # if the population specific window for this region is empty, report it as such
                     if (len(gt_pop) == 0):
-                        avg_watterson_theta, watterson_theta, weighted_sites, no_sites, no_var_sites = "NA", "NA", "NA", "NA", "NA"
+                        avg_watterson_theta, watterson_theta, weighted_sites, no_sites, no_var_sites = "NA", "NA", "NA", 0, 0
 
                     # otherise compute Watterson's theta as normal
                     else:
@@ -527,9 +527,9 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
             for pop in popnames:
                 # if the window has no sites in the VCF, assign all NAs,
-                # otherwise calculate pi
+                # otherwise calculate Tajima's D
                 if window_is_empty:
-                    tajima_d = "NA"
+                    tajima_d, no_sites, pi, watterson_theta, d_stdev = "NA", 0, "NA", "NA", "NA"
                 else:
 
                     # subset the window for the individuals in each population 
@@ -537,9 +537,9 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
 
                     # if the population specific window for this region is empty, report it as such
                     if (len(gt_pop) == 0):
-                        tajima_d = "NA"
+                        tajima_d, no_sites, pi, watterson_theta, d_stdev = "NA", 0, "NA", "NA", "NA"
 
-                    # otherise compute pi as normal
+                    # otherwise compute Tajima's D as normal
                     else:
                         # number of sites genotyped in the population
                         # not directly used in the calculation
@@ -547,12 +547,13 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                         no_sites = np.count_nonzero(np.sum(allele_counts, 1))
                         tajima_d, pi, watterson_theta, d_stdev = pixy.calc.calc_tajima_d(gt_pop)
 
-                # create a string of the pi results to write to file
+                # create a string of the Tajima's D results to write to file
                 #klk added NA so that pi/dxy/fst have the same # of columns, npb has kept this for Tajima's D
                 pixy_result = "tajima_d" + "\t" + str(pop) + "\tNA\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(tajima_d) + "\t" + str(no_sites) + "\t" + str(pi) + "\t" + str(watterson_theta) + "\t" + str(d_stdev)
                 if 'pixy_output' in locals():
                     pixy_output = pixy_output + "\n" + pixy_result
-
+                else:
+                    pixy_output = pixy_result
     # OUTPUT
     # if in mc mode, put the results in the writing queue
     # otherwise just write to file
