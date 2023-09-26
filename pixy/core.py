@@ -518,7 +518,7 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                 if 'pixy_output' in locals():
                     pixy_output = pixy_output + "\n" + pixy_result
                 else:
-                    pixy_output = pixy_result                  
+                    pixy_output = pixy_result
 
         # TAJIMA_D:
         # NEUTRALITY TEST TAKING NORMALIZED DIFFERENCE OF WATTERSON'S THETA AND PI
