@@ -190,7 +190,10 @@ def calc_watterson_theta(gt_array):
 
 # calculate watterson's theta as sum of equations for differing numbers of genotypes
 # this is calculating Watterson's theta incorporating missing genotypes
-    watterson_theta = np.sum((S[n]/np.sum(1 / np.arange(1, n))) for n in S)
+    watterson_theta = 0
+    for n, s in S.items():
+        a1 = np.sum(1 / np.arange(1, n))
+        watterson_theta += s/a1
 
 # calculate number of sites weighted by how many genotypes are missing in each site
 # this allows calculation of an averaged Watterson's incorporating missing sites
@@ -217,7 +220,10 @@ def calc_tajima_d(gt_array):
 
 # calculate watterson's theta as sum of equations for differing numbers of genotypes
 # this is calculating Watterson's theta incorporating missing genotypes
-    watterson_theta = np.sum((S[n]/np.sum(1 / np.arange(1, n))) for n in S)
+    watterson_theta = 0
+    for n, s in S.items():
+        a1 = np.sum(1 / np.arange(1, n))
+        watterson_theta += s/a1
 
 # calculate denominator for Tajima's D as in scikit-allel but looping to incorporate missing genotypes
     d_stdev = 0
