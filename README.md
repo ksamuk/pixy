@@ -12,7 +12,7 @@ The [manuscript describing pixy](https://doi.org/10.1111/1755-0998.13326) is now
 Kieran Samuk (UC Riverside) and Katharine Korunes (Duke University) <p>
 
 ## Citation
-If you use `pixy` in your research, please cite the manuscript below, as well the [Zenodo DOI](https://zenodo.org/badge/latestdoi/181987337) of the specific version of pixy used for your project..
+If you use `pixy` in your research, please cite the manuscript below, and the [Zenodo DOI](https://zenodo.org/badge/latestdoi/181987337) of the specific version of pixy used for your project.
 
 **Manuscript**<br>
 Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. https://doi.org/10.1111/1755-0998.13326
@@ -51,3 +51,10 @@ miniconda (lighter weight): https://docs.conda.io/en/latest/miniconda.html
 
 ## A note on accuracy
 We have made every effort to ensure that pixy provides accurate and unbiased results. As described in the paper, we use population genetic simulations, where the true value of parameters is exactly known, to assess the performance of pixy. However, because of the huge biological and methodological parameter space around preparing VCFs, it is not possible to guarantee that pixy will specifically work for your organism of interest. As such, it is ultimately up to the investigator to check that pixy is performing as expected for their use case, e.g. by simulating their data-generation process, including missingness. 
+
+## Development Roadmap (Planned Features as of Nov 2023)
+- Simplified alternative to "All-Sites VCF" workflow
+- Support for arbitrary and variable ploidy levels (including sex chromosomes)
+- Computation of summary statistics from genotype likelihoods
+- Simplified contributor workflows
+- Computation of Tajima's D
