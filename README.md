@@ -31,10 +31,11 @@ https://pixy.readthedocs.io/
 conda config --add channels conda-forge
 ```
 
-Then install pixy and htslib:
+Then install pixy, htslib, and samtools 1.9:
 ```
 conda install -c conda-forge pixy
 conda install -c bioconda htslib
+conda install -c bioconda samtools=1.9 --force-reinstall -y
 ```
 
 You can test your pixy installation by running:
