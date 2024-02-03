@@ -615,11 +615,11 @@ def check_and_validate_args(args):
     check_message = "OK"
 
     if args.bypass_invariant_check=='no':
-        alt_list = subprocess.check_output("gunzip -c " + args.vcf + " | grep -v '#' | head -n 10000 | awk '{print $5}' | sort | uniq", shell=True).decode("utf-8").split()
+        alt_list = subprocess.check_output("gunzip -c " + args.vcf + " | grep -v '#' | head -n 100000 | awk '{print $5}' | sort | uniq", shell=True).decode("utf-8").split()
         if "." not in alt_list:
             raise Exception('[pixy] ERROR: the provided VCF appears to contain no invariant sites (ALT = \".\"). This check can be bypassed via --bypass_invariant_check \'yes\'.') 
         if "." in alt_list and len(alt_list) == 1 :
-            raise Exception('[pixy] ERROR: the provided VCF appears to contain no variable sites. It may have been filtered incorrectly, or otherwise corrupted.') 
+            raise Exception('[pixy] ERROR: the provided VCF appears to contain no variable sites in the first 100 000 sites. It may have been filtered incorrectly, or genetic diversity is very low. This check can be bypassed via --bypass_invariant_check \'yes\'.') 
     else:
         if not (len(args.stats) == 1 and (args.stats[0] == 'fst')):
             check_message = "WARNING"
