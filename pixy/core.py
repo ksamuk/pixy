@@ -161,7 +161,7 @@ def read_and_filter_genotypes(args, chromosome, window_pos_1, window_pos_2, site
     window_region = chromosome + ":" + str(window_pos_1) + "-" + str(window_pos_2)
     
     # read in data from the source VCF for the current window
-    callset = allel.read_vcf(args.vcf, region = window_region, fields = ['CHROM', 'POS', 'calldata/GT', 'variants/is_snp', 'variants/numalt'])
+    callset = allel.read_vcf(args.vcf, region = window_region, fields = ['CHROM', 'POS', 'calldata/GT', 'calldata/DP', 'variants/is_snp', 'variants/numalt'])
     
     # keep track of whether the callset was empty (no sites for this range in the VCF)
     # used by compute_summary_stats to add info about completely missing sites
@@ -173,6 +173,10 @@ def read_and_filter_genotypes(args, chromosome, window_pos_1, window_pos_2, site
     else:
         # if the callset is NOT empty (None), continue with pipeline
         callset_is_none = False
+
+        # fix for cursed GATK 4.0 missing data representation
+        # forces DP<1 (zero) to be missing data (-1 in scikit-allel)
+        callset['calldata/GT'][callset['calldata/DP'] < 1, :] = -1
 
         # convert to a genotype array object
         gt_array = allel.GenotypeArray(allel.GenotypeDaskArray(callset['calldata/GT']))
@@ -619,7 +623,8 @@ def check_and_validate_args(args):
         if "." not in alt_list:
             raise Exception('[pixy] ERROR: the provided VCF appears to contain no invariant sites (ALT = \".\"). This check can be bypassed via --bypass_invariant_check \'yes\'.') 
         if "." in alt_list and len(alt_list) == 1 :
-            raise Exception('[pixy] ERROR: the provided VCF appears to contain no variable sites in the first 100 000 sites. It may have been filtered incorrectly, or genetic diversity is very low. This check can be bypassed via --bypass_invariant_check \'yes\'.') 
+            check_message = "WARNING"
+            print("[pixy] WARNING: the provided VCF appears to contain no variable sites in the first 100 000 sites. It may have been filtered incorrectly, or genetic diversity may be extremely low. This warning can be suppressed via --bypass_invariant_check \'yes\'.'") 
     else:
         if not (len(args.stats) == 1 and (args.stats[0] == 'fst')):
             check_message = "WARNING"
