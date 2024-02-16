@@ -1,7 +1,7 @@
 ``pixy``<img src="https://raw.githubusercontent.com/ksamuk/pixy/master/docs/images/pixy_logo.png" align="right" width="20%">
 ====================
 
-[![DOI](https://zenodo.org/badge/181987337.svg)](https://zenodo.org/badge/latestdoi/181987337) ![version](https://img.shields.io/badge/version-1.2.10.beta2-blue) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![DOI](https://zenodo.org/badge/181987337.svg)](https://zenodo.org/badge/latestdoi/181987337) ![version](https://img.shields.io/badge/version-1.2.11.beta1-blue) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 
 `pixy` is a command-line tool for painlessly estimating average nucleotide diversity within (π) and between (d<sub>xy</sub>) populations from a VCF. In particular, pixy facilitates the use of VCFs containing invariant (monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub> in the face of missing data (i.e. always).
@@ -33,6 +33,11 @@ https://pixy.readthedocs.io/
 `pixy` is currently available for installation on Linux/OSX systems via conda, and [hosted on conda-forge](https://anaconda.org/conda-forge/pixy). To install pixy using conda, you will first need to add conda-forge as a channel (if you haven't already):
 ```
 conda config --add channels conda-forge
+```
+Then, create and activate a new conda environment for pixy:
+```
+conda create -n "pixy" python=3.8
+conda activate pixy
 ```
 
 Then install pixy, htslib, and samtools 1.9:
