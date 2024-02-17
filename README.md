@@ -65,8 +65,8 @@ We have made every effort to ensure that pixy provides accurate and unbiased res
 ## Contribute to pixy
 We are very open to pull requests for new features or bugfixes. If a pull request implements a new substantial feature or fixes a substantial bug, we would be happy to considering including contributors as authors on future manuscripts decscribing new versions of pixy.
 
-## Development Roadmap (Planned Features as of Nov 2023)
-- Update to handle GATK missing data formats
+## Development Roadmap (Planned Features as of Feb 2024)
+- Update to handle GATK missing data formats - DONE
 - Simplified alternative to "All-Sites VCF" workflow
 - Support for arbitrary and variable ploidy levels (including sex chromosomes)
 - Computation of summary statistics from genotype likelihoods
