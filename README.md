@@ -42,7 +42,7 @@ conda activate pixy
 
 Then install pixy, htslib, and samtools 1.9:
 ```
-conda install -c conda-forge pixy
+conda install -c conda-forge pixy=1.2.5
 conda install -c bioconda htslib
 conda install -c bioconda samtools=1.9 --force-reinstall -y
 ```
