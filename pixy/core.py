@@ -176,6 +176,7 @@ def read_and_filter_genotypes(args, chromosome, window_pos_1, window_pos_2, site
 
         # fix for cursed GATK 4.0 missing data representation
         # forces DP<1 (zero) to be missing data (-1 in scikit-allel)
+        # BROKEN HERE <- add if statement to check if DP info is present!
         callset['calldata/GT'][callset['calldata/DP'] < 1, :] = -1
 
         # convert to a genotype array object
