@@ -38,13 +38,13 @@ def aggregate_output(df_for_stat, stat, chromosome, window_size, fst_type):
     outsorted['window_pos_2'] = (edges[assignments+1])
  
     #group by population, window
-    if stat == 'pi': #pi only has one population field
-        outsorted = outsorted.groupby([1,'window_pos_1','window_pos_2'], as_index=False, dropna=False).agg({7:'sum',8:'sum',9:'sum',10:'sum'}).reset_index()
+    if stat == 'pi' or stat == 'watterson_theta' or stat == 'tajima_d': #pi, Watterson's theta, and Tajima's D only has one population field
+    outsorted = outsorted.groupby([1,'window_pos_1','window_pos_2'], as_index=False, dropna=False).agg({7:'sum',8:'sum',9:'sum',10:'sum'}).reset_index()
     elif stat == 'dxy' or stat == 'fst': #dxy and fst have 2 population fields
         outsorted = outsorted.groupby([1,2,'window_pos_1','window_pos_2'], as_index=False, dropna=False).agg({7:'sum',8:'sum',9:'sum',10:'sum'}).reset_index()   
         
-    if stat == 'pi' or stat == 'dxy':
-        outsorted[stat] = outsorted[8]/outsorted[9]
+    if stat == 'pi' or stat == 'dxy' or stat == 'watterson_theta' or stat == 'tajima_d':
+            outsorted[stat] = outsorted[8]/outsorted[9]
     elif stat == 'fst':
         if fst_type == 'wc':
             outsorted[stat] = outsorted[8]/(outsorted[8] + outsorted[9] + outsorted[10])
@@ -57,17 +57,17 @@ def aggregate_output(df_for_stat, stat, chromosome, window_size, fst_type):
     outsorted["chromosome"]=chromosome
     
     #reorder columns
-    if stat == 'pi': #pi only has one population field
+    if stat == 'pi' or stat == 'watterson_theta' or stat == 'tajima_d': #pi, Watterson's theta and Tajima's D only have one population field
         outsorted = outsorted[[1, 'chromosome', 'window_pos_1','window_pos_2',stat, 7, 8, 9, 10]] 
     else: #dxy and fst have 2 population fields
         outsorted = outsorted[[1,2,'chromosome', 'window_pos_1','window_pos_2',stat, 7, 8, 9, 10]]
 
-    # make sure sites, comparisons, missing get written as integers 
-    if stat == 'pi' or stat == 'dxy':
+    # make sure sites, comparisons, missing get written as floats
+    if stat == 'pi' or stat == 'dxy' or stat == 'watterson_theta' or stat == 'tajima_d':
         cols = [7,8,9,10]
     elif stat == 'fst':
         cols = [7]    
-    outsorted[cols] = outsorted[cols].astype('Int64')
+    outsorted[cols] = outsorted[cols].astype('float64')
     return outsorted
 
 # function for breaking down large windows into chunks
@@ -488,9 +488,77 @@ def compute_summary_stats(args, popnames, popindices, temp_file, chromosome, chu
                 #    else:
                 #        pixy_output = pixy_result
 
-                        
-                  
+        # WATTERSON'S THETA:
+        # GENETIC DIVERSITY CALCULATED FROM NUMBER OF SEGREGATING (VARIANT) SITES
 
+        if (args.populations is not None) and ('watterson_theta' in args.stats):
+
+            for pop in popnames:
+                # if the window has no sites in the VCF, assign all NAs,
+                # otherwise calculate Watterson's theta
+                if window_is_empty:
+                    avg_watterson_theta, watterson_theta, weighted_sites, no_sites, no_var_sites = "NA", "NA", "NA", 0, 0
+                else:
+
+                    # subset the window for the individuals in each population 
+                    gt_pop = gt_region.take(popindices[pop], axis=1)
+
+                    # if the population specific window for this region is empty, report it as such
+                    if (len(gt_pop) == 0):
+                        avg_watterson_theta, watterson_theta, weighted_sites, no_sites, no_var_sites = "NA", "NA", "NA", 0, 0
+
+                    # otherise compute Watterson's theta as normal
+                    else:
+                        # alleles are counted, variant alleles are extracted
+                        # number (no) of sites is count of sites with more than zero alleles
+                        # also give number of variant sites
+                        allele_counts = gt_pop.count_alleles(max_allele = 1)
+                        variant_counts = allele_counts[allele_counts[:,1] != 0]
+                        no_sites = np.count_nonzero(np.sum(allele_counts, 1))
+                        no_var_sites = np.count_nonzero(np.sum(variant_counts, 1))
+                        avg_watterson_theta, watterson_theta, weighted_sites = pixy.calc.calc_watterson_theta(gt_pop)                        
+                # create a string of the Watterson's theta results to write to file
+                #klk added NA so that pi/dxy/fst have the same # of columns, npb has kept this for watterson theta
+                pixy_result = "watterson_theta" + "\t" + str(pop) + "\tNA\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(avg_watterson_theta) + "\t" + str(no_sites) + "\t" + str(no_var_sites) + "\t" + str(watterson_theta) + "\t" + str(weighted_sites)
+                if 'pixy_output' in locals():
+                    pixy_output = pixy_output + "\n" + pixy_result
+                else:
+                    pixy_output = pixy_result
+
+        # TAJIMA_D:
+        # NEUTRALITY TEST TAKING NORMALIZED DIFFERENCE OF WATTERSON'S THETA AND PI
+
+        if (args.populations is not None) and ('tajima_d' in args.stats):
+
+            for pop in popnames:
+                # if the window has no sites in the VCF, assign all NAs,
+                # otherwise calculate Tajima's D
+                if window_is_empty:
+                    tajima_d, no_sites, pi, watterson_theta, d_stdev = "NA", 0, "NA", "NA", "NA"
+                else:
+
+                    # subset the window for the individuals in each population 
+                    gt_pop = gt_region.take(popindices[pop], axis=1)
+
+                    # if the population specific window for this region is empty, report it as such
+                    if (len(gt_pop) == 0):
+                        tajima_d, no_sites, pi, watterson_theta, d_stdev = "NA", 0, "NA", "NA", "NA"
+
+                    # otherwise compute Tajima's D as normal
+                    else:
+                        # number of sites genotyped in the population
+                        # not directly used in the calculation
+                        allele_counts = gt_pop.count_alleles(max_allele = 1)
+                        no_sites = np.count_nonzero(np.sum(allele_counts, 1))
+                        tajima_d, pi, watterson_theta, d_stdev = pixy.calc.calc_tajima_d(gt_pop)
+
+                # create a string of the Tajima's D results to write to file
+                #klk added NA so that pi/dxy/fst have the same # of columns, npb has kept this for Tajima's D
+                pixy_result = "tajima_d" + "\t" + str(pop) + "\tNA\t" + str(chromosome) + "\t" + str(window_pos_1) + "\t" + str(window_pos_2) + "\t" + str(tajima_d) + "\t" + str(no_sites) + "\t" + str(pi) + "\t" + str(watterson_theta) + "\t" + str(d_stdev)
+                if 'pixy_output' in locals():
+                    pixy_output = pixy_output + "\n" + pixy_result
+                else:
+                    pixy_output = pixy_result
     # OUTPUT
     # if in mc mode, put the results in the writing queue
     # otherwise just write to file
