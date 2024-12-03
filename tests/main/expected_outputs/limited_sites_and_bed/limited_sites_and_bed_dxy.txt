@@ -1,0 +1,7 @@
+pop1	pop2	chromosome	window_pos_1	window_pos_2	avg_dxy	no_sites	count_diffs	count_comparisons	count_missing
+BFS	KES	1	200	1000	0.0	1	0	1296	1036800
+BFS	KES	1	1500	1530	NA	0	0	0	40176
+BFS	KES	1	3540	5000	NA	0	0	0	1861056
+BFS	KES	X	1	1000	0.0	9	0	11664	1284336
+BFS	KES	X	1500	1530	0.0	4	0	5184	34992
+BFS	KES	X	1540	5000	NA	0	0	0	4453056

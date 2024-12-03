@@ -1,0 +1,2 @@
+pop	chromosome	window_pos_1	window_pos_2	avg_pi	no_sites	count_diffs	count_comparisons	count_missing
+1	1	1	10000	0.0192502222222222	5000	476443	24750000	0
