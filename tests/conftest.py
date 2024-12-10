@@ -59,6 +59,12 @@ def ag1000_vcf_path(datadir: Path) -> Path:
 
 
 @pytest.fixture()
+def ag1000_csi_path(datadir: Path) -> Path:
+    """Path to ag1000 VCF CSI index."""
+    return datadir / "ag1000_pixy_test.vcf.gz.csi"
+
+
+@pytest.fixture()
 def missing50_vcf_path(datadir: Path) -> Path:
     """Path to a simulated VCF that is known to be missing a small number of genotypes."""
     return datadir / "simulated_data_missing50p_genos.vcf.gz"
