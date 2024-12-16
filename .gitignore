@@ -10,3 +10,4 @@ output/*
 docs/_build
 
 __pycache__/
+.coverage

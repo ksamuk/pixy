@@ -1,4 +1,5 @@
 import filecmp
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -17,50 +18,64 @@ from tests.conftest import run_pixy_helper
 
 
 @pytest.mark.parametrize(
-    "bed_path, window_size, interval_start, interval_stop, expected_error_msg",
+    "bed_str, window_size, chromosomes, interval_start, interval_end, expected_error_msg",
     [
         (
             "test_bed_path",
             10000,
+            "all",
             None,
             None,
-            "ERROR: --interval_start, --interval_end, and --window_size",
+            "--interval_start, --interval_end, and --window_size",
         ),  # too many args: bed_path and window_size
         (
             "test_bed_path",
             10000,
+            "all",
             1,
             20,
-            "ERROR: --interval_start, --interval_end, and --window_size",
+            "--interval_start, --interval_end, and --window_size",
         ),  # too many args: bed_path, window_size, interval_start, and interval_stop
         (
             None,
             None,
+            "all",
             None,
             None,
-            "ERROR: In the absence of a BED file",
+            "In the absence of a BED file",
         ),  # no bed file and no window_size
         (
             None,
+            1,
+            "all",
+            1,
+            1,
+            "--interval_start and --interval_end are not valid when calculating over multiple",
+        ),  # can't specify an interval over multiple chromosomes
+        (
             None,
             1,
+            "X",
+            1,
             None,
-            "ERROR: When specifying an interval,",
+            "When specifying an interval,",
         ),  # too few args: only `interval_start` provided
         (
             None,
-            None,
+            1,
+            "X",
             None,
             1,
-            "ERROR: When specifying an interval,",
+            "When specifying an interval,",
         ),  # too few args: only `interval_end` provided
     ],
 )
 def test_missing_or_conflicting_args(
-    bed_path: str,
+    bed_str: Optional[str],
     window_size: Optional[int],
+    chromosomes: str,
     interval_start: Optional[int],
-    interval_stop: Optional[int],
+    interval_end: Optional[int],
     expected_error_msg: str,
     pixy_out_dir: Path,
     ag1000_vcf_path: Path,
@@ -72,13 +87,18 @@ def test_missing_or_conflicting_args(
 
     `vcf_path` and `populations_path` stay the same here and are tested separately elsewhere.
     """
-    with pytest.raises(Exception, match=expected_error_msg):
+    if bed_str is not None:
+        bed_path = request.getfixturevalue(bed_str)
+    else:
+        bed_path = None
+    with pytest.raises(ValueError, match=expected_error_msg):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
-            bed_path=request.getfixturevalue(bed_path),
+            bed_path=bed_path,
+            chromosomes=chromosomes,
             interval_start=interval_start,
-            interval_end=interval_stop,
+            interval_end=interval_end,
             window_size=window_size,
             vcf_path=ag1000_vcf_path,
             populations_path=ag1000_pop_path,
@@ -94,7 +114,7 @@ def test_vcf_missing_index(
     """Assert that we raise an exception when missing .tbi index."""
     missing_index_vcf_path: Path = tmp_path / "ag1000_pixy_test.vcf.gz"
     shutil.copy(ag1000_vcf_path, missing_index_vcf_path)
-    with pytest.raises(Exception, match="ERROR: The vcf is not indexed."):
+    with pytest.raises(ValueError, match="The vcf is not indexed."):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -108,8 +128,8 @@ def test_missing_tabix_path_raises(
     pixy_out_dir: Path, ag1000_pop_path: Path, ag1000_vcf_path: Path
 ) -> None:
     """Assert that we raise an exception when `tabix` is not on the path."""
-    with patch("pixy.core.shutil.which", return_value=None):
-        with pytest.raises(Exception, match="ERROR: tabix is not installed"):
+    with patch("pixy.args_validation.shutil.which", return_value=None):
+        with pytest.raises(ValueError, match="`tabix` is not installed"):
             run_pixy_helper(
                 pixy_out_dir=pixy_out_dir,
                 stats=["pi", "fst", "dxy"],
@@ -126,7 +146,7 @@ def test_missing_vcf_file_raises(tmp_path: Path, pixy_out_dir: Path, ag1000_pop_
     with open(vcf_path, "w") as f:
         f.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\t\\INFO\tFORMAT")
 
-    with pytest.raises(Exception, match="ERROR: The vcf is not compressed"):
+    with pytest.raises(ValueError, match="The vcf is not compressed"):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -138,7 +158,7 @@ def test_missing_vcf_file_raises(tmp_path: Path, pixy_out_dir: Path, ag1000_pop_
 
 def test_missing_pop_file_raises(pixy_out_dir: Path, ag1000_vcf_path: Path) -> None:
     """Assert that we raise an exception with a missing `populations_path`."""
-    with pytest.raises(Exception, match="ERROR: The specified populations file"):
+    with pytest.raises(FileNotFoundError, match="The specified populations file"):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -152,7 +172,7 @@ def test_missing_chroms_in_vcf_raises(
     pixy_out_dir: Path, ag1000_vcf_path: Path, ag1000_pop_path: Path
 ) -> None:
     """Assert that we raise an exception when a given chromosome subset is not found in the VCF."""
-    with pytest.raises(Exception, match="ERROR: the following chromosomes"):
+    with pytest.raises(ValueError, match="The following chromosomes"):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -170,7 +190,7 @@ def test_vcf_no_invariant_sites_raises(
     ag1000_invariant_vcf_path: Path,
 ) -> None:
     """Assert that we raise an error when a VCF contains no variable sites."""
-    with pytest.raises(Exception, match="ERROR: the provided VCF appears to contain no invariant"):
+    with pytest.raises(ValueError, match="The provided VCF appears to contain no invariant"):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -190,15 +210,15 @@ def test_vcf_no_invariant_sites_raises(
     [
         (
             """ERS224670\tBFS\nERS224248\tBFS\nERS224089\t""",
-            "ERROR: your populations file contains missing data",
+            "The specified populations file contains missing data",
         ),  # row missing 2nd column
         (
             """ERS224670\tBFS\nERS224248\tBFS\n""",
-            "ERROR: calcuation of fst and/or dxy requires at least two",
-        ),  # only 1 population here; `pixy` requires 2 populations for calcuation (sic)
+            "Calculation of fst and/or dxy requires at least two",
+        ),  # only 1 population here; `pixy` requires 2 populations for calculation
         (
             """INVALID_SAMPLE_ID_001\tXFS\nINVALID_SAMPLE_ID_002\tXFS\n""",
-            "ERROR: the following samples are listed",
+            "The following samples are listed",
         ),  # samples in populations.txt are not in VCF
     ],
 )
@@ -213,7 +233,7 @@ def test_malformed_populations_files_raises(
     malformed_pop_path: Path = tmp_path / "malformed_pop_file.txt"
     with open(malformed_pop_path, "w") as f:
         f.write(malformed_populations_input)
-    with pytest.raises(Exception, match=expected_error_msg):
+    with pytest.raises(ValueError, match=expected_error_msg):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -228,7 +248,11 @@ def test_malformed_populations_files_raises(
     [
         (
             """X\t1\nX\t2\nX\t""",
-            "ERROR: your sites file contains missing data",
+            "The specified sites file contains missing data",
+        ),  # row missing position
+        (
+            """X\n1\n2\n3\n""",
+            "Too many columns specified: expected 2 and found 1",
         ),  # row missing position
     ],
 )
@@ -248,8 +272,7 @@ def test_malformed_sites_file(
     malformed_site_path: Path = tmp_path / "malformed_sites_file.txt"
     with open(malformed_site_path, "w") as f:
         f.write(malformed_sites_input)
-
-    with pytest.raises(Exception, match=expected_error_msg):
+    with pytest.raises(ValueError, match=expected_error_msg):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -265,7 +288,7 @@ def test_malformed_sites_file(
     [
         (
             """X\t1\t20\nX\t2\n""",
-            "ERROR: your bed file contains missing data",
+            "The specified BED file contains missing data",
         ),  # row missing position
     ],
 )
@@ -286,7 +309,7 @@ def test_malformed_bed_file(
 
     with open(bed_path, "w") as f:
         f.write(malformed_bed_input)
-    with pytest.raises(Exception, match=expected_error_msg):
+    with pytest.raises(ValueError, match=expected_error_msg):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -306,12 +329,12 @@ def test_vcf_bed_chrom_difference_warns(
     pixy_out_dir: Path,
     ag1000_pop_path: Path,
     ag1000_vcf_path: Path,
-    capsys: pytest.CaptureFixture,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Assert that chromosomes in .bed but not .vcf yields a warning."""
     temp_dir = tmp_path_factory.mktemp("warn_files")
     bed_path: Path = temp_dir / "not_in_vcf.bed"
-
+    caplog.set_level(logging.WARNING)
     with open(bed_path, "w") as f:
         f.write("""X\t1\t20\nX\t2\t30\n""")  # X is in the VCF
         f.write("""23\t1\t20\n23\t2\t30\n""")  # 23 is not in the VCF
@@ -323,16 +346,17 @@ def test_vcf_bed_chrom_difference_warns(
         vcf_path=ag1000_vcf_path,
         populations_path=ag1000_pop_path,
     )
-    out, _ = capsys.readouterr()
-
-    assert "WARNING: the following chromosomes in the BED file" in out
+    assert (
+        "The following chromosomes are in the BED file but do not occur in the VCF "
+        "and will be ignored: ['23']" in caplog.messages
+    )
 
 
 def test_bypass_invariant_check_warns(
     pixy_out_dir: Path,
     ag1000_pop_path: Path,
     ag1000_vcf_path: Path,
-    capsys: pytest.CaptureFixture,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Assert that `--bypass_invariant_check flag yields a warning."""
     run_pixy_helper(
@@ -343,8 +367,7 @@ def test_bypass_invariant_check_warns(
         populations_path=ag1000_pop_path,
         bypass_invariant_check="yes",
     )
-    out, _ = capsys.readouterr()
-    assert "EXTREME WARNING: --bypass_invariant_check is set to 'yes'" in out
+    assert "EXTREME WARNING: --bypass_invariant_check is set to 'yes'" in caplog.text
 
 
 ################################################################################
@@ -598,7 +621,7 @@ def test_pixy_limited_sites_bed(
     expected_outputs: Path,
     ag1000_pop_path: Path,
     ag1000_vcf_path: Path,
-    capsys: pytest.CaptureFixture,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
     Test that `pixy` produces deterministic stats given static input data.
@@ -616,13 +639,14 @@ def test_pixy_limited_sites_bed(
         debug=True,
         cores=1,
     )
-    out, _ = capsys.readouterr()
+    expected_warnings: List[str] = [
+        "The following chromosomes are in the BED file but do not occur in the VCF "
+        "and will be ignored: ['5']",
+        "The following chromosomes occur in the sites file but do not occur in the VCF "
+        "and will be ignored: ['B']",
+    ]
 
-    expected_warning: str = (
-        "WARNING: the following chromosomes in the sites file do not occur in the VCF and will be "
-        "ignored: ['B']"
-    )
-    assert expected_warning in out
+    assert set(expected_warnings) == set(caplog.messages)
 
     expected_out_files: List[Path] = [
         Path("limited_sites_and_bed_dxy.txt"),

@@ -1,12 +1,19 @@
 import typing
-from typing import Tuple, Union, List, Any
+from typing import Tuple, Union, List
 
 from allel import AlleleCountsArray, GenotypeArray
 
 import allel
 import numpy as np
+from numpy.typing import NDArray
 
 from scipy import special
+
+from pixy.models import NA
+from pixy.models import DxyResult
+from pixy.models import FstResult
+from pixy.models import PiResult
+from pixy.enums import FSTEstimator
 
 
 # vectorized functions for calculating pi and dxy
@@ -38,7 +45,7 @@ def count_diff_comp_missing(row: AlleleCountsArray, n_haps: int) -> Tuple[int, i
 
 
 # function for vectorized calculation of pi from a pre-filtered scikit-allel genotype matrix
-def calc_pi(gt_array: GenotypeArray) -> Tuple[Union[float, str], int, int, int]:
+def calc_pi(gt_array: GenotypeArray) -> PiResult:
     """Given a filtered genotype matrix, calculate `pi`.
 
     Args:
@@ -78,20 +85,20 @@ def calc_pi(gt_array: GenotypeArray) -> Tuple[Union[float, str], int, int, int]:
 
     # if there are valid data (comparisons between genotypes) at the site, compute average dxy
     # otherwise return NA
-    avg_pi: Union[float, str]
-    if total_comps > 0:
-        avg_pi = total_diffs / total_comps
-    else:
-        avg_pi = "NA"
+    avg_pi: Union[float, NA] = total_diffs / total_comps if total_comps > 0 else "NA"
 
-    return (avg_pi, total_diffs, total_comps, total_missing)
+    return PiResult(
+        avg_pi=avg_pi,
+        total_diffs=total_diffs,
+        total_comps=total_comps,
+        total_missing=total_missing,
+    )
 
 
 # function for vectorized calculation of dxy from a pre-filtered scikit-allel genotype matrix
-def calc_dxy(
-    pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray
-) -> Tuple[Union[float, str], int, int, int]:
-    """Given a filtered genotype matrix, calculate `dxy`.
+def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyResult:
+    """
+    Given a filtered genotype matrix, calculate `dxy`.
 
     Args:
         pop1_gt_array: the GenotypeArray representing population-specific allele counts
@@ -103,7 +110,6 @@ def calc_dxy(
         total_diffs: sum of the number of differences between the populations
         total_comps: sum of the number of comparisons between the populations
         total_missing: sum of the number of missing between the populations
-
     """
 
     # the counts of each of the two alleles in each population at each site
@@ -134,13 +140,14 @@ def calc_dxy(
 
     # if there are valid data (comparisons between genotypes) at the site, compute average dxy
     # otherwise return NA
-    avg_dxy: Union[float, str]
-    if total_comps > 0:
-        avg_dxy = total_diffs / total_comps
-    else:
-        avg_dxy = "NA"
+    avg_dxy: Union[float, NA] = total_diffs / total_comps if total_comps > 0 else "NA"
 
-    return (avg_dxy, total_diffs, total_comps, total_missing)
+    return DxyResult(
+        avg_dxy=avg_dxy,
+        total_diffs=total_diffs,
+        total_comps=total_comps,
+        total_missing=total_missing,
+    )
 
 
 # function for obtaining fst AND variance components via scikit allel function
@@ -149,8 +156,8 @@ def calc_dxy(
 # in aggregation mode, we just want a,b,c and n_sites for aggregating and fst
 @typing.no_type_check
 def calc_fst(
-    gt_array_fst: GenotypeArray, fst_pop_indicies: List[List[int]], fst_type: str
-) -> Tuple[Union[float, str], float, float, Union[float, int], int]:
+    gt_array_fst: GenotypeArray, fst_pop_indicies: List[List[int]], fst_type: FSTEstimator
+) -> FstResult:
     # TODO: update the return type here after refactoring (2 -> 1 return statements)
     """Calculates FST according to either Weir and Cockerham (1984) or Hudson (1992).
 
@@ -185,6 +192,9 @@ def calc_fst(
     a: List[float]
     b: List[float]
     c: Union[List[float], int]
+
+    result: FstResult
+
     # WC 84
     if fst_type == "wc":
         a, b, c = allel.weir_cockerham_fst(gt_array_fst, subpops=fst_pop_indicies)
@@ -201,8 +211,7 @@ def calc_fst(
         else:
             fst = "NA"
 
-        return (fst, a, b, c, n_sites)
-    # TODO: can't get mypy to recognize multiple return statements of slightly different structures?
+        result = FstResult(fst=fst, a=a, b=b, c=c, n_sites=n_sites)
 
     # Hudson 92
     if fst_type == "hudson":
@@ -228,8 +237,9 @@ def calc_fst(
 
         # same abc format as WC84, where 'a' is the numerator and
         # 'b' is the demoninator, and 'c' is a zero placeholder
-        return (fst, num, den, c, n_sites)
-    # TODO: mypy thinks this function is missing a return statement
+        result = FstResult(fst=fst, a=num, b=den, c=c, n_sites=n_sites)
+    
+    return result
 
 
 # simplified version of above to handle the case
@@ -237,8 +247,10 @@ def calc_fst(
 
 
 def calc_fst_persite(
-    gt_array_fst: GenotypeArray, fst_pop_indicies: List[List[int]], fst_type: str
-) -> Any:
+    gt_array_fst: GenotypeArray,
+    fst_pop_indicies: List[List[int]],
+    fst_type: str,
+) -> NDArray[np.float64]:
     """Calculates site-specific FST according to Weir and Cockerham (1984) or Hudson (1992).
 
     Args:
@@ -252,15 +264,13 @@ def calc_fst_persite(
     """
 
     # compute basic (multisite) FST via scikit allel
+    fst: NDArray[np.float64]
 
     # WC 84
     if fst_type == "wc":
         a, b, c = allel.weir_cockerham_fst(gt_array_fst, subpops=fst_pop_indicies)
 
         fst = np.sum(a, axis=1) / (np.sum(a, axis=1) + np.sum(b, axis=1) + np.sum(c, axis=1))
-
-        return fst
-        # TODO: fix nested returns
 
     # Hudson 92
     elif fst_type == "hudson":
@@ -274,4 +284,7 @@ def calc_fst_persite(
 
         fst = num / den
 
-        return fst
+    else:
+        raise ValueError("fst_type must be either 'wc' or 'hudson'")
+
+    return fst
