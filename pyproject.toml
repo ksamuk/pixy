@@ -71,6 +71,7 @@ fix-and-check-all.sequence    = [
 
 [tool.mypy]
 files                       = ["./"]
+mypy_path                   = "./stubs"
 strict_optional             = true
 strict_equality             = true
 check_untyped_defs          = true
@@ -117,11 +118,6 @@ line-length    = 100
 target-version = "py38"
 output-format  = "full"
 preview        = true
-exclude        = [
-    "pixy/__main__.py",
-    "pixy/calc.py",
-    "pixy/core.py",
-]
 
 [tool.ruff.lint]
 select    = [
