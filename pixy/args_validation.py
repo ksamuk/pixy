@@ -76,8 +76,8 @@ class PixyArgs:
     output_dir: Path
     temp_file: Path
     chromosomes: List[str]
+    bypass_invariant_check: bool
     num_cores: int = 1
-    bypass_invariant_check: bool = False
     fst_type: FSTEstimator = FSTEstimator.WC
     output_prefix: str = "pixy"
     chunk_size: int = 100000
@@ -507,8 +507,8 @@ def check_and_validate_args(  # noqa: C901
     # a very basic check: just looks for at least one invariant site in the alt field
     logger.info("Checking for invariant sites...")
     check_message = "OK"
-
-    if args.bypass_invariant_check == "no":
+    bypass_invariant_check: bool = args.bypass_invariant_check == "yes"
+    if not bypass_invariant_check:
         alt_list = (
             subprocess.check_output(
                 "gunzip -c "
@@ -649,7 +649,7 @@ def check_and_validate_args(  # noqa: C901
         vcf_path=Path(vcf_path),
         populations_df=populations_df,
         num_cores=args.n_cores,
-        bypass_invariant_check=args.bypass_invariant_check,
+        bypass_invariant_check=bypass_invariant_check,
         bed_df=bed_df,
         output_dir=Path(output_folder),
         output_prefix=output_prefix,

@@ -17,6 +17,7 @@ from tests.conftest import run_pixy_helper
 ################################################################################
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "bed_str, window_size, chromosomes, interval_start, interval_end, expected_error_msg",
     [
@@ -105,6 +106,7 @@ def test_missing_or_conflicting_args(
         )
 
 
+@pytest.mark.regression
 def test_vcf_missing_index(
     pixy_out_dir: Path,
     tmp_path: Path,
@@ -124,6 +126,7 @@ def test_vcf_missing_index(
         )
 
 
+@pytest.mark.regression
 def test_missing_tabix_path_raises(
     pixy_out_dir: Path, ag1000_pop_path: Path, ag1000_vcf_path: Path
 ) -> None:
@@ -139,6 +142,7 @@ def test_missing_tabix_path_raises(
             )
 
 
+@pytest.mark.regression
 def test_missing_vcf_file_raises(tmp_path: Path, pixy_out_dir: Path, ag1000_pop_path: Path) -> None:
     """Assert that we raise an exception with an uncompressed VCF file."""
     vcf_path: Path = tmp_path / "uncompressed_vcf.vcf"
@@ -156,6 +160,7 @@ def test_missing_vcf_file_raises(tmp_path: Path, pixy_out_dir: Path, ag1000_pop_
         )
 
 
+@pytest.mark.regression
 def test_missing_pop_file_raises(pixy_out_dir: Path, ag1000_vcf_path: Path) -> None:
     """Assert that we raise an exception with a missing `populations_path`."""
     with pytest.raises(FileNotFoundError, match="The specified populations file"):
@@ -168,6 +173,7 @@ def test_missing_pop_file_raises(pixy_out_dir: Path, ag1000_vcf_path: Path) -> N
         )
 
 
+@pytest.mark.regression
 def test_missing_chroms_in_vcf_raises(
     pixy_out_dir: Path, ag1000_vcf_path: Path, ag1000_pop_path: Path
 ) -> None:
@@ -183,6 +189,7 @@ def test_missing_chroms_in_vcf_raises(
         )
 
 
+@pytest.mark.regression
 def test_vcf_no_invariant_sites_raises(
     ag1000_pop_path: Path,
     test_bed_path: Path,
@@ -205,6 +212,7 @@ def test_vcf_no_invariant_sites_raises(
 ################################################################################
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "malformed_populations_input, expected_error_msg",
     [
@@ -243,6 +251,7 @@ def test_malformed_populations_files_raises(
         )
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "malformed_sites_input, expected_error_msg",
     [
@@ -283,6 +292,7 @@ def test_malformed_sites_file(
         )
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "malformed_bed_input, expected_error_msg",
     [
@@ -324,6 +334,7 @@ def test_malformed_bed_file(
 ################################################################################
 
 
+@pytest.mark.regression
 def test_vcf_bed_chrom_difference_warns(
     tmp_path_factory: pytest.TempPathFactory,
     pixy_out_dir: Path,
@@ -352,6 +363,7 @@ def test_vcf_bed_chrom_difference_warns(
     )
 
 
+@pytest.mark.regression
 def test_bypass_invariant_check_warns(
     pixy_out_dir: Path,
     ag1000_pop_path: Path,
@@ -379,6 +391,7 @@ def test_bypass_invariant_check_warns(
 #############################
 
 
+@pytest.mark.regression
 def test_pixy_csi_index(
     tmp_path: Path,
     ag1000_pop_path: Path,
@@ -428,6 +441,7 @@ def test_pixy_csi_index(
 #######################################
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "output_prefix, stats_requested, expected_files",
     [
@@ -480,6 +494,7 @@ def test_pixy_output_creation(
 ################################################################################
 
 
+@pytest.mark.regression
 def test_pixy_main_valid_inputs(
     pixy_out_dir: Path,
     expected_outputs: Path,
@@ -521,6 +536,7 @@ def test_pixy_main_valid_inputs(
 ################################################################################
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize(
     "window_size, sites_file, stats, output_prefix",
     [
@@ -573,6 +589,7 @@ def test_pixy_limited_sites(
 ################################################################################
 # Tests for pixy.main(): limited BED file
 ################################################################################
+@pytest.mark.regression
 def test_pixy_limited_bed_file(
     pixy_out_dir: Path,
     test_three_chrom_bed_path: Path,
@@ -614,6 +631,7 @@ def test_pixy_limited_bed_file(
 ################################################################################
 
 
+@pytest.mark.regression
 def test_pixy_limited_sites_bed(
     pixy_out_dir: Path,
     test_three_chrom_bed_path: Path,
@@ -664,6 +682,7 @@ def test_pixy_limited_sites_bed(
 ################################################################################
 
 
+@pytest.mark.regression
 def test_pixy_hudson_fst(
     pixy_out_dir: Path,
     expected_outputs: Path,
