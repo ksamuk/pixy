@@ -179,3 +179,20 @@ def read_vcf(
     log: Optional[TextIO] = None,
 ) -> Optional[Dict[str, NDArray]]: ...
 def read_vcf_headers(input: Any) -> VCFHeaders: ...
+
+####################################################################################################
+# allel.mean_pairwise_difference
+# https://github.com/cggh/scikit-allel/blob/master/allel/allel/stats/diversity.py
+####################################################################################################
+def mean_pairwise_difference(
+    ac: NDArray,
+    an: NDArray,
+    fill: float = np.nan,
+) -> NDArray: ...
+def mean_pairwise_difference_between(
+    ac1: NDArray,
+    ac2: NDArray,
+    an1: Optional[NDArray] = None,
+    an2: Optional[NDArray] = None,
+    fill: float = np.nan,
+) -> NDArray: ...

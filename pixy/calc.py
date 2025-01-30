@@ -195,6 +195,11 @@ def calc_fst(
 
     # WC 84
     if fst_type is FSTEstimator.WC:
+        if gt_array_fst.ploidy != 2:
+            raise NotImplementedError(
+                "`pixy` does not currently support calculation "
+                "of Weir-Cockerham FST in non-diploid genomes"
+            )
         a: NDArray
         b: NDArray
         c: NDArray
