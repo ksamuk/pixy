@@ -19,48 +19,69 @@ from pixy.models import PiResult
 # these are reimplementations of the original functions
 
 
-# helper function for calculation of pi
-# for the given site (row of the count table) count number of differences, number of comparisons,
-# and number missing.
-# uses number of haploid samples (n_haps) to determine missing data
 def count_diff_comp_missing(row: AlleleCountsArray, n_haps: int) -> Tuple[int, int, int]:
     """
-    Calculates site-specific statistics for `pi` calculation across populations.
+    Helper function for the calculation of pi.
+
+    For the given site (row of the count table), count the number of differences, number of
+    comparisons, and number of missing. The function uses the number of haploid samples (n_haps) to
+    compute the number of expected genotype comparisons and determine the count of missing.
 
     Args:
-        row: counts of each of the two alleles at a given site
+        row: counts of each allele at a given site
         n_haps: number of haploid samples in the population
 
     Returns:
-        diffs: number of differences between the populations
-        comps: number of comparisons between the populations
-        missing: number of missing between the populations
-
+        A tuple `(diffs, comps, missing)`, where `diffs` is the number of differences within the
+        population, `comps` is the number of comparisons made within the population, and `missing`
+        is the difference between the actual number of comparisons and the total possible (based on
+        the number of haploid samples).
     """
-    diffs = row[1] * row[0]
-    gts = row[1] + row[0]
-    comps = int(special.comb(N=gts, k=2))  # calculate combinations, return an integer
-    missing = int(special.comb(N=n_haps, k=2)) - comps
+    n_gts: int = np.sum(row)  # number of observed genotypes
+
+    # number of possible pairwise comparisons, if all samples are called
+    n_possible_comps: int = int(special.comb(N=n_haps, k=2))
+
+    if n_gts == 0:
+        # No observed genotypes in the row
+        return 0, 0, n_possible_comps
+
+    # Find the highest index of an observed allele, and assume it is the allelism of the site
+    # (If the variant technically has other alleles, they zero out anyways)
+    observed_alleles: NDArray = np.nonzero(row)[0]
+    allelism = np.argmax(observed_alleles) + 1
+
+    comps = int(special.comb(N=n_gts, k=2))  # calculate combinations, return an integer
+    missing = n_possible_comps - comps
+
+    # Use shortcut: the number of differences is the sum of all pairwise products of the observed
+    # allele counts
+    diffs = 0
+    for i in range(allelism - 1):
+        for j in range(i + 1, allelism):
+            diffs += row[i] * row[j]
+
     return diffs, comps, missing
 
 
-# function for vectorized calculation of pi from a pre-filtered scikit-allel genotype matrix
 def calc_pi(gt_array: GenotypeArray) -> PiResult:
     """
     Given a filtered genotype matrix, calculate `pi`.
 
+    This function implements vectorized calculation of pi from a pre-filtered scikit-allel genotype
+    matrix. This function does not support filtering of the input by population - it simply
+    calculates pi on all of the provided samples.
+
     Args:
-        gt_array: the GenotypeArray representing the counts of each of the two alleles
+        gt_array: a GenotypeArray representing the calls of each variant at each filtered site in a
+            given population. This array must be pre-filtered to the population of interest.
 
     Returns:
-        avg_pi: proportion of total differences across total comparisons. "NA" if no valid data.
-        total_diffs: sum of the number of differences between the populations
-        total_comps: sum of the number of comparisons between the populations
-        total_missing: sum of the number of missing between the populations
-
+        The average `pi` and total difference, comparison, and missing counts over all sites in the
+        input array.
     """
     # counts of each of the two alleles at each site
-    allele_counts: AlleleCountsArray = gt_array.count_alleles(max_allele=1)
+    allele_counts: AlleleCountsArray = gt_array.count_alleles()
 
     # the number of (haploid) samples in the population
     n_haps = gt_array.n_samples * gt_array.ploidy
@@ -111,28 +132,39 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
         total_comps: sum of the number of comparisons between the populations
         total_missing: sum of the number of missing between the populations
     """
+    if pop1_gt_array.n_variants != pop2_gt_array.n_variants:
+        raise ValueError("Input genotype matrices must have the same number of variants")
+
+    n_sites: int = pop1_gt_array.n_variants
+
     # the counts of each of the two alleles in each population at each site
-    pop1_allele_counts: AlleleCountsArray = pop1_gt_array.count_alleles(max_allele=1)
-    pop2_allele_counts: AlleleCountsArray = pop2_gt_array.count_alleles(max_allele=1)
+    pop1_allele_counts: AlleleCountsArray = pop1_gt_array.count_alleles()
+    pop2_allele_counts: AlleleCountsArray = pop2_gt_array.count_alleles()
 
     # the number of (haploid) samples in each population
     pop1_n_haps: int = pop1_gt_array.n_samples * pop1_gt_array.ploidy
     pop2_n_haps: int = pop2_gt_array.n_samples * pop2_gt_array.ploidy
 
-    # the total number of differences between populations summed across all sites
-    total_diffs: int = (pop1_allele_counts[:, 0] * pop2_allele_counts[:, 1]) + (
-        pop1_allele_counts[:, 1] * pop2_allele_counts[:, 0]
-    )
-    total_diffs = np.sum(total_diffs, 0)
+    # Find the highest index of an observed allele, and assume it is the allelism of every site
+    # (If a site has fewer alleles, they zero out)
+    allelism = np.max([pop1_allele_counts.max_allele(), pop2_allele_counts.max_allele()]) + 1
 
-    # the total number of pairwise comparisons between sites
-    total_comps: int = (pop1_allele_counts[:, 0] + pop1_allele_counts[:, 1]) * (
-        pop2_allele_counts[:, 0] + pop2_allele_counts[:, 1]
-    )
-    total_comps = np.sum(total_comps, 0)
+    # the total number of differences between populations summed across all sites
+    persite_diffs: NDArray = np.zeros(n_sites)
+    for i in range(allelism):
+        for j in range(allelism):
+            if i != j:
+                persite_diffs += pop1_allele_counts[:, i] * pop2_allele_counts[:, j]
+
+    total_diffs: int = np.sum(persite_diffs)
+
+    # the total number of actual pairwise comparisons between sites, excluding missing calls
+    persite_comps: NDArray = np.sum(pop1_allele_counts, axis=1) * np.sum(pop2_allele_counts, axis=1)
+    assert persite_comps.shape == (n_sites,)
+    total_comps: int = np.sum(persite_comps)
 
     # the total count of possible pairwise comparisons at all sites
-    total_possible: int = (pop1_n_haps * pop2_n_haps) * len(pop1_allele_counts)
+    total_possible: int = (pop1_n_haps * pop2_n_haps) * n_sites
 
     # the amount of missing is possible comps - actual ('total') comps
     total_missing: int = total_possible - total_comps

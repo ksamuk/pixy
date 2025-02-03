@@ -42,6 +42,7 @@ class PixyArgs:
         populations_df: a pandas DataFrame derived from a user-specified path to a headerless
             tab-separated populations file
         num_cores: number of CPUs to utilize for parallel processing (default = 1)
+        include_multiallelic_snps: If True, include multiallelic sites in the analysis
         bypass_invariant_check: whether to allow computation of stats without invariant sites
             (this option is never recommended and defaults to False)
         bed_df: a pandas DataFrame derived from a user-specified path to a headerless BED file.
@@ -77,6 +78,7 @@ class PixyArgs:
     temp_file: Path
     chromosomes: List[str]
     bypass_invariant_check: bool
+    include_multiallelic_snps: bool
     num_cores: int = 1
     fst_type: FSTEstimator = FSTEstimator.WC
     output_prefix: str = "pixy"
@@ -640,6 +642,8 @@ def check_and_validate_args(  # noqa: C901
             "defined in the population file."
         )
 
+    include_multiallelic_snps: bool = args.include_multiallelic_snps == "yes"
+
     logger.info("All initial checks passed!")
     stats: List[PixyStat] = [PixyStat[stat.upper()] for stat in args.stats]
     tmp_path: Path = _generate_tmp_path(output_dir=output_folder)
@@ -650,6 +654,7 @@ def check_and_validate_args(  # noqa: C901
         populations_df=populations_df,
         num_cores=args.n_cores,
         bypass_invariant_check=bypass_invariant_check,
+        include_multiallelic_snps=include_multiallelic_snps,
         bed_df=bed_df,
         output_dir=Path(output_folder),
         output_prefix=output_prefix,

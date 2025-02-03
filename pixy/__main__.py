@@ -211,6 +211,13 @@ def main() -> None:  # noqa: C901
         required=False,
     )
     optional.add_argument(
+        "--include_multiallelic_snps",
+        choices=["yes", "no"],
+        default="no",
+        help=("Multiallelic SNPs within the VCF will be included during calculation.(default=no)."),
+        required=False,
+    )
+    optional.add_argument(
         "--bypass_invariant_check",
         choices=["yes", "no"],
         default="no",
