@@ -295,9 +295,6 @@ def read_and_filter_genotypes(
     Filters out non-SNPs, multi-allelic SNPs, and non-variant sites. Optionally masks out
     non-target sites based on a provided list (`sites_list_chunk`).
 
-    Variants for which the depth of coverage (`DP`) is less than 1 are considered to be missing
-    and replaced with `-1`.
-
     If the VCF contains no variants over the specified genomic region, sets `callset_is_none` to `True`.
 
     Args:
@@ -326,7 +323,6 @@ def read_and_filter_genotypes(
             "CHROM",
             "POS",
             "calldata/GT",
-            "calldata/DP",
             "variants/is_snp",
             "variants/numalt",
         ],
@@ -342,11 +338,6 @@ def read_and_filter_genotypes(
     else:
         # if the callset is NOT empty (None), continue with pipeline
         callset_is_none = False
-
-        # fix for cursed GATK 4.0 missing data representation
-        # forces DP<1 (zero) to be missing data (-1 in scikit-allel)
-        # BROKEN HERE <- add if statement to check if DP info is present!
-        callset["calldata/GT"][callset["calldata/DP"] < 1, :] = -1
 
         # convert to a genotype array object
         gt_array = allel.GenotypeArray(allel.GenotypeDaskArray(callset["calldata/GT"]))
