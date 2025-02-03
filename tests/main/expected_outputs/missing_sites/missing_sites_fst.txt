@@ -1,0 +1,2 @@
+pop1	pop2	chromosome	window_pos_1	window_pos_2	avg_wc_fst	no_snps
+1	2	1	1	10000	-0.0039598256427341	889

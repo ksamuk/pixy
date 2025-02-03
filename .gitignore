@@ -8,3 +8,5 @@ data/vcf
 .ipynb_checkpoints/*
 output/*
 docs/_build
+
+__pycache__/

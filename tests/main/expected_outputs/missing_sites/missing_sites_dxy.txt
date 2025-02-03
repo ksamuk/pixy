@@ -1,0 +1,2 @@
+pop1	pop2	chromosome	window_pos_1	window_pos_2	avg_dxy	no_sites	count_diffs	count_comparisons	count_missing
+1	2	1	1	10000	0.0192096	5000	240120	12500000	0
