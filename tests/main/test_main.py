@@ -94,7 +94,7 @@ def test_vcf_missing_index(
     """Assert that we raise an exception when missing .tbi index."""
     missing_index_vcf_path: Path = tmp_path / "ag1000_pixy_test.vcf.gz"
     shutil.copy(ag1000_vcf_path, missing_index_vcf_path)
-    with pytest.raises(Exception, match="ERROR: The vcf is not indexed with tabix"):
+    with pytest.raises(Exception, match="ERROR: The vcf is not indexed."):
         run_pixy_helper(
             pixy_out_dir=pixy_out_dir,
             stats=["pi", "fst", "dxy"],
@@ -350,6 +350,59 @@ def test_bypass_invariant_check_warns(
 ################################################################################
 # Tests for pixy.main(): valid inputs and expected results
 ################################################################################
+
+#############################
+# Tests for VCF file indexes
+#############################
+
+
+def test_pixy_csi_index(
+    tmp_path: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+    ag1000_csi_path: Path,
+    pixy_out_dir: Path,
+    expected_outputs: Path,
+) -> None:
+    """
+    Assert that a VCF can have either a `.tbi` or a `.csi` index with valid inputs.
+
+    The outputs with a `.csi` index should match the outputs of the `.tbi` index.
+
+    NB, we copy `ag1000_pixy_test.vcf.gz` and `ag1000_pixy_test.vcf.gz.csi` into a clean directory
+    so that we can be confident there is no interference from the pre-existing `.tbi` file.
+    """
+    vcf_path: Path = tmp_path / "ag1000_pixy_test.vcf.gz"
+    csi_path: Path = tmp_path / "ag1000_pixy_test.vcf.gz.csi"
+    shutil.copy(ag1000_vcf_path, vcf_path)
+    shutil.copy(ag1000_csi_path, csi_path)
+
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        window_size=10000,
+        vcf_path=vcf_path,
+        populations_path=ag1000_pop_path,
+        stats=["pi", "dxy", "fst"],
+        output_prefix="pixy",
+    )
+
+    expected_out_files: List[Path] = [
+        Path("pixy_dxy.txt"),
+        Path("pixy_fst.txt"),
+        Path("pixy_pi.txt"),
+    ]
+    # this run of `pixy` should match the run using the same inputs and a `.tbi` index
+    for file in expected_out_files:
+        generated_data_path: Path = pixy_out_dir / file
+        exp_data_path: Path = expected_outputs / "baseline" / file
+        assert generated_data_path.exists()
+
+        assert filecmp.cmp(generated_data_path, exp_data_path)
+
+
+#######################################
+# Tests for output formatting/creation
+#######################################
 
 
 @pytest.mark.parametrize(

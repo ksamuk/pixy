@@ -1004,9 +1004,9 @@ def check_and_validate_args(
             '[pixy] ERROR: The vcf is not compressed with bgzip (or has no .gz extension). To fix this, run "bgzip [filename].vcf" first (and then index with "tabix [filename].vcf.gz" if necessary)'
         )
 
-    if not os.path.exists(args.vcf + ".tbi"):
+    if not (os.path.exists(args.vcf + ".tbi") or os.path.exists(args.vcf + ".csi")):
         raise Exception(
-            '[pixy] ERROR: The vcf is not indexed with tabix. To fix this, run "tabix [filename].vcf.gz" first'
+            '[pixy] ERROR: The vcf is not indexed. Please either use `tabix` or `bcftools` to produce a `.tbi` or `.csi` index.'
         )
 
     if os.path.exists(args.populations) is not True:
