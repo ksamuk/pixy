@@ -1,11 +1,19 @@
 #!/usr/bin/env python
 # coding: utf-8
 import typing
+import argparse
+import logging
+import os
+import re
+import subprocess
+import sys
+import time
 from multiprocessing.context import BaseContext
 from multiprocessing import Manager
 from multiprocessing.managers import BaseManager
 from multiprocessing.pool import ApplyResult
 from typing import List
+from typing import Optional
 
 import numpy as np
 import sys
@@ -24,6 +32,9 @@ import multiprocess as mp
 import pixy.core
 import pixy.calc
 
+from pixy.args_validation import PixyArgs
+from pixy.enums import FSTEstimator
+from pixy.enums import PixyStat
 
 # main pixy function
 
@@ -37,7 +48,17 @@ def main() -> None:
 
     help_text = "pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites"
     version = "1.2.10.beta2"
-    citation = "Korunes, KL and K Samuk. pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326."
+    citation = (
+        "Korunes, KL and K Samuk. "
+        "pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of "
+        "missing data. "
+        "Mol Ecol Resour. 2021 Jan 16. doi: 10.1111/1755-0998.13326."
+    )
+    # initialize logger
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s:%(funcName)s:%(lineno)s [%(levelname)s]: %(message)s",
+    )
 
     # initialize arguments
     parser = argparse.ArgumentParser(
@@ -195,41 +216,38 @@ def main() -> None:
     # returns parsed populaion, chromosome, and sample info
     print("[pixy] pixy " + version)
     print("[pixy] See documentation at https://pixy.readthedocs.io/en/latest/")
-    (
-        popnames,
-        popindices,
-        chrom_list,
-        IDs,
-        temp_file,
-        output_folder,
-        output_prefix,
-        bed_df,
-        sites_df,
-    ) = pixy.core.check_and_validate_args(args)
+
+    pixy_args: PixyArgs = pixy.args_validation.check_and_validate_args(args)
+    popindices = {}
+    for name in pixy_args.pop_names:
+        popindices[name] = pixy_args.populations_df[
+            pixy_args.populations_df.Population == name
+        ].callset_index.values
+    chrom_list = pixy_args.chromosomes
 
     print(
         "\n[pixy] Preparing for calculation of summary statistics: "
-        + ", ".join(map(str, args.stats))
+        + ", ".join(map(str, pixy_args.stats))
     )
 
-    if "fst" in args.stats:
-        if args.fst_type == "wc":
+    if PixyStat.FST in pixy_args.stats:
+        if pixy_args.fst_type is FSTEstimator.WC:
             fst_cite = "Weir and Cockerham (1984)"
-        elif args.fst_type == "hudson":
+        elif pixy_args.fst_type is FSTEstimator.HUDSON:
             fst_cite = "Hudson (1992)"
         print("[pixy] Using " + fst_cite + "'s estimator of FST.")
 
     print(
         "[pixy] Data set contains "
-        + str(len(popnames))
+        + str(len(pixy_args.pop_names))
         + " population(s), "
         + str(len(chrom_list))
         + " chromosome(s), and "
-        + str(len(IDs))
+        + str(len(pixy_args.pop_ids))
         + " sample(s)"
     )
 
-    if args.window_size is not None:
+    if pixy_args.window_size is not None:
         print("[pixy] Window size: " + str(args.window_size) + " bp")
 
     if args.bed_file is not None:
@@ -248,13 +266,13 @@ def main() -> None:
     )
     print(
         "[pixy] Using "
-        + str(args.n_cores)
+        + str(pixy_args.num_cores)
         + " out of "
         + str(mp.cpu_count())
         + " available CPU cores\n"
     )
     # if in mc mode, set up multiprocessing
-    if args.n_cores > 1:
+    if pixy_args.num_cores > 1:
         # use forking context on linux, and spawn otherwise (macOS)
         if sys.platform == "linux":
             ctx: BaseContext = mp.get_context("fork")
@@ -290,25 +308,29 @@ def main() -> None:
             listener,
             args=(
                 q,
-                temp_file,
+                str(pixy_args.temp_file),
             ),
         )
 
     # begin processing each chromosome
 
-    for chromosome in chrom_list:
+    for chromosome in pixy_args.chromosomes:
         print("[pixy] Processing chromosome/contig " + chromosome + "...")
 
         # if not using a bed file, build windows manually
-        if args.bed_file is None:
-            # if an interval is specified, assign it
-            if args.interval_start is not None:
-                interval_start: int = int(args.interval_start)
-                interval_end: int = int(args.interval_end)
-
+        if pixy_args.bed_df is None:
+            if pixy_args.window_size is not None:
+                window_size: int = int(pixy_args.window_size)
+            if pixy_args.has_interval:  # if an interval is specified, assign it
+                # mypy cannot infer that by this point,
+                # `interval_start` and `interval_end` are not `None`; we assert they are not `None`
+                assert pixy_args.interval_start is not None
+                assert pixy_args.interval_end is not None
+                interval_start: int = int(pixy_args.interval_start)
+                interval_end: int = int(pixy_args.interval_end)
             # otherwise, get the interval from the VCF's POS column
             else:
-                if args.sites_file is None:
+                if pixy_args.sites_df is None:
                     chrom_max: List[str] = (
                         subprocess.check_output(
                             "tabix " + args.vcf + " " + chromosome + " | cut -f 2 | tail -n 1",
@@ -320,42 +342,29 @@ def main() -> None:
                     interval_start = 1
                     interval_end = int(chrom_max[0])
                 else:
-                    sites_df = pandas.read_csv(
-                        args.sites_file,
-                        sep="\t",
-                        usecols=[0, 1],
-                        names=["CHROM", "POS"],
-                    )
-                    sites_df["CHROM"] = sites_df["CHROM"].astype(str)
-                    sites_pre_list = sites_df[sites_df["CHROM"] == chromosome]
+                    sites_pre_list = pixy_args.sites_df[pixy_args.sites_df["CHROM"] == chromosome]
                     sites_pre_list = sorted(sites_pre_list["POS"].tolist())
                     interval_start = min(sites_pre_list)
                     interval_end = max(sites_pre_list)
 
             # final check if intervals are valid
-            try:
-                if interval_start > interval_end:
-                    raise ValueError()
-            except ValueError as e:
-                raise Exception(
-                    "[pixy] ERROR: The specified interval start ("
-                    + str(interval_start)
-                    + ") exceeds the interval end ("
-                    + str(interval_end)
-                    + ")"
-                ) from e
+            if interval_start > interval_end:
+                raise ValueError(
+                    f"The specified interval start {interval_start} exceeds the specified "
+                    f"interval end {interval_end}"
+                )
 
             targ_region = chromosome + ":" + str(interval_start) + "-" + str(interval_end)
 
             print("[pixy] Calculating statistics for region " + targ_region + "...")
 
             # Determine list of windows over which to compute stats
-
-            # window size
-            window_size = args.window_size
-
-            # in the case were window size = 1, AND there is a sites file, use the sites file as the 'windows'
-            if window_size == 1 and args.sites_file is not None:
+            # in the case were window size = 1, AND there is a sites file, use the sites file as the
+            # 'windows'
+            if (
+                pixy_args.sites_df is not None and window_size == 1
+            ):  # TODO: dig into why `window_size` might be unbound
+                # reference https://github.com/fulcrumgenomics/pixy-dev/issues/70
                 window_list = [list(a) for a in zip(sites_pre_list, sites_pre_list)]
             else:
                 # if the interval is smaller than one window, make a list of length 1
@@ -380,9 +389,12 @@ def main() -> None:
 
                 window_list = [list(a) for a in zip(window_pos_1_list, window_pos_2_list)]
 
-            # Set aggregate to true if 1) the window size is larger than the chunk size OR 2) the window size wasn't specified, but the chrom is longer than the cutoff
-            if (window_size > args.chunk_size) or (
-                (args.window_size is None) and ((interval_end - interval_start) > args.chunk_size)
+            # Set aggregate to true if
+            # 1) the window size is larger than the chunk size OR
+            # 2) the window size wasn't specified, but the chrom is longer than the cutoff
+            if (window_size > pixy_args.chunk_size) or (
+                (pixy_args.window_size is None)
+                and ((interval_end - interval_start) > pixy_args.chunk_size)
             ):
                 aggregate = True
             else:
@@ -391,7 +403,7 @@ def main() -> None:
         # if using a bed file, subset the bed file for the current chromosome
         else:
             aggregate = False
-            bed_df_chrom = bed_df[bed_df["chrom"] == chromosome]
+            bed_df_chrom = pixy_args.bed_df.loc[pixy_args.bed_df["chrom"] == chromosome]
             window_list = [
                 list(a) for a in zip(bed_df_chrom["chromStart"], bed_df_chrom["chromEnd"])
             ]
@@ -403,30 +415,24 @@ def main() -> None:
 
         # if aggregating, break down large windows into smaller windows
         if aggregate:
-            window_list = pixy.core.assign_subwindows_to_windows(window_list, args.chunk_size)
+            window_list = pixy.core.assign_subwindows_to_windows(window_list, pixy_args.chunk_size)
 
         # using chunk_size, assign  windows to chunks
-        window_list = pixy.core.assign_windows_to_chunks(window_list, args.chunk_size)
+        window_list = pixy.core.assign_windows_to_chunks(window_list, pixy_args.chunk_size)
 
         # if using a sites file, assign sites to chunks, as with windows above
-        if args.sites_file is not None:
-            sites_df = pandas.read_csv(
-                args.sites_file, sep="\t", usecols=[0, 1], names=["CHROM", "POS"]
-            )
-            sites_df["CHROM"] = sites_df["CHROM"].astype(str)
-            sites_pre_list = sites_df[sites_df["CHROM"] == chromosome]
+        if pixy_args.sites_df is not None:
+            sites_pre_list = pixy_args.sites_df[pixy_args.sites_df["CHROM"] == chromosome]
             sites_pre_list = sites_pre_list["POS"].tolist()
-
-            sites_list = pixy.core.assign_sites_to_chunks(sites_pre_list, args.chunk_size)
+            sites_list = pixy.core.assign_sites_to_chunks(sites_pre_list, pixy_args.chunk_size)
         else:
-            sites_df = None
-
+            sites_list = None
         # obtain the list of chunks from the window list
         chunk_list = [i[2] for i in window_list]
         chunk_list = list(set(chunk_list))
 
         # if running in mc mode, send the summary stats function to the jobs pool
-        if args.n_cores > 1:
+        if pixy_args.num_cores > 1:
             # the list of jobs to be launched
             jobs = []
 
@@ -435,11 +441,12 @@ def main() -> None:
                 window_list_chunk = [x for x in window_list if x[2] == chunk]
 
                 # and for the site list (if it exists)
-                if sites_df is not None:
-                    sites_list_chunk = [x for x in sites_list if x[1] == chunk]
-                    sites_list_chunk = [x[0] for x in sites_list_chunk]
-                else:
+                sites_list_chunk: Optional[List[int]]
+                if sites_list is None:
                     sites_list_chunk = None
+                else:
+                    chunk_sites_lists: List[List[int]] = [x for x in sites_list if x[1] == chunk]
+                    sites_list_chunk = [x[0] for x in chunk_sites_lists]
 
                 # determine the bounds of the chunk
                 chunk_pos_1 = min(window_list_chunk, key=lambda x: x[1])[0]
@@ -450,9 +457,9 @@ def main() -> None:
                     pixy.core.compute_summary_stats,
                     args=(
                         args,
-                        popnames,
+                        pixy_args.pop_names,
                         popindices,
-                        temp_file,
+                        pixy_args.temp_file,
                         chromosome,
                         chunk_pos_1,
                         chunk_pos_2,
@@ -470,15 +477,15 @@ def main() -> None:
                 job.get()
 
         # if running in single core mode, loop over the function manually
-        elif args.n_cores == 1:
+        elif pixy_args.num_cores == 1:
             for chunk in chunk_list:
                 # create a subset of the window list specific to this chunk
                 window_list_chunk = [x for x in window_list if x[2] == chunk]
 
                 # and for the site list (if it exists)
-                if sites_df is not None:
-                    sites_list_chunk = [x for x in sites_list if x[1] == chunk]
-                    sites_list_chunk = [x[0] for x in sites_list_chunk]
+                if pixy_args.sites_df is not None and sites_list is not None:
+                    chunk_sites_lists = [x for x in sites_list if x[1] == chunk]
+                    sites_list_chunk = [x[0] for x in chunk_sites_lists]
                 else:
                     sites_list_chunk = None
 
@@ -492,9 +499,9 @@ def main() -> None:
                 # compute summary stats for all windows in the chunk window list
                 pixy.core.compute_summary_stats(
                     args,
-                    popnames,
+                    pixy_args.pop_names,
                     popindices,
-                    temp_file,
+                    pixy_args.temp_file,
                     chromosome,
                     chunk_pos_1,
                     chunk_pos_2,
@@ -506,7 +513,7 @@ def main() -> None:
                 )
 
     # clean up any remaining jobs and stop the listener
-    if args.n_cores > 1:
+    if pixy_args.num_cores > 1:
         q.put("kill")
         pool.close()
         pool.join()
@@ -516,35 +523,37 @@ def main() -> None:
     # check if there is any output to process
     # halt execution if not
     try:
-        outpanel: pandas.DataFrame = pandas.read_csv(temp_file, sep="\t", header=None)
-    except pandas.errors.EmptyDataError:
+        outpanel: pandas.DataFrame = pandas.read_csv(pixy_args.temp_file, sep="\t", header=None)
+    except pandas.errors.EmptyDataError as e:
         raise Exception(
             "[pixy] ERROR: pixy failed to write any output. Confirm that your bed/sites files and intervals refer to existing chromosomes and positions in the VCF."
         )
 
     # check if particular stats failed to generate output
-    successful_stats = np.unique(outpanel[0])
-
     # if not all requested stats were generated, produce a warning
     # and then remove the failed stats from the args list
-    if set(args.stats) != set(successful_stats):
-        missing_stats = list(set(args.stats) - set(successful_stats))
+    # TODO: add a unit-test for coverage here after closing
+    # https://github.com/fulcrumgenomics/pixy-dev/issues/12
+    successful_stats = [PixyStat(stat) for stat in np.unique(outpanel[0])]
+
+    if set(pixy_args.stats) != set(successful_stats):
+        missing_stats = list(set(pixy_args.stats) - set(successful_stats))
         print(
-            "\n[pixy] WARNING: pixy failed to find any valid gentoype data to calculate the following summary statistics: "
-            + ", ".join(missing_stats)
+            "\n[pixy] WARNING: pixy failed to find any valid gentoype data to calculate the "
+            "following summary statistics: "
+            + ", ".join([str(stat) for stat in missing_stats])
             + ". No output file will be created for these statistics."
         )
-        args.stats = set(successful_stats)
 
     outpanel[3] = outpanel[3].astype(str)  # force chromosome IDs to string
     outgrouped = outpanel.groupby([0, 3])  # groupby statistic, chromosome
 
     # enforce chromosome IDs as strings
-    chrom_list = list(map(str, chrom_list))
+    chrom_list = list(map(str, pixy_args.chromosomes))
     stat: str
-    if "pi" in args.stats:
+    if PixyStat.PI in successful_stats:
         stat = "pi"
-        pi_file: str = str(output_prefix) + "_pi.txt"
+        pi_file: str = pixy_args.output_prefix + "_pi.txt"
 
         if os.path.exists(pi_file):
             os.remove(pi_file)
@@ -580,7 +589,7 @@ def main() -> None:
                     [0, 2], axis=1, inplace=True
                 )  # get rid of "pi" and placeholder (NA) columns
                 outsorted = pixy.core.aggregate_output(
-                    outpi, stat, chromosome, window_size, args.fst_type
+                    outpi, stat, chromosome, window_size, pixy_args.fst_type.value
                 )
                 outsorted.to_csv(
                     outfile, sep="\t", mode="a", header=False, index=False, na_rep="NA"
@@ -604,9 +613,9 @@ def main() -> None:
 
         outfile.close()
 
-    if "dxy" in args.stats:
+    if PixyStat.DXY in successful_stats:
         stat = "dxy"
-        dxy_file: str = str(output_prefix) + "_dxy.txt"
+        dxy_file: str = pixy_args.output_prefix + "_dxy.txt"
 
         if os.path.exists(dxy_file):
             os.remove(dxy_file)
@@ -642,7 +651,7 @@ def main() -> None:
                 )  # get this statistic, this chrom only
                 outdxy.drop([0], axis=1, inplace=True)  # get rid of "dxy"
                 outsorted = pixy.core.aggregate_output(
-                    outdxy, stat, chromosome, window_size, args.fst_type
+                    outdxy, stat, chromosome, window_size, pixy_args.fst_type.value
                 )
                 outsorted.to_csv(
                     outfile, sep="\t", mode="a", header=False, index=False, na_rep="NA"
@@ -664,9 +673,9 @@ def main() -> None:
 
         outfile.close()
 
-    if "fst" in args.stats:
+    if PixyStat.FST in successful_stats:
         stat = "fst"
-        fst_file: str = str(output_prefix) + "_fst.txt"
+        fst_file: str = pixy_args.output_prefix + "_fst.txt"
 
         if os.path.exists(fst_file):
             os.remove(fst_file)
@@ -713,7 +722,7 @@ def main() -> None:
                 if chromosome_has_data:
                     outfst.drop([0], axis=1, inplace=True)  # get rid of "fst"
                     outsorted = pixy.core.aggregate_output(
-                        outfst, stat, chromosome, window_size, args.fst_type
+                        outfst, stat, chromosome, window_size, pixy_args.fst_type.value
                     )
                     outsorted = outsorted.iloc[:, :-3]  # drop components (for now)
                     outsorted.to_csv(
@@ -767,11 +776,13 @@ def main() -> None:
 
     # remove the temp file(s)
     if args.keep_temp_file is not True:
-        os.remove(temp_file)
+        os.remove(pixy_args.temp_file)
 
     # confirm output was generated successfully
     outfolder_files = [
-        f for f in os.listdir(output_folder) if os.path.isfile(os.path.join(output_folder, f))
+        f
+        for f in os.listdir(pixy_args.output_dir)
+        if os.path.isfile(os.path.join(pixy_args.output_dir, f))
     ]
 
     r = re.compile(".*_dxy.*|.*_pi.*|.*_fst.*")
@@ -793,10 +804,10 @@ def main() -> None:
     )
     total_time = time.time() - start_time
     print("[pixy] Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(total_time)))
-    print("[pixy] Output files written to: " + output_folder)
+    print("[pixy] Output files written to: " + str(pixy_args.output_dir))
 
     if len(leftover_tmp_files) > 0:
-        print("\n[pixy] NOTE: There are pixy temp files in " + output_folder)
+        print("\n[pixy] NOTE: There are pixy temp files in " + str(pixy_args.output_dir))
         print(
             "[pixy] If these are not actively being used (e.g. by another running pixy process), they can be safely deleted."
         )

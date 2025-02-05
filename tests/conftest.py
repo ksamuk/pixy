@@ -185,14 +185,23 @@ def run_pixy_helper(  # noqa: C901
 
     if sites_path is not None:
         test_args.extend(["--sites_file", f"{sites_path}"])
+    # NB: we deliberately permit this helper to run with any type of args for the next 3 flags
+    # in order to test that `pixy` correctly raises an error in this case.
+
     if bed_path is not None:
         test_args.extend(["--bed_file", f"{bed_path}"])
-        # NB: we deliberately permit this helper to run with only one of the following
-        # two flags specified, in order to test that `pixy` correctly raises an error in this case.
-        if interval_start is not None:
-            test_args.extend((["--interval_start", f"{interval_start}"]))
-        if interval_end is not None:
-            test_args.extend((["--interval_end", f"{interval_end}"]))
+    else:
+        test_args.extend(["--bed_file"])
+
+    if interval_start is not None:
+        test_args.extend((["--interval_start", f"{interval_start}"]))
+    else:
+        test_args.extend((["--interval_start"]))
+
+    if interval_end is not None:
+        test_args.extend((["--interval_end", f"{interval_end}"]))
+    else:
+        test_args.extend((["--interval_end"]))
 
     if output_prefix is not None:
         test_args.extend((["--output_prefix", f"{output_prefix}"]))
@@ -205,7 +214,7 @@ def run_pixy_helper(  # noqa: C901
 
     if fst_type is not None:
         test_args.extend((["--fst_type", f"{fst_type}"]))
-
+    print(f"test_args: {test_args}")
     with patch.object(sys, "argv", test_args):
         main()
 

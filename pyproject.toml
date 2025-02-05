@@ -145,6 +145,7 @@ ignore    = [
     "D212",  # summary line should be located on the same line as opening quotes
     "D100",  # Missing docstring in public module
     "D104",  # Missing docstring in public package
+    "D105",  # Missing docstring in magic method
 ]
 unfixable = ["B"]
 
