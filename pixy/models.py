@@ -61,7 +61,15 @@ class PixyTempResult:
 
 @dataclass
 class PiResult:
-    """A result from calculating pi."""
+    """
+    A result from calculating pi.
+
+    Attributes:
+        avg_pi: proportion of total differences across total comparisons. "NA" if no valid data.
+        total_diffs: sum of the number of differences within the population
+        total_comps: sum of the number of comparisons within the population
+        total_missing: sum of the number of missing within the population
+    """
 
     avg_pi: Union[float, NA]
     total_diffs: Union[int, NA]

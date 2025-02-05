@@ -24,6 +24,7 @@ def test_check_and_validate_args(
     args.chromosomes = "X"
     args.n_cores = 1
     args.bypass_invariant_check = bypass_variant_check
+    args.include_multiallelic_snps = False
     args.fst_type = "wc"
     args.output_prefix = "test"
     args.chunk_size = 100000

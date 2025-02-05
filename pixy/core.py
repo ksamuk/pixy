@@ -311,6 +311,8 @@ def read_and_filter_genotypes(
     # a string representation of the target region of the current window
     window_region = chromosome + ":" + str(window_pos_1) + "-" + str(window_pos_2)
 
+    include_multiallelic_snps: bool = args.include_multiallelic_snps == "yes"
+
     # read in data from the source VCF for the current window
     callset = allel.read_vcf(
         args.vcf,
@@ -348,9 +350,20 @@ def read_and_filter_genotypes(
         pos_array = allel.SortedIndex(callset["variants/POS"])
 
         # create a mask for biallelic snps and invariant sites
+        is_biallelic_snp = np.logical_and(
+            callset["variants/is_snp"][:] == 1,
+            callset["variants/numalt"][:] == 1,
+        )
+        is_multiallelic_snp = np.logical_and(
+            callset["variants/is_snp"][:] == 1,
+            callset["variants/numalt"][:] > 1,
+        )
+        is_invariant_site = callset["variants/numalt"][:] == 0
+
         snp_invar_mask = np.logical_or(
-            np.logical_and(callset["variants/is_snp"][:] == 1, callset["variants/numalt"][:] == 1),
-            callset["variants/numalt"][:] == 0,
+            is_biallelic_snp,
+            is_invariant_site,
+            np.logical_and(include_multiallelic_snps, is_multiallelic_snp),
         )
 
         # remove rows that are NOT snps or invariant sites from the genotype array
