@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # coding: utf-8
-import typing
 import argparse
 import logging
 import os
@@ -9,29 +8,20 @@ import subprocess
 import sys
 import time
 from multiprocessing.context import BaseContext
-from multiprocessing import Manager
-from multiprocessing.managers import BaseManager
+from multiprocessing.managers import SyncManager
 from multiprocessing.pool import ApplyResult
 from typing import List
 from typing import Optional
+from typing import cast
 
+import multiprocess as mp
 import numpy as np
-import sys
-import os
-import subprocess
-import re
 import pandas
-import time
-import argparse
-
 from multiprocess import Pool
 from multiprocess import Queue
-import multiprocess as mp
 
-
-import pixy.core
 import pixy.calc
-
+import pixy.core
 from pixy.args_validation import PixyArgs
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
@@ -39,8 +29,8 @@ from pixy.enums import PixyStat
 # main pixy function
 
 
-@typing.no_type_check
-def main() -> None:
+def main() -> None:  # noqa: C901
+    """Parse arguments and execute pixy."""
     # argument parsing via argparse
 
     # the ascii help image
@@ -75,7 +65,10 @@ def main() -> None:
         "--stats",
         nargs="+",
         choices=["pi", "dxy", "fst"],
-        help='List of statistics to calculate from the VCF, separated by spaces.\ne.g. "--stats pi fst" will result in pi and fst calculations.',
+        help=(
+            "List of statistics to calculate from the VCF, separated by spaces.\n"
+            'e.g. "--stats pi fst" will result in pi and fst calculations.'
+        ),
         required=True,
     )
     required.add_argument(
@@ -89,7 +82,10 @@ def main() -> None:
         "--populations",
         type=str,
         nargs="?",
-        help="Path to a headerless tab separated populations file with columns [SampleID Population].",
+        help=(
+            "Path to a headerless tab separated populations file with columns "
+            "[SampleID Population]."
+        ),
         required=True,
     )
 
@@ -97,14 +93,20 @@ def main() -> None:
         "--window_size",
         type=int,
         nargs="?",
-        help="Window size in base pairs over which to calculate stats.\nAutomatically determines window coordinates/bounds (see additional options below).",
+        help=(
+            "Window size in base pairs over which to calculate stats.\n"
+            "Automatically determines window coordinates/bounds (see additional options below)."
+        ),
         required=False,
     )
     additional.add_argument(
         "--bed_file",
         type=str,
         nargs="?",
-        help="Path to a headerless .BED file with columns [chrom chromStart chromEnd].\nManually defines window bounds, which can be heterogenous in size.",
+        help=(
+            "Path to a headerless .BED file with columns [chrom chromStart chromEnd].\n"
+            "Manually defines window bounds, which can be heterogeneous in size."
+        ),
         required=False,
     )
 
@@ -121,7 +123,10 @@ def main() -> None:
         type=str,
         nargs="?",
         default="",
-        help="Folder where output will be written, e.g. path/to/output_folder.\nDefaults to current working directory.",
+        help=(
+            "Folder where output will be written, e.g. path/to/output_folder.\n"
+            "Defaults to current working directory."
+        ),
         required=False,
     )
     optional.add_argument(
@@ -129,7 +134,11 @@ def main() -> None:
         type=str,
         nargs="?",
         default="pixy",
-        help="Optional prefix for output file(s), with no slashes.\ne.g. \"--output_prefix output\" will result in [output folder]/output_pi.txt. \nDefaults to 'pixy'.",
+        help=(
+            "Optional prefix for output file(s), with no slashes.\n"
+            'e.g. "--output_prefix output" will result in [output folder]/output_pi.txt. \n'
+            "Defaults to 'pixy'."
+        ),
         required=False,
     )
     optional.add_argument(
@@ -137,28 +146,44 @@ def main() -> None:
         type=str,
         nargs="?",
         default="all",
-        help="A single-quoted, comma separated list of chromosomes where stats will be calculated. \ne.g. --chromosomes 'X,1,2' will restrict stats to chromosomes X, 1, and 2.\nDefaults to all chromosomes in the VCF.",
+        help=(
+            "A single-quoted, comma separated list of chromosomes where stats will be calculated.\n"
+            "e.g. --chromosomes 'X,1,2' will restrict stats to chromosomes X, 1, and 2.\n"
+            "Defaults to all chromosomes in the VCF."
+        ),
         required=False,
     )
     optional.add_argument(
         "--interval_start",
         type=str,
         nargs="?",
-        help="The start of an interval over which to calculate stats.\nOnly valid when calculating over a single chromosome.\nDefaults to 1.",
+        help=(
+            "The start of an interval over which to calculate stats.\n"
+            "Only valid when calculating over a single chromosome.\n"
+            "Defaults to 1."
+        ),
         required=False,
     )
     optional.add_argument(
         "--interval_end",
         type=str,
         nargs="?",
-        help="The end of the interval over which to calculate stats.\nOnly valid when calculating over a single chromosome.\nDefaults to the last position for a chromosome.",
+        help=(
+            "The end of the interval over which to calculate stats.\n"
+            "Only valid when calculating over a single chromosome.\n"
+            "Defaults to the last position for a chromosome."
+        ),
         required=False,
     )
     optional.add_argument(
         "--sites_file",
         type=str,
         nargs="?",
-        help="Path to a headerless tab separated file with columns [CHROM POS].\nThis defines sites where summary stats should be calculated.\nCan be combined with the --bed_file and --window_size options.",
+        help=(
+            "Path to a headerless tab separated file with columns [CHROM POS].\n"
+            "This defines sites where summary stats should be calculated.\n"
+            "Can be combined with the --bed_file and --window_size options."
+        ),
         required=False,
     )
     optional.add_argument(
@@ -166,7 +191,10 @@ def main() -> None:
         type=int,
         nargs="?",
         default=100000,
-        help="Approximate number of sites to read from VCF at any given time (default=100000).\nLarger numbers reduce I/O operations at the cost of memory.",
+        help=(
+            "Approximate number of sites to read from VCF at any given time (default=100000).\n"
+            "Larger numbers reduce I/O operations at the cost of memory."
+        ),
         required=False,
     )
 
@@ -174,14 +202,23 @@ def main() -> None:
         "--fst_type",
         choices=["wc", "hudson"],
         default="wc",
-        help="FST estimator to use, one of either: \n'wc' (Weir and Cockerham 1984) or\n'hudson' (Hudson 1992, Bhatia et al. 2013) \nDefaults to 'wc'.",
+        help=(
+            "FST estimator to use, one of either: \n"
+            "'wc' (Weir and Cockerham 1984) or\n"
+            "'hudson' (Hudson 1992, Bhatia et al. 2013) \n"
+            "Defaults to 'wc'."
+        ),
         required=False,
     )
     optional.add_argument(
         "--bypass_invariant_check",
         choices=["yes", "no"],
         default="no",
-        help="Allow computation of stats without invariant sites (default=no).\nWill result in wildly incorrect estimates most of the time.\nUse with extreme caution!",
+        help=(
+            "Allow computation of stats without invariant sites (default=no).\n"
+            "Will result in wildly incorrect estimates most of the time.\n"
+            "Use with extreme caution!"
+        ),
         required=False,
     )
     optional.add_argument(
@@ -274,27 +311,30 @@ def main() -> None:
     # if in mc mode, set up multiprocessing
     if pixy_args.num_cores > 1:
         # use forking context on linux, and spawn otherwise (macOS)
+        ctx: BaseContext
+
+        # `cast` is necessary because `multiprocess` is an untyped module, so mypy can only infer
+        # that `get_context()` returns `Any`
         if sys.platform == "linux":
-            ctx: BaseContext = mp.get_context("fork")
+            ctx = cast(BaseContext, mp.get_context("fork"))
         else:
-            ctx: BaseContext = mp.get_context("spawn")
+            ctx = cast(BaseContext, mp.get_context("spawn"))
 
         # set up the multiprocessing manager, queue, and process pool
-        manager: BaseManager = ctx.Manager()
-        # TODO: error: Variable "multiprocessing.Manager" is not valid as a type
+        manager: SyncManager = ctx.Manager()
         q: Queue = manager.Queue()
         pool: Pool = ctx.Pool(int(args.n_cores))
 
         # a listener function for writing a temp file
         # used to write output in multicore mode
         def listener(q: Queue, temp_file: str) -> None:
-            """Writes to a given `temp_file` in multicore mode.
+            """
+            Writes to a given `temp_file` in multicore mode.
 
             Args:
                 q: the `Queue` from which to retrieve data
                 temp_file: the file handle to which the data will be written
             """
-
             with open(temp_file, "a") as f:
                 while 1:
                     m = q.get()
@@ -410,7 +450,8 @@ def main() -> None:
 
         if len(window_list) == 0:
             raise Exception(
-                "[pixy] ERROR: Window creation failed. Ensure that the POS column in the VCF is valid or change --window_size."
+                "[pixy] ERROR: Window creation failed. Ensure that the POS column in the VCF is "
+                "valid or change --window_size."
             )
 
         # if aggregating, break down large windows into smaller windows
@@ -526,8 +567,9 @@ def main() -> None:
         outpanel: pandas.DataFrame = pandas.read_csv(pixy_args.temp_file, sep="\t", header=None)
     except pandas.errors.EmptyDataError as e:
         raise Exception(
-            "[pixy] ERROR: pixy failed to write any output. Confirm that your bed/sites files and intervals refer to existing chromosomes and positions in the VCF."
-        )
+            "[pixy] ERROR: pixy failed to write any output. Confirm that your bed/sites files and "
+            "intervals refer to existing chromosomes and positions in the VCF."
+        ) from e
 
     # check if particular stats failed to generate output
     # if not all requested stats were generated, produce a warning
@@ -705,7 +747,8 @@ def main() -> None:
 
         if aggregate:  # put winsizes back together for each population to make final_window_size
             for chromosome in chrom_list:
-                # logic to accodomate cases where pi/dxy have stats for a chromosome, but fst does not
+                # logic to accommodate cases where pi/dxy have stats for a chromosome, but fst does
+                # not
                 chromosome_has_data = True
 
                 # if there are no valid fst estimates, set chromosome_has_data = False
@@ -736,7 +779,8 @@ def main() -> None:
 
         else:
             for chromosome in chrom_list:
-                # logic to accodomate cases where pi/dxy have stats for a chromosome, but fst does not
+                # logic to accommodate cases where pi/dxy have stats for a chromosome, but fst does
+                # not
                 chromosome_has_data = True
 
                 # if there are no valid fst estimates, set chromosome_has_data = False
@@ -769,9 +813,8 @@ def main() -> None:
 
         if len(chroms_with_no_data) >= 1:
             print(
-                "\n[pixy] NOTE: "
-                + "The following chromosomes/scaffolds did not have sufficient data to estimate FST: "
-                + ", ".join(chroms_with_no_data)
+                "\n[pixy] NOTE: The following chromosomes/scaffolds did not have sufficient data "
+                f"to estimate FST: {', '.join(chroms_with_no_data)}"
             )
 
     # remove the temp file(s)
@@ -793,7 +836,9 @@ def main() -> None:
 
     if len(output_files) == 0:
         print(
-            "\n[pixy] WARNING: pixy failed to write any output files. Your VCF may not contain valid genotype data, or it was removed via filtering using the specified sites/bed file (if any)."
+            "\n[pixy] WARNING: pixy failed to write any output files. Your VCF may not contain "
+            "valid genotype data, or it was removed via filtering using the specified sites/bed "
+            "file (if any)."
         )
 
     # print completion message
@@ -809,7 +854,8 @@ def main() -> None:
     if len(leftover_tmp_files) > 0:
         print("\n[pixy] NOTE: There are pixy temp files in " + str(pixy_args.output_dir))
         print(
-            "[pixy] If these are not actively being used (e.g. by another running pixy process), they can be safely deleted."
+            "[pixy] If these are not actively being used (e.g. by another running pixy process), "
+            "they can be safely deleted."
         )
 
     print(

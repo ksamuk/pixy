@@ -1,30 +1,31 @@
-import typing
-from typing import Tuple, Union, List
-
-from allel import AlleleCountsArray, GenotypeArray
+from typing import List
+from typing import Tuple
+from typing import Union
 
 import allel
 import numpy as np
+from allel import AlleleCountsArray
+from allel import GenotypeArray
 from numpy.typing import NDArray
-
 from scipy import special
 
+from pixy.enums import FSTEstimator
 from pixy.models import NA
 from pixy.models import DxyResult
 from pixy.models import FstResult
 from pixy.models import PiResult
-from pixy.enums import FSTEstimator
-
 
 # vectorized functions for calculating pi and dxy
 # these are reimplementations of the original functions
 
 
 # helper function for calculation of pi
-# for the given site (row of the count table) count # of differences, # of comparisons, and # missing.
+# for the given site (row of the count table) count number of differences, number of comparisons,
+# and number missing.
 # uses number of haploid samples (n_haps) to determine missing data
 def count_diff_comp_missing(row: AlleleCountsArray, n_haps: int) -> Tuple[int, int, int]:
-    """Calculates site-specific statistics for `pi` calculation across populations.
+    """
+    Calculates site-specific statistics for `pi` calculation across populations.
 
     Args:
         row: counts of each of the two alleles at a given site
@@ -36,7 +37,6 @@ def count_diff_comp_missing(row: AlleleCountsArray, n_haps: int) -> Tuple[int, i
         missing: number of missing between the populations
 
     """
-
     diffs = row[1] * row[0]
     gts = row[1] + row[0]
     comps = int(special.comb(N=gts, k=2))  # calculate combinations, return an integer
@@ -46,7 +46,8 @@ def count_diff_comp_missing(row: AlleleCountsArray, n_haps: int) -> Tuple[int, i
 
 # function for vectorized calculation of pi from a pre-filtered scikit-allel genotype matrix
 def calc_pi(gt_array: GenotypeArray) -> PiResult:
-    """Given a filtered genotype matrix, calculate `pi`.
+    """
+    Given a filtered genotype matrix, calculate `pi`.
 
     Args:
         gt_array: the GenotypeArray representing the counts of each of the two alleles
@@ -58,7 +59,6 @@ def calc_pi(gt_array: GenotypeArray) -> PiResult:
         total_missing: sum of the number of missing between the populations
 
     """
-
     # counts of each of the two alleles at each site
     allele_counts: AlleleCountsArray = gt_array.count_alleles(max_allele=1)
 
@@ -111,7 +111,6 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
         total_comps: sum of the number of comparisons between the populations
         total_missing: sum of the number of missing between the populations
     """
-
     # the counts of each of the two alleles in each population at each site
     pop1_allele_counts: AlleleCountsArray = pop1_gt_array.count_alleles(max_allele=1)
     pop2_allele_counts: AlleleCountsArray = pop2_gt_array.count_alleles(max_allele=1)
@@ -154,14 +153,15 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
 # (need variance components for proper aggregation)
 # for single sites, this is the final FST calculation
 # in aggregation mode, we just want a,b,c and n_sites for aggregating and fst
-@typing.no_type_check
 def calc_fst(
     gt_array_fst: GenotypeArray, fst_pop_indicies: List[List[int]], fst_type: FSTEstimator
 ) -> FstResult:
     # TODO: update the return type here after refactoring (2 -> 1 return statements)
-    """Calculates FST according to either Weir and Cockerham (1984) or Hudson (1992).
+    """
+    Calculates FST according to either Weir and Cockerham (1984) or Hudson (1992).
 
-    FST is a measure of the total genetic variance within a subpopulation relative to total genetic variance.
+    FST is a measure of the total genetic variance within a subpopulation relative to total genetic
+    variance.
 
     Args:
         gt_array_fst: allele counts to use for computation of variance
@@ -187,58 +187,58 @@ def calc_fst(
             n_sites: the number of sites over which variance was measured
 
     """
-
     # compute basic (multisite) FST via scikit allel
-    a: List[float]
-    b: List[float]
-    c: Union[List[float], int]
-
+    fst: Union[float, NA]
     result: FstResult
 
+    n_sites: int = len(gt_array_fst)
+
     # WC 84
-    if fst_type == "wc":
+    if fst_type is FSTEstimator.WC:
+        a: NDArray
+        b: NDArray
+        c: NDArray
         a, b, c = allel.weir_cockerham_fst(gt_array_fst, subpops=fst_pop_indicies)
 
         # compute variance component sums
-        a = np.nansum(a).tolist()
-        b = np.nansum(b).tolist()
-        c = np.nansum(c).tolist()
-        n_sites: int = len(gt_array_fst)
+        a_sum: float = np.nansum(a)
+        b_sum: float = np.nansum(b)
+        c_sum: float = np.nansum(c)
 
         # compute fst
-        if (a + b + c) > 0:
-            fst = a / (a + b + c)
+        if (a_sum + b_sum + c_sum) > 0:
+            fst = a_sum / (a_sum + b_sum + c_sum)
         else:
             fst = "NA"
 
-        result = FstResult(fst=fst, a=a, b=b, c=c, n_sites=n_sites)
+        result = FstResult(fst=fst, a=a_sum, b=b_sum, c=c_sum, n_sites=n_sites)
 
     # Hudson 92
-    if fst_type == "hudson":
+    if fst_type is FSTEstimator.HUDSON:
         # following scikit allel docs
         # allel counts for each population
         ac1: AlleleCountsArray = gt_array_fst.count_alleles(subpop=fst_pop_indicies[0])
         ac2: AlleleCountsArray = gt_array_fst.count_alleles(subpop=fst_pop_indicies[1])
 
         # hudson fst has two components (numerator & denominator)
+        num: NDArray
+        den: NDArray
         num, den = allel.hudson_fst(ac1, ac2)
-        c = 0  # for compatibility with aggregation code for WC 84
 
         # compute variance component sums
-        num = np.nansum(num).tolist()
-        den = np.nansum(den).tolist()
-        n_sites = len(gt_array_fst)
+        num_sum: float = np.nansum(num)
+        den_sum: float = np.nansum(den)
 
         # compute fst
-        if (num + den) > 0:
-            fst = num / den
+        if (num_sum + den_sum) > 0:
+            fst = num_sum / den_sum
         else:
             fst = "NA"
 
         # same abc format as WC84, where 'a' is the numerator and
         # 'b' is the demoninator, and 'c' is a zero placeholder
-        result = FstResult(fst=fst, a=num, b=den, c=c, n_sites=n_sites)
-    
+        result = FstResult(fst=fst, a=num_sum, b=den_sum, c=0, n_sites=n_sites)
+
     return result
 
 
@@ -251,7 +251,8 @@ def calc_fst_persite(
     fst_pop_indicies: List[List[int]],
     fst_type: str,
 ) -> NDArray[np.float64]:
-    """Calculates site-specific FST according to Weir and Cockerham (1984) or Hudson (1992).
+    """
+    Calculates site-specific FST according to Weir and Cockerham (1984) or Hudson (1992).
 
     Args:
         gt_array_fst: allele counts to use for computation of variance
@@ -262,7 +263,6 @@ def calc_fst_persite(
         fst: the site-specific variance
 
     """
-
     # compute basic (multisite) FST via scikit allel
     fst: NDArray[np.float64]
 

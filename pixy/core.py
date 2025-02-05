@@ -2,40 +2,39 @@ import argparse
 import os
 import shutil
 import subprocess
-import typing
 import uuid
-from itertools import combinations
 from pathlib import Path
 from typing import Dict
 from typing import List
+from typing import Literal
 from typing import Optional
+from typing import Set
 from typing import Tuple
 from typing import Union
 
 import allel
+import multiprocess as mp
 import numpy as np
 import pandas
 from allel import GenotypeArray
 from allel import GenotypeVector
 from allel import SortedIndex
 from multiprocess import Queue
+from numpy.typing import NDArray
 
-import pixy.calc
 from pixy.args_validation import get_chrom_list
 from pixy.args_validation import validate_bed_path
-from pixy.args_validation import validate_sites_path
-from pixy.args_validation import validate_populations_path
-from pixy.args_validation import validate_vcf_path
 from pixy.args_validation import validate_output_path
+from pixy.args_validation import validate_populations_path
+from pixy.args_validation import validate_sites_path
+from pixy.args_validation import validate_vcf_path
 from pixy.args_validation import validate_window_and_interval_args
 from pixy.enums import FSTEstimator
 from pixy.models import PixyTempResult
-from pixy.args_validation import validate_bed_path
-from pixy.stats.summary import precompute_filtered_variant_array
-from pixy.stats.summary import compute_summary_pi
 from pixy.stats.summary import compute_summary_dxy
 from pixy.stats.summary import compute_summary_fst
-from pixy.enums import FSTEstimator
+from pixy.stats.summary import compute_summary_pi
+from pixy.stats.summary import precompute_filtered_variant_array
 
 
 def aggregate_output(
@@ -48,11 +47,15 @@ def aggregate_output(
     """
     Aggregates genomic data into windows and computes summary statistics over each window.
 
-    Summary statistics could be one or more of pi (genetic diversity within a population), dxy (genetic diversity between populations),
-    or fst (proportion of the total genetic variance across a subpopulation).
+    Summary statistics could be one or more of pi (genetic diversity within a population), dxy
+    (genetic diversity between populations), or fst (proportion of the total genetic variance across
+    a subpopulation).
 
-    Assumes that column 4 is the position of the variant; columns 7-10 are the alleles counts/related metrics.
-    Empty statistics are marked as 'NA'. The computed statistics are grouped by population and window position in the resultant Dataframe.
+    Assumes that column 4 is the position of the variant; columns 7-10 are the alleles
+    counts/related metrics.
+
+    Empty statistics are marked as 'NA'. The computed statistics are grouped by population and
+    window position in the resultant Dataframe.
 
     Args:
         df_for_stat: Contains genomic data with columns for position,
@@ -64,12 +67,8 @@ def aggregate_output(
             - 'wc' for Weir and Cockerham's fst
             - 'hudson' for Hudson's fst
 
-    Raises:
-        --
-
     Returns:
         outsorted: a pandas.DataFrame that stores aggregated statistics for each window
-
     """
     outsorted = df_for_stat.sort_values([4])  # sort by position
     interval_start = df_for_stat[4].min()
@@ -141,12 +140,8 @@ def assign_subwindows_to_windows(
         chunk_size: the size of each subwindow. Each subwindow will have a width of
             `chunk_size`.
 
-    Raises:
-        --
-
     Returns:
         window_lst: A list of non-overlapping subwindows
-
     """
     # build list of subwindows
     window_lst = []
@@ -158,9 +153,6 @@ def assign_subwindows_to_windows(
 
         # end of last window is always the end of the original window
         subwindow_pos_2_list[-1] = original_stop
-
-        # label which window # each subwindow originated from
-        greater_window = [i] * len(subwindow_pos_2_list)
 
         sub_windows = [list(a) for a in zip(subwindow_pos_1_list, subwindow_pos_2_list)]
         window_lst.extend(sub_windows)
@@ -184,12 +176,8 @@ def assign_windows_to_chunks(window_pre_list: List[List[int]], chunk_size: int) 
         chunk_size: the size of each subwindow. Each subwindow will have a width of
             `chunk_size`.
 
-    Raises:
-        --
-
     Returns:
         window_lst: contains the start position, end position, and the chunk index for each window
-
     """
     # the start and end positions of each window
     window_pos_1_list = [item[0] for item in window_pre_list]
@@ -230,13 +218,9 @@ def assign_sites_to_chunks(sites_pre_list: List[int], chunk_size: int) -> List[L
         sites_pre_list: the sites (positions) of interest
         chunk_size: the size of each chunk
 
-    Raises:
-        --
-
     Returns:
         sites_list: A list where each element is a pair of a site and its corresponding
             chunk index
-
     """
     # assign sites to chunks using np.floor
     chunk_list = [np.floor(x / (chunk_size + 1)) for x in sites_pre_list]
@@ -250,7 +234,6 @@ def assign_sites_to_chunks(sites_pre_list: List[int], chunk_size: int) -> List[L
 # function for masking non-target sites in a genotype array
 # used in conjuctions with the --sites_list command line option
 # NB: `SortedIndex` is of type `int`, but is not generic (at least in 3.8)
-@typing.no_type_check
 def mask_non_target_sites(
     gt_array: GenotypeArray, pos_array: SortedIndex, sites_list_chunk: List[int]
 ) -> GenotypeArray:
@@ -264,22 +247,18 @@ def mask_non_target_sites(
         pos_array: positions corresponding to the sites in `gt_array`
         sites_list_chunk: target site positions that should remain unmasked
 
-    Raises:
-        --
-
     Returns:
         gt_array: a modified `GenotypeArray`
-
     """
     # get the indexes of sites that are NOT the target sites
     # (these will be masked with missing rows to remove them from the calculations)
-    masked_sites = set(pos_array) ^ set(sites_list_chunk)
-    masked_sites = sorted(list(set(pos_array).intersection(masked_sites)))
+    masked_sites_set: Set[int] = set(pos_array) ^ set(sites_list_chunk)
+    masked_sites: List[int] = sorted(list(set(pos_array).intersection(masked_sites_set)))
 
-    gt_mask_indexes = list(np.flatnonzero(pos_array.locate_keys(masked_sites)))
+    gt_mask_indexes: List[int] = list(np.flatnonzero(pos_array.locate_keys(masked_sites)))
 
     # a missing row of data to use as a mask
-    missing_row = [[-1] * gt_array.ploidy] * gt_array.n_samples
+    missing_row: List[List[int]] = [[-1] * gt_array.ploidy] * gt_array.n_samples
 
     # apply the mask to all non-target sites
     for pos in gt_mask_indexes:
@@ -308,10 +287,12 @@ def read_and_filter_genotypes(
     Variants for which the depth of coverage (`DP`) is less than 1 are considered to be missing
     and replaced with `-1`.
 
-    If the VCF contains no variants over the specified genomic region, sets `callset_is_none` to `True`.
+    If the VCF contains no variants over the specified genomic region, sets `callset_is_none` to
+    `True`.
 
     Args:
-        args (Namespace): Command-line arguments, should include the path to the VCF file as `args.vcf`
+        args (Namespace): Command-line arguments, should include the path to the VCF file as
+            `args.vcf`
         chromosome (str): The chromosome for which to read the genotype data (e.g., 'chr1')
         window_pos_1 (int): The start position of the genomic window
         window_pos_2 (int): The end position of the genomic window
@@ -321,8 +302,10 @@ def read_and_filter_genotypes(
     Returns:
         Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
             - A boolean flag (`True` if the VCF callset is empty for the region, `False` otherwise)
-            - A GenotypeArray containing the filtered genotype data (or `None` if no valid genotypes remain)
-            - A SortedIndex containing the positions corresponding to the valid genotypes (or `None` if no valid positions remain)
+            - A GenotypeArray containing the filtered genotype data (or `None` if no valid genotypes
+              remain)
+            - A SortedIndex containing the positions corresponding to the valid genotypes (or `None`
+              if no valid positions remain)
 
     """
     # a string representation of the target region of the current window
@@ -371,14 +354,15 @@ def read_and_filter_genotypes(
         )
 
         # remove rows that are NOT snps or invariant sites from the genotype array
-        gt_array = np.delete(gt_array, np.where(np.invert(snp_invar_mask)), axis=0)
-        gt_array = allel.GenotypeArray(gt_array)
+        gt_ndarray = np.delete(gt_array, np.where(np.invert(snp_invar_mask)), axis=0)
+        gt_array = allel.GenotypeArray(gt_ndarray)
 
         # select rows that ARE snps or invariant sites in the position array
         pos_array = pos_array[snp_invar_mask]
         # TODO: cannot index value of type None
         # if a list of target sites was specified, mask out all non-target sites
         if sites_list_chunk is not None:
+            assert pos_array is not None, "pos_array should not be None"
             gt_array = mask_non_target_sites(gt_array, pos_array, sites_list_chunk)
 
         # extra 'none' check to catch cases where every site was removed by the mask
@@ -393,18 +377,17 @@ def read_and_filter_genotypes(
 # main pixy function for computing summary stats over a list of windows (for one chunk)
 
 
-@typing.no_type_check
-def compute_summary_stats(
+def compute_summary_stats(  # noqa: C901
     args: argparse.Namespace,
-    popnames: np.ndarray,
-    popindices: Dict[str, np.ndarray],  # NB: this is an array[int]  # TODO: add type param in 3.9
-    temp_file: str,
+    popnames: NDArray,
+    popindices: Dict[str, NDArray],  # NB: this is an array[int]  # TODO: add type param in 3.9
+    temp_file: Path,
     chromosome: str,
     chunk_pos_1: int,
     chunk_pos_2: int,
     window_list_chunk: List[List[int]],
-    q: Union[Queue, str],
-    sites_list_chunk: List[List[int]],
+    q: Union[Queue, Literal["NULL"]],
+    sites_list_chunk: Optional[List[int]],
     aggregate: bool,
     window_size: int,
 ) -> None:
@@ -425,12 +408,8 @@ def compute_summary_stats(
         aggregate: True if `window_size` > `chunk_size` or the chromosome is longer than the cutoff
         window_size: window size over which to calculate stats (in base pairs)
 
-    Raises:
-        --
-
     Returns:
         None
-
     """
     pixy_output: List[PixyTempResult] = []
 
@@ -441,6 +420,11 @@ def compute_summary_stats(
 
     # if computing FST, pre-compute a filtered array of variants (only)
     if "fst" in args.stats:
+        # These should only be returned by `read_and_filter_genotypes` as None if `fst` is not a
+        # requested stat. The asserts are to narrow the types.
+        assert gt_array is not None, "genotype array is None"
+        assert pos_array is not None, "position array is None"
+
         per_site_fst_results, gt_array_fst, pos_array_fst = precompute_filtered_variant_array(
             args=args,
             gt_array=gt_array,
@@ -461,6 +445,7 @@ def compute_summary_stats(
 
         window_is_empty: bool
         gt_region: Union[GenotypeVector, None]
+        loc_region: Union[slice, None]
 
         if pos_array is None:
             window_is_empty = True
@@ -472,20 +457,23 @@ def compute_summary_stats(
             window_is_empty = False
             # pull out the genotypes for the window
             loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
+
+            # the assertion here is required to narrow the type on `gt_array` from `Optional`
+            assert gt_array is not None, "genotype array is None"
             gt_region = gt_array[loc_region]
 
             # double check that the region is not empty after subsetting
             try:
-                loc_region
+                loc_region  # noqa: B018
             except Exception:
                 loc_region = None
 
             try:
-                gt_region
+                gt_region  # noqa: B018
             except Exception:
                 gt_region = None
 
-            if len(gt_region) == 0 or (loc_region is None) or (gt_region is None):
+            if (gt_region is None) or len(gt_region) == 0 or (loc_region is None):
                 window_is_empty = True
 
         # PI:
@@ -526,6 +514,8 @@ def compute_summary_stats(
         # This is just a loose wrapper around the scikit-allel fst function
         # TBD: explicit fst when data is completely missing
         if (args.populations is not None) and ("fst" in args.stats) and window_size != 1:
+            assert gt_array_fst is not None, "genotype array is None"
+
             fst_type: FSTEstimator = FSTEstimator(args.fst_type)
             fst_results: List[PixyTempResult] = compute_summary_fst(
                 fst_type=fst_type,
@@ -550,8 +540,322 @@ def compute_summary_stats(
     if pixy_output:
         temp_pixy_content: str = "\n".join(f"{result}" for result in pixy_output)
         if args.n_cores > 1:
+            assert isinstance(q, Queue), "q should be a Queue object when multiprocessing"
             q.put(temp_pixy_content)
         elif args.n_cores == 1:
             outfile = open(temp_file, "a")
             outfile.write(temp_pixy_content + "\n")
             outfile.close()
+
+
+# function for checking & validating command line arguments
+# when problems are detected, throws an error/warning + message
+
+
+def check_and_validate_args(  # noqa: C901
+    args: argparse.Namespace,
+) -> Tuple[
+    NDArray,
+    Dict[str, NDArray],
+    List[str],
+    List[str],
+    Path,
+    str,
+    str,
+    pandas.DataFrame,
+    pandas.DataFrame,
+]:
+    """
+    Checks whether user-specific arguments are valid.
+
+    Args:
+        args: parsed CLI args specified by the user
+
+    Raises:
+        Exception: if the output_folder is not writeable
+        Exception: if any of the required input files are missing
+        Exception: if the output_prefix contains either forward or backward slashes
+        Exception: if any of the provided files do not exist
+        Exception: if the VCF file is not compressed with `bgzip` or indexed with `tabix`
+        Exception: if the VCF file does not contain variant sites
+        Exception: if the provided `--chromosomes` do not occur in the specified VCF file
+        Exception: if neither a `--bed-file` nor a `--window_size` is provided
+        Exception: if only one of `--interval_start` and `--interval_end` is given
+        Exception: if multiple `--chromosomes` and an interval are provided
+        Exception: if any rows in either the `--bed-file` or `--sites-path` are missing data
+        Exception: if any of the samples provided in the `populations_file` do not exist in the VCF
+        Exception: if the `populations_file` does not contain at least 2 populations
+
+    Returns:
+        popnames: unique population names derived from `--populations` file
+        popindices: the indices of the population-specific samples within the provided VCF
+        chrom_list: list of chromosomes that are provided and also found in the provided VCF
+        IDs: list of each individual in the `--populations` file
+        temp_file: a temporary file in which to hold in-flight `pixy` calculations
+        output_folder: the directory to which to write any `pixy` results
+        output_prefix: the combination of a given `output_folder` and `output_prefix`
+        bed_df: a pandas.DataFrame that represents a given `--bed-file` (the dataframe will be empty
+            if no BED file was given)
+        sites_df: a pandas.DataFrame that represents a given `--sites-file` (the dataframe will be
+            empty if no sites file was given)
+
+    """
+    # CHECK FOR TABIX
+    tabix_path = shutil.which("tabix")
+
+    if tabix_path is None:
+        raise Exception(
+            "[pixy] ERROR: tabix is not installed (or cannot be located in the path). "
+            'Install tabix with "conda install -c bioconda htslib".'
+        )
+
+    if args.vcf is None:
+        raise Exception("[pixy] ERROR: The --vcf argument is missing or incorrectly specified.")
+
+    if args.populations is None:
+        raise Exception(
+            "[pixy] ERROR: The --populations argument is missing or incorrectly specified."
+        )
+
+    # reformat file paths for compatibility
+
+    populations_path: Path = Path(os.path.expanduser(args.populations))
+    populations_df: pandas.DataFrame = validate_populations_path(populations_path)
+
+    vcf_path: str = os.path.expanduser(args.vcf)  # we don't want a Path object just yet because
+    # most of the downstream operations require a string
+    validate_vcf_path(vcf_path)
+
+    if args.output_folder != "":
+        output_folder = args.output_folder + "/"
+    else:
+        output_folder = os.path.expanduser(os.getcwd() + "/")
+
+    output_prefix = output_folder + args.output_prefix
+
+    # get vcf header info
+    vcf_headers = allel.read_vcf_headers(vcf_path)
+
+    print("\n[pixy] Validating VCF and input parameters...")
+
+    # CHECK OUTPUT FOLDER
+    print("[pixy] Checking write access...", end="")
+    check_message = "OK"
+
+    output_folder, output_prefix = validate_output_path(
+        output_folder=args.output_folder, output_prefix=args.output_prefix
+    )
+    # generate a name for a unique temp file for collecting output
+    temp_file: Path = Path(output_folder) / f"pixy_tmpfile_{uuid.uuid4().hex}.tmp"
+    # check if temp file is writable
+    with open(temp_file, "w"):
+        pass  # file is created and then closed
+    assert os.access(temp_file, os.W_OK), "temp file is not writable"
+
+    if check_message == "OK":
+        print(check_message)
+
+    # CHECK CPU CONFIGURATION
+    print("[pixy] Checking CPU configuration...", end="")
+    check_message = "OK"
+
+    if args.n_cores > mp.cpu_count():
+        check_message = "WARNING"
+        print(check_message)
+        print(
+            "[pixy] WARNING: "
+            + str(args.n_cores)
+            + " CPU cores requested but only "
+            + str(mp.cpu_count())
+            + " are available. Using "
+            + str(mp.cpu_count())
+            + "."
+        )
+        args.n_cores = mp.cpu_count()
+
+    if check_message == "OK":
+        print(check_message)
+
+    # CHECK FOR EXISTENCE OF INPUT FILES
+
+    if args.bed_file is not None:
+        bed_path: Path = Path(os.path.expanduser(args.bed_file))
+        bed_df: pandas.DataFrame = validate_bed_path(bed_path)
+
+    else:
+        bed_df = []
+
+    # VALIDATE THE VCF
+
+    # check if the vcf contains any invariant sites
+    # a very basic check: just looks for at least one invariant site in the alt field
+    print("[pixy] Checking for invariant sites...", end="")
+    check_message = "OK"
+
+    if args.bypass_invariant_check == "no":
+        alt_list = (
+            subprocess.check_output(
+                "gunzip -c "
+                + vcf_path
+                + " | grep -v '#' | head -n 100000 | awk '{print $5}' | sort | uniq",
+                shell=True,
+            )
+            .decode("utf-8")
+            .split()
+        )
+        if "." not in alt_list:
+            raise Exception(
+                "[pixy] ERROR: the provided VCF appears to contain no invariant sites "
+                '(ALT = "."). '
+                "This check can be bypassed via --bypass_invariant_check 'yes'."
+            )
+        if "." in alt_list and len(alt_list) == 1:
+            check_message = "WARNING"
+            print(
+                "[pixy] WARNING: the provided VCF appears to contain no variable sites in the "
+                "first 100 000 sites. It may have been filtered incorrectly, or genetic diversity "
+                "may be extremely low. "
+                "This warning can be suppressed via --bypass_invariant_check 'yes'.'"
+            )
+    else:
+        if not (len(args.stats) == 1 and (args.stats[0] == "fst")):
+            check_message = "WARNING"
+            print(check_message)
+            print(
+                "[pixy] EXTREME WARNING: --bypass_invariant_check is set to 'yes'. Note that a "
+                "lack of invariant sites will result in incorrect estimates."
+            )
+
+    if check_message == "OK":
+        print(check_message)
+
+    # check if requested chromosomes exist in vcf
+    # parses the whole CHROM column (!)
+
+    print("[pixy] Checking chromosome data...", end="")
+
+    chrom_list: List[str] = get_chrom_list(args)
+
+    print("OK")
+
+    # INTERVALS
+    # check if intervals are correctly specified
+    # validate the BED file (if present)
+
+    print("[pixy] Checking intervals/sites...", end="")
+    check_message = "OK"
+
+    if args.bed_file is None:
+        check_message = validate_window_and_interval_args(args)
+
+    else:
+        if (
+            args.interval_start is not None
+            or args.interval_end is not None
+            or args.window_size is not None
+        ):
+            check_message = "ERROR"
+            print(check_message)
+            raise Exception(
+                "[pixy] ERROR: --interval_start, --interval_end, and --window_size are not valid "
+                "when a BED file of windows is provided."
+            )
+
+        bed_chrom: List[str] = list(bed_df["chrom"])
+        missing = list(set(bed_chrom) - set(chrom_list))
+        chrom_list = list(set(chrom_list) & set(bed_chrom))
+
+        if len(missing) > 0:
+            check_message = "WARNING"
+            print(check_message)
+            print(
+                "[pixy] WARNING: the following chromosomes in the BED file do not occur in the VCF "
+                f"and will be ignored: {missing}"
+            )
+    if args.sites_file is None:
+        sites_df: pandas.DataFrame = pandas.DataFrame([])
+        chrom_sites: List[str] = []
+        missing_sites: List[str] = []
+
+    else:
+        sites_path: Path = Path(os.path.expanduser(args.sites_file))
+        sites_df = validate_sites_path(sites_path=sites_path)
+
+        # all the chromosomes in the sites file
+        chrom_sites = list(sites_df["CHROM"])
+
+        # the difference between the chromosomes in the sites file and the VCF
+        missing_sites = list(set(chrom_sites) - set(chrom_list))
+
+        if len(missing_sites) > 0:
+            check_message = "WARNING"
+            print(check_message)
+            print(
+                "[pixy] WARNING: the following chromosomes in the sites file do not occur in the "
+                f"VCF and will be ignored: {missing_sites}"
+            )
+
+    if check_message == "OK":
+        print(check_message)
+
+    # SAMPLES
+    # check if requested samples exist in vcf
+
+    print("[pixy] Checking sample data...", end="")
+
+    # - parse + validate the population file
+    # - format is IND POP (tab separated)
+    # - throws an error if individuals are missing from VCF
+
+    # get a list of samples from the callset
+    samples_list = vcf_headers.samples
+    # make sure every indiv in the pop file is in the VCF callset
+    sample_ids: List[str] = list(populations_df["ID"])
+    missing = list(set(sample_ids) - set(samples_list))
+
+    # find the samples in the callset index by matching up the order of samples between the
+    # population file and the callset
+    # also check if there are invalid samples in the popfile
+    try:
+        samples_callset_index = [samples_list.index(s) for s in populations_df["ID"]]
+    except ValueError as e:
+        check_message = "ERROR"
+        print(check_message)
+        raise Exception(
+            "[pixy] ERROR: the following samples are listed in the population file but not in the "
+            "VCF: ",
+            missing,
+        ) from e
+    else:
+        populations_df["callset_index"] = samples_callset_index
+
+        # use the popindices dictionary to keep track of the indices for each population
+        popindices = {}
+        popnames = populations_df.Population.unique()
+        for name in popnames:
+            popindices[name] = populations_df[
+                populations_df.Population == name
+            ].callset_index.values
+
+    if len(popnames) == 1 and ("fst" in args.stats or "dxy" in args.stats):
+        check_message = "ERROR"
+        print(check_message)
+        raise Exception(
+            "[pixy] ERROR: calcuation of fst and/or dxy requires at least two populations to be "
+            "defined in the population file."
+        )
+
+    print("OK")
+    print("[pixy] All initial checks past!")
+
+    return (
+        popnames,
+        popindices,
+        chrom_list,
+        sample_ids,
+        temp_file,
+        output_folder,
+        output_prefix,
+        bed_df,
+        sites_df,
+    )
