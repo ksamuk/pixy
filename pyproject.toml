@@ -27,6 +27,8 @@ mypy        = "^1.13.0"
 pytest      = "^8.3.3"
 pytest-cov  = "^5.0.0"
 ruff        = "0.7.4"
+ipython     = "^8.0"
+ipdb        = "^0.13"
 
 [tool.poetry.scripts]
 pixy = "pixy.__main__:main"
@@ -111,6 +113,9 @@ addopts    = [
     "--color=yes",
     "--import-mode=importlib",
     "--cov"
+]
+markers = [
+    "regression: marks SLOW regression tests (deselect with '-m \"not regression\"')",
 ]
 
 [tool.ruff]
