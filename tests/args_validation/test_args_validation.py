@@ -7,7 +7,7 @@ from pixy.args_validation import PixyArgs
 from pixy.args_validation import check_and_validate_args
 
 
-@pytest.mark.parametrize("bypass_variant_check", ["yes", "no"])
+@pytest.mark.parametrize("bypass_variant_check", [True, False])
 def test_check_and_validate_args(
     ag1000_vcf_path: Path,
     ag1000_pop_path: Path,
@@ -35,7 +35,7 @@ def test_check_and_validate_args(
     args.sites_file = None
 
     generated_pixy_args: PixyArgs = check_and_validate_args(args)
-    if bypass_variant_check == "yes":
-        assert generated_pixy_args.bypass_invariant_check is True
+    if bypass_variant_check:
+        assert generated_pixy_args.bypass_invariant_check
     else:
-        assert generated_pixy_args.bypass_invariant_check is False
+        assert not generated_pixy_args.bypass_invariant_check
