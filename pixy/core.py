@@ -312,7 +312,7 @@ def read_and_filter_genotypes(
     # a string representation of the target region of the current window
     window_region = chromosome + ":" + str(window_pos_1) + "-" + str(window_pos_2)
 
-    include_multiallelic_snps: bool = args.include_multiallelic_snps == "yes"
+    include_multiallelic_snps: bool = args.include_multiallelic_snps
 
     # read in data from the source VCF for the current window
     callset = allel.read_vcf(
@@ -691,7 +691,7 @@ def check_and_validate_args(  # noqa: C901
     # a very basic check: just looks for at least one invariant site in the alt field
     logger.info("[pixy] Checking for invariant sites...")
 
-    if args.bypass_invariant_check == "no":
+    if not args.bypass_invariant_check:
         alt_list = (
             subprocess.check_output(
                 "gunzip -c "
@@ -706,19 +706,19 @@ def check_and_validate_args(  # noqa: C901
             raise Exception(
                 "[pixy] ERROR: the provided VCF appears to contain no invariant sites "
                 '(ALT = "."). '
-                "This check can be bypassed via --bypass_invariant_check 'yes'."
+                "This check can be bypassed via --bypass_invariant_check"
             )
         if "." in alt_list and len(alt_list) == 1:
             logger.warning(
                 "[pixy] WARNING: the provided VCF appears to contain no variable sites in the "
                 "first 100 000 sites. It may have been filtered incorrectly, or genetic diversity "
                 "may be extremely low. "
-                "This warning can be suppressed via --bypass_invariant_check 'yes'.'"
+                "This warning can be suppressed via --bypass_invariant_check"
             )
     else:
         if not (len(args.stats) == 1 and (args.stats[0] == "fst")):
             logger.warning(
-                "[pixy] EXTREME WARNING: --bypass_invariant_check is set to 'yes'. Note that a "
+                "[pixy] EXTREME WARNING: --bypass_invariant_check is set to True. Note that a "
                 "lack of invariant sites will result in incorrect estimates."
             )
 

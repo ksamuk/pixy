@@ -509,7 +509,7 @@ def check_and_validate_args(  # noqa: C901
     # a very basic check: just looks for at least one invariant site in the alt field
     logger.info("Checking for invariant sites...")
     check_message = "OK"
-    bypass_invariant_check: bool = args.bypass_invariant_check == "yes"
+    bypass_invariant_check: bool = args.bypass_invariant_check
     if not bypass_invariant_check:
         alt_list = (
             subprocess.check_output(
@@ -537,7 +537,7 @@ def check_and_validate_args(  # noqa: C901
     else:
         if not (len(args.stats) == 1 and (args.stats[0] == "fst")):
             logger.warning(
-                "EXTREME WARNING: --bypass_invariant_check is set to 'yes'. Note that a "
+                "EXTREME WARNING: --bypass_invariant_check is set to True. Note that a "
                 "lack of invariant sites will result in incorrect estimates."
             )
 
@@ -642,7 +642,7 @@ def check_and_validate_args(  # noqa: C901
             "defined in the population file."
         )
 
-    include_multiallelic_snps: bool = args.include_multiallelic_snps == "yes"
+    include_multiallelic_snps: bool = args.include_multiallelic_snps
 
     logger.info("All initial checks passed!")
     stats: List[PixyStat] = [PixyStat[stat.upper()] for stat in args.stats]
