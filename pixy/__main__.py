@@ -49,7 +49,7 @@ def main() -> None:  # noqa: C901
         level=logging.INFO,
         format="%(asctime)s %(name)s:%(funcName)s:%(lineno)s [%(levelname)s]: %(message)s",
     )
-
+    logger = logging.getLogger(__name__)
     # initialize arguments
     parser = argparse.ArgumentParser(
         description=help_image + help_text + "\n" + version,
@@ -258,8 +258,8 @@ def main() -> None:  # noqa: C901
 
     # validate arguments with the check_and_validate_args fuction
     # returns parsed populaion, chromosome, and sample info
-    print("[pixy] pixy " + version)
-    print("[pixy] See documentation at https://pixy.readthedocs.io/en/latest/")
+    logger.info(f"[pixy] pixy {version}")
+    logger.info("[pixy] See documentation at https://pixy.readthedocs.io/en/latest/")
 
     pixy_args: PixyArgs = pixy.args_validation.check_and_validate_args(args)
     popindices = {}
@@ -269,52 +269,40 @@ def main() -> None:  # noqa: C901
         ].callset_index.values
     chrom_list = pixy_args.chromosomes
 
-    print(
-        "\n[pixy] Preparing for calculation of summary statistics: "
-        + ", ".join(map(str, pixy_args.stats))
+    logger.info(
+        f"[pixy] Preparing for calculation of summary statistics: {', '.join(map(str, args.stats))}"
     )
 
+    fst_cite: str
     if PixyStat.FST in pixy_args.stats:
         if pixy_args.fst_type is FSTEstimator.WC:
             fst_cite = "Weir and Cockerham (1984)"
         elif pixy_args.fst_type is FSTEstimator.HUDSON:
             fst_cite = "Hudson (1992)"
-        print("[pixy] Using " + fst_cite + "'s estimator of FST.")
+        logger.info(f"[pixy] Using {fst_cite}'s estimator of FST.")
 
-    print(
-        "[pixy] Data set contains "
-        + str(len(pixy_args.pop_names))
-        + " population(s), "
-        + str(len(chrom_list))
-        + " chromosome(s), and "
-        + str(len(pixy_args.pop_ids))
-        + " sample(s)"
+    logger.info(
+        f"[pixy] Data set contains {len(pixy_args.pop_names)} populations, "
+        f"{len(chrom_list)} chromosome(s), "
+        f"and {len(pixy_args.pop_ids)} sample(s)"
     )
 
     if pixy_args.window_size is not None:
-        print("[pixy] Window size: " + str(args.window_size) + " bp")
+        logger.info(f"[pixy] Window size: {pixy_args.window_size} bp")
 
     if args.bed_file is not None:
-        print("[pixy] Windows sourced from: " + args.bed_file)
+        logger.info(f"[pixy] Windows sourced from: {args.bed_file}")
 
     if args.sites_file is not None:
-        print("[pixy] Calculations restricted to sites in: " + args.sites_file)
-
-    print("")
+        logger.info(f"[pixy] Calculations restricted to sites in {args.sites_file}")
 
     # time the calculations
     start_time = time.time()
-    print(
-        "[pixy] Started calculations at "
-        + time.strftime("%H:%M:%S on %Y-%m-%d", time.localtime(start_time))
+    logger.info(
+        f"Started calculations at \
+        {time.strftime('%H:%M:%S on %Y-%m-%d', time.localtime(start_time))}"
     )
-    print(
-        "[pixy] Using "
-        + str(pixy_args.num_cores)
-        + " out of "
-        + str(mp.cpu_count())
-        + " available CPU cores\n"
-    )
+    logger.info(f"[pixy] Using {pixy_args.num_cores} out of {mp.cpu_count()} available CPU cores")
     # if in mc mode, set up multiprocessing
     if pixy_args.num_cores > 1:
         # use forking context on linux, and spawn otherwise (macOS)
@@ -362,7 +350,7 @@ def main() -> None:  # noqa: C901
     # begin processing each chromosome
 
     for chromosome in pixy_args.chromosomes:
-        print("[pixy] Processing chromosome/contig " + chromosome + "...")
+        logger.info(f"[pixy] Processing chromosome/contig {chromosome}")
 
         # if not using a bed file, build windows manually
         if pixy_args.bed_df is None:
@@ -403,7 +391,7 @@ def main() -> None:  # noqa: C901
 
             targ_region = chromosome + ":" + str(interval_start) + "-" + str(interval_end)
 
-            print("[pixy] Calculating statistics for region " + targ_region + "...")
+            logger.info(f"[pixy] Calculating statistics for region {targ_region}")
 
             # Determine list of windows over which to compute stats
             # in the case were window size = 1, AND there is a sites file, use the sites file as the
@@ -587,11 +575,10 @@ def main() -> None:  # noqa: C901
 
     if set(pixy_args.stats) != set(successful_stats):
         missing_stats = list(set(pixy_args.stats) - set(successful_stats))
-        print(
-            "\n[pixy] WARNING: pixy failed to find any valid gentoype data to calculate the "
-            "following summary statistics: "
-            + ", ".join([str(stat) for stat in missing_stats])
-            + ". No output file will be created for these statistics."
+        logger.warning(
+            "[pixy] WARNING: pixy failed to find any valid genotype data to calculate the "
+            f"following summary statistics {', '.join([str(stat) for stat in missing_stats])}."
+            " No output file will be created for these statistics."
         )
 
     outpanel[3] = outpanel[3].astype(str)  # force chromosome IDs to string
@@ -819,8 +806,8 @@ def main() -> None:  # noqa: C901
         outfile.close()
 
         if len(chroms_with_no_data) >= 1:
-            print(
-                "\n[pixy] NOTE: The following chromosomes/scaffolds did not have sufficient data "
+            logger.info(
+                "[pixy] NOTE: The following chromosomes/scaffolds did not have sufficient data "
                 f"to estimate FST: {', '.join(chroms_with_no_data)}"
             )
 
@@ -842,32 +829,31 @@ def main() -> None:  # noqa: C901
     leftover_tmp_files = list(filter(r.match, outfolder_files))
 
     if len(output_files) == 0:
-        print(
-            "\n[pixy] WARNING: pixy failed to write any output files. Your VCF may not contain "
+        logger.warning(
+            "[pixy] WARNING: pixy failed to write any output files. Your VCF may not contain "
             "valid genotype data, or it was removed via filtering using the specified sites/bed "
             "file (if any)."
         )
 
     # print completion message
     end_time = time.time()
-    print(
-        "\n[pixy] All calculations complete at "
+    logger.info(
+        "[pixy] All calculations complete at "
         + time.strftime("%H:%M:%S on %Y-%m-%d", time.localtime(end_time))
     )
     total_time = time.time() - start_time
-    print("[pixy] Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(total_time)))
-    print("[pixy] Output files written to: " + str(pixy_args.output_dir))
+    logger.info("[pixy] Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(total_time)))
+    logger.info(f"[pixy] Output files written to {pixy_args.output_dir}")
 
     if len(leftover_tmp_files) > 0:
-        print("\n[pixy] NOTE: There are pixy temp files in " + str(pixy_args.output_dir))
-        print(
+        logger.info(
+            f"[pixy] NOTE: There are pixy temp files in {pixy_args.output_dir}."
             "[pixy] If these are not actively being used (e.g. by another running pixy process), "
             "they can be safely deleted."
         )
 
-    print(
-        "\n[pixy] If you use pixy in your research, please cite the following paper:\n[pixy] "
-        + citation
+    logger.info(
+        f"[pixy] If you use pixy in your research, please cite the following paper: {citation}"
     )
 
     # restore output
