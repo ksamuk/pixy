@@ -1,4 +1,3 @@
-import filecmp
 import logging
 import os
 import shutil
@@ -9,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.conftest import files_are_consistent
+from tests.conftest import assert_files_are_consistent
 from tests.conftest import run_pixy_helper
 
 ################################################################################
@@ -433,7 +432,7 @@ def test_pixy_csi_index(
         exp_data_path: Path = expected_outputs / "baseline" / file
         assert generated_data_path.exists()
 
-        assert filecmp.cmp(generated_data_path, exp_data_path)
+        assert_files_are_consistent(generated_data_path, exp_data_path)
 
 
 #######################################
@@ -528,7 +527,7 @@ def test_pixy_main_valid_inputs(
         exp_data_path: Path = expected_outputs / "baseline" / file
         assert generated_data_path.exists()
 
-        assert filecmp.cmp(generated_data_path, exp_data_path)
+        assert_files_are_consistent(generated_data_path, exp_data_path)
 
 
 ################################################################################
@@ -583,7 +582,7 @@ def test_pixy_limited_sites(
         exp_data_path: Path = expected_outputs / output_prefix / file
 
         assert generated_data_path.exists()
-        assert files_are_consistent(generated_data_path, exp_data_path)
+        assert_files_are_consistent(generated_data_path, exp_data_path)
 
 
 ################################################################################
@@ -623,7 +622,7 @@ def test_pixy_limited_bed_file(
         exp_data_path: Path = expected_outputs / "limited_bed" / file
 
         assert generated_data_path.exists()
-        assert files_are_consistent(generated_data_path, exp_data_path)
+        assert_files_are_consistent(generated_data_path, exp_data_path)
 
 
 ################################################################################
@@ -674,7 +673,7 @@ def test_pixy_limited_sites_bed(
         generated_data_path: Path = pixy_out_dir / file
         exp_data_path: Path = expected_outputs / "limited_sites_and_bed" / file
         assert generated_data_path.exists()
-        assert files_are_consistent(generated_data_path, exp_data_path)
+        assert_files_are_consistent(generated_data_path, exp_data_path)
 
 
 ###############################################################################
@@ -709,4 +708,4 @@ def test_pixy_hudson_fst(
         generated_data_path: Path = pixy_out_dir / file
         exp_data_path: Path = expected_outputs / "hudson_fst" / file
         assert generated_data_path.exists()
-        assert files_are_consistent(generated_data_path, exp_data_path)
+        assert_files_are_consistent(generated_data_path, exp_data_path)
