@@ -181,12 +181,9 @@ def calc_watterson_theta(gt_array):
 # counts of only variant sites by excluding sites with variant count 0
     variant_counts = allele_counts[allele_counts[:,1] != 0]
 
-# for variant sites only, then all sites together, use Counter to generate dictionary
+# for variant sites only use Counter to generate dictionary
 # where the key is the number of genotypes and value is number of sites with that many genotypes
     S = Counter(variant_counts[:,0] + variant_counts[:,1])
-    N = Counter(allele_counts[:,0] + allele_counts[:,1])
-
-    N_array = np.array(tuple(N.items()))
 
 # calculate watterson's theta as sum of equations for differing numbers of genotypes
 # this is calculating Watterson's theta incorporating missing genotypes
@@ -195,9 +192,9 @@ def calc_watterson_theta(gt_array):
         a1 = np.sum(1 / np.arange(1, n))
         watterson_theta += s/a1
 
-# calculate number of sites weighted by how many genotypes are missing in each site
+# calculate number of sites excluding missing sites (those with no genotypes)
 # this allows calculation of an averaged Watterson's incorporating missing sites
-    weighted_sites = np.sum(np.multiply(N_array[:,1], (N_array[:,0]/max(N))))
+    no_sites = np.count_nonzero(np.sum(allele_counts, 1))
 
 # return averaged Watterson's theta, raw watterson's theta, and weighted site count
     return(watterson_theta/weighted_sites, watterson_theta, weighted_sites)
