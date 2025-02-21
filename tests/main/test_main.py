@@ -499,7 +499,7 @@ def test_pixy_main_valid_inputs(
     expected_outputs: Path,
     ag1000_pop_path: Path,
     ag1000_vcf_path: Path,
-    capsys: pytest.CaptureFixture,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
     Given specific input data, assert that outputs do not change.
@@ -507,6 +507,7 @@ def test_pixy_main_valid_inputs(
     Uses `filecmp` library to compare 2 files without opening them and reading line-by-line.
     `filecmp.cmp` returns True if 2 files are equal.
     """
+    caplog.set_level(logging.INFO)
     run_pixy_helper(
         pixy_out_dir=pixy_out_dir,
         stats=["pi", "fst", "dxy"],
@@ -514,8 +515,10 @@ def test_pixy_main_valid_inputs(
         vcf_path=ag1000_vcf_path,
         populations_path=ag1000_pop_path,
     )
-    captured = capsys.readouterr()
-    assert "Data set contains 2 population(s), 2 chromosome(s), and 36 sample(s)" in captured.out
+    assert (
+        "[pixy] Data set contains 2 populations, 2 chromosome(s), and 36 sample(s)"
+        in caplog.messages
+    )
 
     expected_out_files: List[Path] = [
         Path("pixy_dxy.txt"),

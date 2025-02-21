@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import shutil
 import subprocess
@@ -614,6 +615,7 @@ def check_and_validate_args(  # noqa: C901
 
     """
     # CHECK FOR TABIX
+    logger = logging.getLogger(__name__)
     tabix_path = shutil.which("tabix")
 
     if tabix_path is None:
@@ -649,11 +651,10 @@ def check_and_validate_args(  # noqa: C901
     # get vcf header info
     vcf_headers = allel.read_vcf_headers(vcf_path)
 
-    print("\n[pixy] Validating VCF and input parameters...")
+    logger.info("\n[pixy] Validating VCF and input parameters...")
 
     # CHECK OUTPUT FOLDER
-    print("[pixy] Checking write access...", end="")
-    check_message = "OK"
+    logger.info("[pixy] Checking write access...")
 
     output_folder, output_prefix = validate_output_path(
         output_folder=args.output_folder, output_prefix=args.output_prefix
@@ -665,29 +666,15 @@ def check_and_validate_args(  # noqa: C901
         pass  # file is created and then closed
     assert os.access(temp_file, os.W_OK), "temp file is not writable"
 
-    if check_message == "OK":
-        print(check_message)
-
     # CHECK CPU CONFIGURATION
-    print("[pixy] Checking CPU configuration...", end="")
-    check_message = "OK"
+    logger.info("[pixy] Checking CPU configuration...")
 
     if args.n_cores > mp.cpu_count():
-        check_message = "WARNING"
-        print(check_message)
-        print(
-            "[pixy] WARNING: "
-            + str(args.n_cores)
-            + " CPU cores requested but only "
-            + str(mp.cpu_count())
-            + " are available. Using "
-            + str(mp.cpu_count())
-            + "."
+        logger.warning(
+            f"[pixy] WARNING: {args.n_cores} CPU cores requested but only "
+            f"{mp.cpu_count()} are available. Using {mp.cpu_count()}."
         )
         args.n_cores = mp.cpu_count()
-
-    if check_message == "OK":
-        print(check_message)
 
     # CHECK FOR EXISTENCE OF INPUT FILES
 
@@ -702,8 +689,7 @@ def check_and_validate_args(  # noqa: C901
 
     # check if the vcf contains any invariant sites
     # a very basic check: just looks for at least one invariant site in the alt field
-    print("[pixy] Checking for invariant sites...", end="")
-    check_message = "OK"
+    logger.info("[pixy] Checking for invariant sites...")
 
     if args.bypass_invariant_check == "no":
         alt_list = (
@@ -723,8 +709,7 @@ def check_and_validate_args(  # noqa: C901
                 "This check can be bypassed via --bypass_invariant_check 'yes'."
             )
         if "." in alt_list and len(alt_list) == 1:
-            check_message = "WARNING"
-            print(
+            logger.warning(
                 "[pixy] WARNING: the provided VCF appears to contain no variable sites in the "
                 "first 100 000 sites. It may have been filtered incorrectly, or genetic diversity "
                 "may be extremely low. "
@@ -732,43 +717,33 @@ def check_and_validate_args(  # noqa: C901
             )
     else:
         if not (len(args.stats) == 1 and (args.stats[0] == "fst")):
-            check_message = "WARNING"
-            print(check_message)
-            print(
+            logger.warning(
                 "[pixy] EXTREME WARNING: --bypass_invariant_check is set to 'yes'. Note that a "
                 "lack of invariant sites will result in incorrect estimates."
             )
 
-    if check_message == "OK":
-        print(check_message)
-
     # check if requested chromosomes exist in vcf
     # parses the whole CHROM column (!)
 
-    print("[pixy] Checking chromosome data...", end="")
+    logger.info("[pixy] Checking chromosome data...")
 
     chrom_list: List[str] = get_chrom_list(args)
-
-    print("OK")
 
     # INTERVALS
     # check if intervals are correctly specified
     # validate the BED file (if present)
 
-    print("[pixy] Checking intervals/sites...", end="")
-    check_message = "OK"
+    logger.info("[pixy] Checking intervals/sites...")
 
     if args.bed_file is None:
         check_message = validate_window_and_interval_args(args)
-
+        logger.info(f"{check_message}")
     else:
         if (
             args.interval_start is not None
             or args.interval_end is not None
             or args.window_size is not None
         ):
-            check_message = "ERROR"
-            print(check_message)
             raise Exception(
                 "[pixy] ERROR: --interval_start, --interval_end, and --window_size are not valid "
                 "when a BED file of windows is provided."
@@ -779,9 +754,7 @@ def check_and_validate_args(  # noqa: C901
         chrom_list = list(set(chrom_list) & set(bed_chrom))
 
         if len(missing) > 0:
-            check_message = "WARNING"
-            print(check_message)
-            print(
+            logger.warning(
                 "[pixy] WARNING: the following chromosomes in the BED file do not occur in the VCF "
                 f"and will be ignored: {missing}"
             )
@@ -801,20 +774,15 @@ def check_and_validate_args(  # noqa: C901
         missing_sites = list(set(chrom_sites) - set(chrom_list))
 
         if len(missing_sites) > 0:
-            check_message = "WARNING"
-            print(check_message)
-            print(
+            logger.warning(
                 "[pixy] WARNING: the following chromosomes in the sites file do not occur in the "
                 f"VCF and will be ignored: {missing_sites}"
             )
 
-    if check_message == "OK":
-        print(check_message)
-
     # SAMPLES
     # check if requested samples exist in vcf
 
-    print("[pixy] Checking sample data...", end="")
+    logger.info("[pixy] Checking sample data...")
 
     # - parse + validate the population file
     # - format is IND POP (tab separated)
@@ -832,12 +800,9 @@ def check_and_validate_args(  # noqa: C901
     try:
         samples_callset_index = [samples_list.index(s) for s in populations_df["ID"]]
     except ValueError as e:
-        check_message = "ERROR"
-        print(check_message)
         raise Exception(
-            "[pixy] ERROR: the following samples are listed in the population file but not in the "
-            "VCF: ",
-            missing,
+            "[pixy] ERROR: the following samples are listed in the population file "
+            f"but not in the VCF: {missing}"
         ) from e
     else:
         populations_df["callset_index"] = samples_callset_index
@@ -851,15 +816,12 @@ def check_and_validate_args(  # noqa: C901
             ].callset_index.values
 
     if len(popnames) == 1 and ("fst" in args.stats or "dxy" in args.stats):
-        check_message = "ERROR"
-        print(check_message)
         raise Exception(
-            "[pixy] ERROR: calcuation of fst and/or dxy requires at least two populations to be "
+            "[pixy] ERROR: calculation of fst and/or dxy requires at least two populations to be "
             "defined in the population file."
         )
 
-    print("OK")
-    print("[pixy] All initial checks past!")
+    logger.info("[pixy] All initial checks passed!")
 
     return (
         popnames,
