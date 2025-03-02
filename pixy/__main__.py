@@ -210,24 +210,33 @@ def main() -> None:  # noqa: C901
         ),
         required=False,
     )
-    optional.add_argument(
-        "--include_multiallelic_snps",
-        choices=["yes", "no"],
-        default="no",
-        help=("Multiallelic SNPs within the VCF will be included during calculation.(default=no)."),
-        required=False,
-    )
-    optional.add_argument(
-        "--bypass_invariant_check",
-        choices=["yes", "no"],
-        default="no",
-        help=(
-            "Allow computation of stats without invariant sites (default=no).\n"
-            "Will result in wildly incorrect estimates most of the time.\n"
-            "Use with extreme caution!"
+    (
+        optional.add_argument(
+            "--include_multiallelic_snps",
+            action="store_true",
+            default=False,
+            help=(
+                "Multiallelic SNPs within the VCF will be included "
+                "during calculation.(default=False)."
+            ),
+            required=False,
         ),
-        required=False,
     )
+
+    (
+        optional.add_argument(
+            "--bypass_invariant_check",
+            action="store_true",
+            default=False,
+            help=(
+                "Allow computation of stats without invariant sites (default=False).\n"
+                "Will result in wildly incorrect estimates most of the time.\n"
+                "Use with extreme caution!"
+            ),
+            required=False,
+        ),
+    )
+
     optional.add_argument(
         "--version",
         action="version",

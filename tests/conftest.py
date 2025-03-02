@@ -143,7 +143,8 @@ def run_pixy_helper(  # noqa: C901
     stats: List[str],
     vcf_path: Path,
     populations_path: Optional[Path] = None,
-    bypass_invariant_check: str = "no",
+    include_multiallelic_snps: bool = False,
+    bypass_invariant_check: bool = False,
     window_size: Optional[int] = None,
     interval_start: Optional[int] = None,
     interval_end: Optional[int] = None,
@@ -178,8 +179,6 @@ def run_pixy_helper(  # noqa: C901
         f"{pixy_out_dir}",
         "--chromosomes",
         f"{chromosomes}",
-        "--bypass_invariant_check",
-        f"{bypass_invariant_check}",
     ]
     if window_size is not None:
         test_args.extend((["--window_size", f"{window_size}"]))
@@ -215,6 +214,13 @@ def run_pixy_helper(  # noqa: C901
 
     if fst_type is not None:
         test_args.extend((["--fst_type", f"{fst_type}"]))
+
+    if bypass_invariant_check:
+        test_args.extend(["--bypass_invariant_check"])
+
+    if include_multiallelic_snps:
+        test_args.extend(["--include_multiallelic_snps"])
+    print(f"test_args: {test_args}")
     with patch.object(sys, "argv", test_args):
         main()
 

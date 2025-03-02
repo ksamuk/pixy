@@ -376,9 +376,9 @@ def test_bypass_invariant_check_warns(
         window_size=10000,
         vcf_path=ag1000_vcf_path,
         populations_path=ag1000_pop_path,
-        bypass_invariant_check="yes",
+        bypass_invariant_check=True,
     )
-    assert "EXTREME WARNING: --bypass_invariant_check is set to 'yes'" in caplog.text
+    assert "EXTREME WARNING: --bypass_invariant_check is set to True" in caplog.text
 
 
 ################################################################################
