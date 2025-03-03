@@ -36,7 +36,10 @@ def main() -> None:  # noqa: C901
     # the ascii help image
     help_image = "█▀▀█ ░▀░ █░█ █░░█\n█░░█ ▀█▀ ▄▀▄ █▄▄█\n█▀▀▀ ▀▀▀ ▀░▀ ▄▄▄█\n"
 
-    help_text = "pixy: unbiased estimates of pi, dxy, and fst from VCFs with invariant sites"
+    help_text = (
+        "pixy: unbiased estimates of pi, dxy, fst, Watterson's Theta, and Tajima's D from "
+        "VCFs with invariant sites"
+    )
     version = "1.2.10.beta2"
     citation = (
         "Korunes, KL and K Samuk. "
@@ -64,7 +67,7 @@ def main() -> None:  # noqa: C901
     required.add_argument(
         "--stats",
         nargs="+",
-        choices=["pi", "dxy", "fst"],
+        choices=["pi", "dxy", "fst", "watterson_theta", "tajima_d"],
         help=(
             "List of statistics to calculate from the VCF, separated by spaces.\n"
             'e.g. "--stats pi fst" will result in pi and fst calculations.'
@@ -810,7 +813,131 @@ def main() -> None:  # noqa: C901
                 "[pixy] NOTE: The following chromosomes/scaffolds did not have sufficient data "
                 f"to estimate FST: {', '.join(chroms_with_no_data)}"
             )
+    if PixyStat.WATTERSON_THETA in successful_stats:
+        watterson_theta_file = f"{pixy_args.output_prefix}_{PixyStat.WATTERSON_THETA.value}.txt"
+        if os.path.exists(watterson_theta_file):
+            os.remove(watterson_theta_file)
+        outfile = open(watterson_theta_file, "a")
+        outfile.write(
+            "pop"
+            + "\t"
+            + "chromosome"
+            + "\t"
+            + "window_pos_1"
+            + "\t"
+            + "window_pos_2"
+            + "\t"
+            + "avg_watterson_theta"
+            + "\t"
+            + "no_sites"
+            + "\t"
+            + "raw_watterson_theta"
+            + "\t"
+            + "no_var_sites"
+            + "\t"
+            + "weighted_no_sites"
+            + "\n"
+        )
 
+        if aggregate:  # put winsizes back together for each population to make final_window_size
+            for chromosome in chrom_list:
+                outwatterson_theta = outgrouped.get_group((
+                    "watterson_theta",
+                    chromosome,
+                )).reset_index(drop=True)  # get this statistic, this chrom only
+                outwatterson_theta.drop(
+                    [0, 2], axis=1, inplace=True
+                )  # get rid of "watterson_theta" and placeholder (NA) columns
+                outsorted = pixy.core.aggregate_output(
+                    outwatterson_theta,
+                    PixyStat.WATTERSON_THETA.value,
+                    chromosome,
+                    window_size,
+                    args.fst_type,
+                )
+                outsorted.to_csv(
+                    outfile, sep="\t", mode="a", header=False, index=False, na_rep="NA"
+                )  # write
+
+        else:
+            for chromosome in chrom_list:
+                outwatterson_theta = outgrouped.get_group((
+                    "watterson_theta",
+                    chromosome,
+                )).reset_index(drop=True)  # get this statistic, this chrom only
+                outwatterson_theta.drop(
+                    [0, 2], axis=1, inplace=True
+                )  # get rid of "watterson_theta" and placeholder (NA) columns
+                outsorted = outwatterson_theta.sort_values([4])  # sort by position
+                # make sure sites, comparisons, missing get written as floats
+                cols = [7, 8, 9, 10]
+                outsorted[8] = outsorted[8].astype("Float64")  # raw_watterson_theta as float
+                outsorted.to_csv(
+                    outfile, sep="\t", mode="a", header=False, index=False, na_rep="NA"
+                )  # write
+
+        outfile.close()
+
+    if PixyStat.TAJIMA_D in successful_stats:
+        tajima_d_file = f"{pixy_args.output_prefix}_{PixyStat.TAJIMA_D.value}.txt"
+
+        if os.path.exists(tajima_d_file):
+            os.remove(tajima_d_file)
+
+        outfile = open(tajima_d_file, "a")
+        outfile.write(
+            "pop"
+            + "\t"
+            + "chromosome"
+            + "\t"
+            + "window_pos_1"
+            + "\t"
+            + "window_pos_2"
+            + "\t"
+            + "tajima_d"
+            + "\t"
+            + "no_sites"
+            + "\t"
+            + "raw_pi"
+            + "\t"
+            + "raw_watterson_theta"
+            + "\t"
+            + "tajima_d_stdev"
+            + "\n"
+        )
+
+        if aggregate:  # put winsizes back together for each population to make final_window_size
+            for chromosome in chrom_list:
+                outtajima_d = outgrouped.get_group(("tajima_d", chromosome)).reset_index(
+                    drop=True
+                )  # get this statistic, this chrom only
+                outtajima_d.drop(
+                    [0, 2], axis=1, inplace=True
+                )  # get rid of "tajima_d" and placeholder (NA) columns
+                outsorted = pixy.core.aggregate_output(
+                    outtajima_d, PixyStat.TAJIMA_D.value, chromosome, window_size, args.fst_type
+                )
+                outsorted.to_csv(
+                    outfile, sep="\t", mode="a", header=False, index=False, na_rep="NA"
+                )  # write
+
+        else:
+            for chromosome in chrom_list:
+                outtajima_d = outgrouped.get_group(("tajima_d", chromosome)).reset_index(
+                    drop=True
+                )  # get this statistic, this chrom only
+                outtajima_d.drop(
+                    [0, 2], axis=1, inplace=True
+                )  # get rid of "theta" and placeholder (NA) columns
+                outsorted = outtajima_d.sort_values([4])  # sort by position
+                # make sure sites, comparisons, missing get written as floats
+                cols = [7, 8, 9, 10]
+                outsorted[cols] = outsorted[cols].astype("float64")
+                outsorted.to_csv(
+                    outfile, sep="\t", mode="a", header=False, index=False, na_rep="NA"
+                )  # write
+
+        outfile.close()
     # remove the temp file(s)
     if args.keep_temp_file is not True:
         os.remove(pixy_args.temp_file)
@@ -822,7 +949,7 @@ def main() -> None:  # noqa: C901
         if os.path.isfile(os.path.join(pixy_args.output_dir, f))
     ]
 
-    r = re.compile(".*_dxy.*|.*_pi.*|.*_fst.*")
+    r = re.compile(".*_dxy.*|.*_pi.*|.*_fst.*|.*_watterson_theta.*|.*_tajima_d.*|")
     output_files = list(filter(r.match, outfolder_files))
 
     r = re.compile("pixy_tmpfile.*")

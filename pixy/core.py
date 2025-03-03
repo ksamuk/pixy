@@ -30,8 +30,13 @@ from pixy.args_validation import validate_populations_path
 from pixy.args_validation import validate_sites_path
 from pixy.args_validation import validate_vcf_path
 from pixy.args_validation import validate_window_and_interval_args
+from pixy.calc import calc_tajima_d
+from pixy.calc import calc_watterson_theta
 from pixy.enums import FSTEstimator
+from pixy.enums import PixyStat
 from pixy.models import PixyTempResult
+from pixy.models import TajimaDResult
+from pixy.models import WattersonThetaResult
 from pixy.stats.summary import compute_summary_dxy
 from pixy.stats.summary import compute_summary_fst
 from pixy.stats.summary import compute_summary_pi
@@ -85,7 +90,7 @@ def aggregate_output(
     outsorted["window_pos_2"] = edges[assignments + 1]
 
     # group by population, window
-    if stat == "pi":  # pi only has one population field
+    if stat == "pi" or stat == "tajima_d":  # pi and tajima_d only have one population field
         outsorted = (
             outsorted.groupby([1, "window_pos_1", "window_pos_2"], as_index=False, dropna=False)
             .agg({7: "sum", 8: "sum", 9: "sum", 10: "sum"})
@@ -98,7 +103,7 @@ def aggregate_output(
             .reset_index()
         )
 
-    if stat == "pi" or stat == "dxy":
+    if stat == "pi" or stat == "dxy" or stat == "watterson_theta" or stat == "tajima_d":
         outsorted[stat] = outsorted[8] / outsorted[9]
     elif stat == "fst":
         if fst_type == "wc":
@@ -112,19 +117,21 @@ def aggregate_output(
     outsorted["chromosome"] = chromosome
 
     # reorder columns
-    if stat == "pi":  # pi only has one population field
+    if (
+        stat == "pi" or stat == "watterson_theta" or stat == "tajima_d"
+    ):  # pi, Watterson's theta and Tajima's D only have one population field
         outsorted = outsorted[[1, "chromosome", "window_pos_1", "window_pos_2", stat, 7, 8, 9, 10]]
     else:  # dxy and fst have 2 population fields
         outsorted = outsorted[
             [1, 2, "chromosome", "window_pos_1", "window_pos_2", stat, 7, 8, 9, 10]
         ]
 
-    # make sure sites, comparisons, missing get written as integers
-    if stat == "pi" or stat == "dxy":
+    # make sure sites, comparisons, missing get written as floats
+    if stat == "pi" or stat == "dxy" or stat == "watterson_theta" or stat == "tajima_d":
         cols = [7, 8, 9, 10]
     elif stat == "fst":
         cols = [7]
-    outsorted[cols] = outsorted[cols].astype("Int64")
+    outsorted[cols] = outsorted[cols].astype("int32")
     return outsorted
 
 
@@ -545,10 +552,81 @@ def compute_summary_stats(  # noqa: C901
             )
 
             pixy_output.extend(fst_results)
+        # TODO: fix so that passed args should be a `PixyArgs` object
+        if (args.populations is not None) and ("tajima_d" in args.stats):
+            assert gt_region is not None, "gt_region is None"
+            for pop in popnames:
+                # if the window has no sites in the VCF, assign all NAs,
+                # otherwise calculate Tajima's D
+                if window_is_empty:
+                    tajima_result: TajimaDResult = TajimaDResult.empty()
+                else:
+                    # subset the window for the individuals in each population
+                    gt_pop = gt_region.take(popindices[pop], axis=1)
 
-    # OUTPUT
-    # if in mc mode, put the results in the writing queue
-    # otherwise just write to file
+                    # if the population specific window for this region is empty, report it as such
+                    if len(gt_pop) == 0:
+                        tajima_result = TajimaDResult.empty()
+
+                    # otherwise compute Tajima's D as normal
+                    else:
+                        tajima_result = calc_tajima_d(gt_pop)
+                # consult the docstring of `PixyTempResult` for more details on overloaded fields
+                pixy_results: PixyTempResult = PixyTempResult(
+                    pixy_stat=PixyStat.TAJIMA_D,
+                    population_1=pop,
+                    population_2="NA",
+                    chromosome=chromosome,
+                    window_pos_1=window_pos_1,
+                    window_pos_2=window_pos_2,
+                    calculated_stat=tajima_result.tajima_d,
+                    shared_sites_with_alleles=tajima_result.num_sites,
+                    total_differences=tajima_result.raw_pi,
+                    total_comparisons=tajima_result.watterson_theta,
+                    total_missing=tajima_result.d_stdev,
+                )
+                pixy_output.append(pixy_results)
+
+        # WATTERSON'S THETA:
+        # GENETIC DIVERSITY CALCULATED FROM NUMBER OF SEGREGATING (VARIANT) SITES
+
+        if (args.populations is not None) and ("watterson_theta" in args.stats):
+            assert gt_region is not None, "genotype array is None"
+            assert callset_is_none is not None, "callset is empty"
+            for pop in popnames:
+                # if the window has no sites in the VCF, assign all NAs,
+                # otherwise calculate Watterson's theta
+                if window_is_empty:
+                    watterson_result = WattersonThetaResult.empty()
+                else:
+                    # subset the window for the individuals in each population
+                    gt_pop = GenotypeArray(gt_region.take(popindices[pop], axis=1))
+                    # if the population specific window for this region is empty, report it as such
+                    if len(gt_pop) == 0:
+                        watterson_result = WattersonThetaResult.empty()
+                    # otherwise compute Watterson's theta as normal
+                    else:
+                        watterson_result = calc_watterson_theta(gt_pop)
+                    # consult the docstring of `PixyTempResult`
+                    # for more details on overloaded fields
+                pixy_results = PixyTempResult(
+                    pixy_stat=PixyStat.WATTERSON_THETA,
+                    population_1=pop,
+                    population_2="NA",
+                    chromosome=chromosome,
+                    window_pos_1=window_pos_1,
+                    window_pos_2=window_pos_2,
+                    calculated_stat=watterson_result.avg_theta,
+                    shared_sites_with_alleles=watterson_result.num_sites,
+                    total_differences=watterson_result.raw_theta,
+                    total_comparisons=watterson_result.num_var_sites,
+                    total_missing=watterson_result.num_weighted_sites,
+                )
+                pixy_output.append(pixy_results)
+
+        # OUTPUT
+        # if in mc mode, put the results in the writing queue
+        # otherwise just write to file
 
     # ensure the output variable exists in some form
     if pixy_output:

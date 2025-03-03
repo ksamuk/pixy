@@ -12,12 +12,15 @@ class PixyStat(Enum):
         DXY: a measure of genetic diversity _between_ populations
         FST: the "fixation index"; represents a subpopulation-specific genetic variance
             relative to the total genetic variance
-
+        TAJIMA_D: a measure of non-neutral evolution in a population
+        WATTERSON_THETA: an estimator of genetic diversity
     """
 
     PI = "pi"
     DXY = "dxy"
     FST = "fst"
+    TAJIMA_D = "tajima_d"
+    WATTERSON_THETA = "watterson_theta"
 
     def __str__(self) -> str:
         return self.value

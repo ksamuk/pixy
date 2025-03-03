@@ -456,6 +456,12 @@ def test_pixy_csi_index(
         ),  # non-default prefix
         ("test", ["pi"], ["test_pi.txt"]),  # only pi
         ("test", ["pi", "fst"], ["test_pi.txt", "test_fst.txt"]),  # both pi and fst
+        ("test", ["pi", "tajima_d"], ["test_pi.txt", "test_tajima_d.txt"]),  # include tajima_d
+        (
+            "test",
+            ["pi", "watterson_theta"],
+            ["test_pi.txt", "test_watterson_theta.txt"],
+        ),  # include watterson_theta
     ],
 )
 def test_pixy_output_creation(
@@ -480,7 +486,7 @@ def test_pixy_output_creation(
         full_path: Path = pixy_out_dir / Path(file)
         assert full_path.exists()
 
-    all_possible_files: List[str] = ["pi", "fst", "dxy"]
+    all_possible_files: List[str] = ["pi", "fst", "dxy", "watterson_theta", "tajima_d"]
     # make sure we do not produce files we did not ask for
     unexpected_files: List[str] = list(set(all_possible_files) - set(stats_requested))
     for file in unexpected_files:

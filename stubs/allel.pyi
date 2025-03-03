@@ -56,6 +56,7 @@ class AlleleCountsArray(NumpyArrayWrapper):
     def __getitem__(self, item: Any) -> Any: ...
     def to_frequencies(self, fill: float = np.nan) -> NDArray: ...
     def max_allele(self) -> NDArray: ...
+    def count_segregating(self) -> int: ...
 
 class GenotypeArray(Genotypes):
     def __init__(
@@ -187,7 +188,7 @@ def read_vcf_headers(input: Any) -> VCFHeaders: ...
 ####################################################################################################
 def mean_pairwise_difference(
     ac: NDArray,
-    an: NDArray,
+    an: Optional[NDArray] = None,
     fill: float = np.nan,
 ) -> NDArray: ...
 def mean_pairwise_difference_between(
@@ -197,3 +198,27 @@ def mean_pairwise_difference_between(
     an2: Optional[NDArray] = None,
     fill: float = np.nan,
 ) -> NDArray: ...
+
+####################################################################################################
+# allel.watterson_theta
+# https://github.com/cggh/scikit-allel/blob/master/allel/allel/stats/diversity.py
+####################################################################################################
+def watterson_theta(
+    pos: List[int],
+    ac: NDArray,
+    start: Optional[int] = None,
+    stop: Optional[int] = None,
+    is_accessible: Optional[List[bool]] = None,
+) -> float: ...
+
+####################################################################################################
+# allel.tajima_d
+# https://github.com/cggh/scikit-allel/blob/master/allel/allel/stats/diversity.py
+####################################################################################################
+def tajima_d(
+    ac: NDArray,
+    pos: Optional[List[int]] = None,
+    start: Optional[int] = None,
+    stop: Optional[int] = None,
+    min_sites: Optional[int] = None,
+) -> float: ...

@@ -1,3 +1,4 @@
+import allel
 import numpy as np
 import pytest
 from allel import AlleleCountsArray
@@ -5,15 +6,46 @@ from allel import GenotypeArray
 from allel import hudson_fst
 from allel import mean_pairwise_difference
 from allel import mean_pairwise_difference_between
+from allel import watterson_theta
 from allel import weir_cockerham_fst
 
 from pixy.calc import calc_dxy
 from pixy.calc import calc_fst
 from pixy.calc import calc_pi
+from pixy.calc import calc_tajima_d
+from pixy.calc import calc_watterson_theta
 from pixy.enums import FSTEstimator
 from pixy.models import DxyResult
 from pixy.models import FstResult
 from pixy.models import PiResult
+from pixy.models import TajimaDResult
+from pixy.models import WattersonThetaResult
+
+##################
+# Helper functions
+##################
+
+
+def formulaic_wattersons_theta(gt_array: GenotypeArray) -> float:
+    """
+    Calculate Watterson's Theta per Equation 2 in Bailey et al., 2025.
+
+    Args:
+        gt_array: the genotype array over which to calculate Watterson's Theta
+
+    Returns:
+        the per-site (raw) theta calculation
+    """
+    # count the number of segregating sites (S)
+    ac: AlleleCountsArray = gt_array.count_alleles()
+    num_segregating_sites: int = ac.count_segregating()
+    n: int = ac.sum(axis=1).max()
+    # calculate a_n (the reciprocal sums from 1 to n-1)
+    a_n = np.sum([1 / i for i in range(1, n)])
+
+    # calculate Watterson's theta
+    raw_theta: float = num_segregating_sites / a_n
+    return raw_theta
 
 
 def test_calc_pi() -> None:
@@ -617,3 +649,304 @@ def test_calc_fst_wc_multiallelic() -> None:
     assert result.b == pytest.approx(b.sum())
     assert result.c == pytest.approx(c.sum())
     assert result.n_sites == combined_gt_array.n_variants
+
+
+##############################
+# Watterson's Theta Unit-tests
+
+# Expected values for these tests were generated based on math contained
+# in https://github.com/ksamuk/pixy/pull/117. Some tests check the formulaic result as well.
+##############################
+
+
+def test_calc_watterson_theta_single_locus() -> None:
+    """
+    Assert that Watterson's theta calculation produces known outputs with known inputs.
+
+    In this case we test a single locus. Expected values were generated based on math contained
+    in https://github.com/ksamuk/pixy/pull/117.
+
+    Additionally, because there is no missing data, we compare
+    to the `scikit-allel` implementation and assert that the results match.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # site 1, 3 samples
+    ])
+    # formulaic Watterson's theta
+    ac: AlleleCountsArray = array.count_alleles()  # [3,3]
+    num_segregating_sites: int = ac.count_segregating()  # just 1 site is polymorphic
+    n: int = ac.sum(axis=1).max()  # [3,3] -> 6
+    # calculate a_n (the reciprocal sums from 1 to n-1)
+    a_n = np.sum([1 / i for i in range(1, n)])  # 2.283333333333333
+    formulaic_raw_theta: float = num_segregating_sites / a_n  # 1 / 2.283
+    watterson_result: WattersonThetaResult = calc_watterson_theta(array)
+    # compare `pixy` result to both scikit-allel and expected output
+    assert watterson_result.avg_theta == pytest.approx(
+        watterson_theta(ac=array.count_alleles(), pos=[1])
+    )
+    assert watterson_result.avg_theta == pytest.approx(0.43795620437956206)
+    # compare `pixy` result to formulaic result and expected output
+    assert watterson_result.raw_theta == pytest.approx(formulaic_raw_theta)
+    assert watterson_result.raw_theta == pytest.approx(0.43795620437956206)
+    assert watterson_result.num_weighted_sites == 1.0
+
+
+def test_calc_watterson_theta_haploid_singleton() -> None:
+    """Test calculation of Watterson's Theta for haploid genomes with singletons."""
+    array = GenotypeArray([
+        [[0], [0]],
+        [[1], [1]],
+        [[0], [1]],
+        [[0], [0]],
+        [[1], [1]],
+        [[0], [-1]],
+        [[1], [-1]],
+        [[-1], [-1]],
+    ])
+    watterson_result = calc_watterson_theta(array)
+
+    # expected values
+    assert np.isinf(watterson_result.avg_theta)
+    assert np.isinf(watterson_result.raw_theta)
+    assert watterson_result.num_weighted_sites == 6.0
+
+
+def test_calc_watterson_theta_diploid_biallelic() -> None:
+    """
+    Assert that Watterson's Theta calculation produces known outputs with known inputs.
+
+    In this case we test diploid genomes with biallelic sites only.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # site 1
+        [[0, 1], [0, 1], [1, 1]],  # site 2
+    ])
+    # formulaic Watterson's theta
+    ac: AlleleCountsArray = array.count_alleles()  # [3,3] at site 1, [2,4] at site 2
+    num_segregating_sites: int = ac.count_segregating()  # 2 sites are polymorphic
+    n: int = ac.sum(axis=1).max()  # 6
+    # calculate a_n (the reciprocal sums from 1 to n-1)
+    a_n = np.sum([1 / i for i in range(1, n)])  # 2.283333333333333
+    formulaic_raw_theta: float = num_segregating_sites / a_n  # 2 / 2.283
+
+    watterson_result = calc_watterson_theta(array)
+    assert watterson_result.avg_theta == pytest.approx(
+        watterson_theta(ac=array.count_alleles(), pos=[1, 2])
+    )
+    assert watterson_result.avg_theta == pytest.approx(0.43795620437956206)
+
+    assert watterson_result.raw_theta == pytest.approx(formulaic_raw_theta)
+    assert watterson_result.raw_theta == pytest.approx(0.8759124087591241)
+
+    assert watterson_result.num_weighted_sites == 2.0
+
+
+def test_calc_watterson_theta_diploid_multiallelic() -> None:
+    """
+    Assert that Watterson's Theta calculation produces known outputs with known inputs.
+
+    In this case we test diploid genomes with four sites, some of which are multiallelic.
+    Because there is no missing data here, we compare to the `scikit-allel` implementation.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # site 1
+        [[0, 2], [0, 1], [1, 1]],  # site 2
+        [[0, 0], [0, 0], [0, 0]],  # site 3
+        [[0, 2], [0, 1], [1, 1]],  # site 4
+    ])
+
+    result = calc_watterson_theta(array)
+
+    assert result.avg_theta == pytest.approx(
+        watterson_theta(ac=array.count_alleles(), pos=[1, 2, 3, 4])
+    )
+    assert result.raw_theta == pytest.approx(1.3138686131386863)
+    assert result.num_weighted_sites == 4
+
+
+def test_calc_watterson_theta_diploid_multiallelic_missing_data() -> None:
+    """
+    Assert that Watterson's Theta calculation produces known outputs with known inputs.
+
+    In this case we test diploid genomes with two multiallelic sites. Importantly, this genotype
+    array has missing data, and so the results from `pixy` are only compared to the formulaic
+    Watterson's Theta and not the `scikit-allel` implementation (which cannot handle missing data).
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [-1, 1]],  # site 1 (missing data)
+        [[0, 2], [0, 1], [1, 1]],  # site 2 (multiallelic)
+        [[0, 0], [0, 0], [0, 0]],  # site 3 (all ref, non-segregating)
+        [[0, 2], [0, 1], [1, 1]],  # site 4 (multiallelic)
+    ])
+
+    formulaic_weighted_raw_theta: float = (1 / 2.0833) + (2 / 2.283333)
+    formulaic_weighted_avg_theta: float = formulaic_weighted_raw_theta / 4  # num_sites
+
+    watterson_result = calc_watterson_theta(array)
+    # avg theta comparisons
+    assert watterson_result.avg_theta == pytest.approx(0.3389781021897811)
+    assert watterson_result.avg_theta == pytest.approx(formulaic_weighted_avg_theta, rel=1e-05)
+    # raw theta comparisons
+    assert watterson_result.raw_theta == pytest.approx(1.3559124087591243)
+    assert watterson_result.raw_theta == pytest.approx(formulaic_weighted_raw_theta, rel=1e-05)
+    assert (
+        watterson_result.num_weighted_sites == 3.8333333333333335
+    )  # np.sum(array([1, 3]) * array([0.83333333, 3.]))
+
+
+def test_calc_watterson_theta_tetraploidy() -> None:
+    """
+    Assert that Watterson's Theta calculation produces known outputs with known inputs.
+
+    In this case we test tetraploid genomes.
+    """
+    array = GenotypeArray([
+        [[0, 0, 0, 0], [0, 1, 0, 0], [1, 1, 1, 1]],  # site 1
+        [[0, 1, 0, 0], [0, 1, 1, 1], [1, 1, 0, 0]],  # site 2
+    ])
+
+    # formulaic Watterson's theta
+    ac: AlleleCountsArray = array.count_alleles()  # [7,5], [6,6]
+    num_segregating_sites: int = ac.count_segregating()  # 2 sites are polymorphic
+    n: int = ac.sum(axis=1).max()  # 12!
+    # calculate a_n (the reciprocal sums from 1 to n-1)
+    a_n = np.sum([1 / i for i in range(1, n)])  # 3448773446
+    formulaic_raw_theta: float = num_segregating_sites / a_n  # 2 / 3.01987
+    result = calc_watterson_theta(array)
+    assert result.avg_theta == pytest.approx(0.3311392767975535)
+    assert result.raw_theta == pytest.approx(0.662278553595107) == formulaic_raw_theta
+    assert result.num_weighted_sites == 2.0
+
+
+##############################
+# Tajima's D Unit-tests
+#
+# Expected values for these tests were generated based on math contained
+# in https://github.com/ksamuk/pixy/pull/117.
+##############################
+
+
+def test_calc_tajima_d_single_locus() -> None:
+    """
+    Assert that Tajima's D calculation produces known outputs with known inputs.
+
+    In this case we are testing a single locus.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # site 1
+    ])
+
+    result: TajimaDResult = calc_tajima_d(array)
+
+    # Without missing data, the scikit-allel implementation should match pixy's
+    ac = array.count_alleles()
+    assert result.tajima_d == pytest.approx(allel.tajima_d(ac=ac, min_sites=0))
+    assert result.raw_pi == pytest.approx(allel.mean_pairwise_difference(ac=ac).sum())
+    assert result.watterson_theta == pytest.approx(allel.watterson_theta(pos=[1], ac=ac))
+
+    # There is no standalone function or helper for the denominator - this was manually calculated
+    # from scikit-allel's code
+    assert result.d_stdev == pytest.approx(0.1121335)
+
+
+def test_calc_tajima_d_haploid_singleton() -> None:
+    """
+    Assert that Tajima's D calculation produces known outputs with known inputs.
+
+    In this case we are testing haploid genomes with some singleton values. This test case was
+    mentioned in the original PR to pixy.
+    """
+    array = GenotypeArray([
+        [[0], [0]],
+        [[1], [1]],
+        [[0], [1]],
+        [[0], [0]],
+        [[1], [1]],
+        [[0], [-1]],
+        [[1], [-1]],
+        [[-1], [-1]],
+    ])
+
+    result: TajimaDResult = calc_tajima_d(array)
+
+    assert result.tajima_d == "NA"
+    assert result.raw_pi == pytest.approx(1.0)
+    assert np.isinf(result.watterson_theta)
+    assert np.isnan(result.d_stdev)
+
+
+def test_calc_tajima_d_diploid_biallelic() -> None:
+    """
+    Assert that Tajima's D calculation produces known outputs with known inputs.
+
+    In this case we test diploid genomes with biallelic sites only.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # site 1
+        [[0, 1], [0, 1], [1, 1]],  # site 2
+    ])
+
+    result: TajimaDResult = calc_tajima_d(array)
+
+    # Without missing data, the scikit-allel implementation should match pixy's
+    ac = array.count_alleles()
+    assert result.tajima_d == pytest.approx(allel.tajima_d(ac=ac, min_sites=0))
+    assert result.raw_pi == pytest.approx(allel.mean_pairwise_difference(ac=ac).sum())
+
+    # scikit-allel's function returns the average theta over the number of bases - to obtain the
+    # raw theta, multiply it back out
+    assert result.watterson_theta == pytest.approx(allel.watterson_theta(pos=[1, 2], ac=ac) * 2)
+
+    # There is no standalone function or helper for the denominator - this was manually calculated
+    # from scikit-allel's code
+    assert result.d_stdev == pytest.approx(0.18485059)
+
+
+def test_calc_tajima_d_diploid_multiallelic() -> None:
+    """
+    Assert that Tajima's D calculation produces known outputs with known inputs.
+
+    Here we test diploid genomes with a multiallelic spike-in.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # site 1
+        [[0, 2], [0, 1], [1, 1]],  # site 2
+    ])
+
+    result: TajimaDResult = calc_tajima_d(array)
+
+    # Without missing data, the scikit-allel implementation should match pixy's
+    ac = array.count_alleles()
+    assert result.tajima_d == pytest.approx(allel.tajima_d(ac=ac, min_sites=0))
+    assert result.raw_pi == pytest.approx(allel.mean_pairwise_difference(ac=ac).sum())
+
+    # scikit-allel's function returns the average theta over the number of bases - to obtain the
+    # raw theta, multiply it back out
+    assert result.watterson_theta == pytest.approx(allel.watterson_theta(pos=[1, 2], ac=ac) * 2)
+
+    # There is no standalone function or helper for the denominator - this was manually calculated
+    # from scikit-allel's code
+    assert result.d_stdev == pytest.approx(0.1848505)
+
+
+def test_calc_tajima_d_tetraploidy() -> None:
+    """Assert that Tajima's D calculation produces known outputs with known inputs (tetraploidy)."""
+    array = GenotypeArray([
+        [[0, 0, 0, 0], [0, 1, 0, 0], [1, 1, 1, 1]],  # site 1
+        [[0, 1, 0, 0], [0, 1, 1, 1], [1, 1, 0, 0]],  # site 2
+    ])
+
+    result: TajimaDResult = calc_tajima_d(array)
+
+    # Without missing data, the scikit-allel implementation should match pixy's
+    ac = array.count_alleles()
+    assert result.tajima_d == pytest.approx(allel.tajima_d(ac=ac, min_sites=0))
+    assert result.raw_pi == pytest.approx(allel.mean_pairwise_difference(ac=ac).sum())
+
+    # scikit-allel's function returns the average theta over the number of bases - to obtain the
+    # raw theta, multiply it back out
+    assert result.watterson_theta == pytest.approx(allel.watterson_theta(pos=[1, 2], ac=ac) * 2)
+
+    # There is no standalone function or helper for the denominator - this was manually calculated
+    # from scikit-allel's code
+    assert result.d_stdev == pytest.approx(0.2266425)
