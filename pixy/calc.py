@@ -1,3 +1,5 @@
+from collections import Counter
+from typing import Counter as CounterType
 from typing import List
 from typing import Tuple
 from typing import Union
@@ -8,15 +10,22 @@ from allel import AlleleCountsArray
 from allel import GenotypeArray
 from numpy.typing import NDArray
 from scipy import special
+from typing_extensions import TypeAlias
 
 from pixy.enums import FSTEstimator
 from pixy.models import NA
 from pixy.models import DxyResult
 from pixy.models import FstResult
 from pixy.models import PiResult
+from pixy.models import TajimaDResult
+from pixy.models import WattersonThetaResult
 
 # vectorized functions for calculating pi and dxy
 # these are reimplementations of the original functions
+
+# adding 2 `TypeAlias`s for additional type safety and defensiveness
+VariantCount: TypeAlias = int
+SiteCount: TypeAlias = int
 
 
 def count_diff_comp_missing(row: AlleleCountsArray, n_haps: int) -> Tuple[int, int, int]:
@@ -325,3 +334,143 @@ def calc_fst_persite(
         raise ValueError("fst_type must be either 'wc' or 'hudson'")
 
     return fst
+
+
+def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
+    """
+    Calculates Watterson's Theta for a provided genotype array based on Watterson 1975.
+
+    This equation is also given as Equation 3 in Bailey et al., 2025.
+
+    `num_sites` represents the number of sites in the input array with an observed genotype.
+    `num_var_sites` represents the number of sites in the input array with an observed alternate
+    genotype (variant count != 0). The `weighted_site_count` represents the number of sites
+    weighted by how many genotypes are missing in each site.
+
+    Args:
+        gt_array: the genotype array for which to calculate Watterson's Theta
+
+    Returns:
+        a WattersonThetaResult that encapsulates the number of sites with an observed genotype,
+    the number of sites with an observe alternatve genotype, the averaged Watterson's Theta,
+    raw Watterson's Theta, and weighted site count
+    """
+    # alleles are counted, variant alleles are extracted
+    # number of sites is count of sites with more than zero alleles
+
+    # counts of each of the two alleles at each site
+    # with max_allele=1    -> this returns an (n x 2) array
+    # with max_allele=None -> this returns an (n x a) array, where a is the # of alternate alleles
+    allele_counts: AlleleCountsArray = gt_array.count_alleles()
+
+    # counts of only variant sites by excluding sites with variant count 0
+    # [ ref alt ]  => ref + alt == # haploid samples (assuming none are missing)
+    variant_counts: AlleleCountsArray = allele_counts[allele_counts[:, 1:].sum(axis=1) != 0]
+
+    num_sites = np.count_nonzero(np.sum(allele_counts, 1))
+    num_var_sites = np.count_nonzero(np.sum(variant_counts, 1))
+    # for variant sites only use Counter to generate dictionary
+    # where the key is the number of genotypes and value is number of sites with that many genotypes
+    variant_sites_counter: CounterType[VariantCount] = Counter(variant_counts.sum(axis=1))
+    all_sites_counter: CounterType[SiteCount] = Counter(allele_counts.sum(axis=1))
+
+    allele_freq_counts: NDArray[np.int64] = np.array(tuple(all_sites_counter.items()))
+
+    # calculate Watterson's theta as sum of equations for differing numbers of genotypes
+    # this is calculating Watterson's theta incorporating missing genotypes
+    watterson_theta: float = 0.0
+    for num_genotypes, site_count in variant_sites_counter.items():
+        reciprocal_sum: float = np.sum(1 / np.arange(1, num_genotypes))
+        watterson_theta += site_count / reciprocal_sum
+
+    # calculate number of sites excluding missing sites (those with no genotypes)
+    # this allows calculation of an averaged Watterson's in the context of missing sites
+    weighted_sites: int = np.sum(
+        np.multiply(
+            allele_freq_counts[:, 1:].sum(axis=1),
+            (allele_freq_counts[:, 0] / max(all_sites_counter)),
+        )
+    )
+
+    return WattersonThetaResult(
+        num_sites=num_sites,
+        num_var_sites=num_var_sites,
+        avg_theta=(watterson_theta / num_sites),
+        raw_theta=watterson_theta,
+        num_weighted_sites=weighted_sites,
+    )
+
+
+def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
+    """
+    Calculates Tajima's D over a provided genotype array based on Tajima 1989.
+
+    This equation is also given as Equation 4 in Bailey et al., 2025. The number of genotyped sites
+     is not directly used in the calculation but returned as it's required for the emitted results.
+
+    Args:
+        gt_array: the genotype array for which to calculate Tajima's D
+
+    Returns:
+        a TajimaDResult that encapsulates the calculated Tajima's D, number of sites with an
+        observed genotype, the calculated raw values for pi and Watterson's theta, and the standard
+        deviation (Tajima's D denominator)
+    """
+    # The number of total genotypes observed at a variant site.
+    NumGenotypes: TypeAlias = int
+
+    # counts of each of the two alleles at each site
+    allele_counts: AlleleCountsArray = gt_array.count_alleles()
+    num_sites = np.count_nonzero(np.sum(allele_counts, 1))
+
+    # calculate mean pairwise differences and sum these together
+    mpd: NDArray[np.floating] = allel.mean_pairwise_difference(ac=allele_counts, fill=0)
+    raw_pi: float = np.sum(mpd)
+
+    # counts of only variant sites by excluding sites with variant count 0
+    variant_allele_counts: AlleleCountsArray = allele_counts[allele_counts[:, 1:].sum(axis=1) != 0]
+
+    # for variant sites only, use Counter to generate dictionary
+    # where the key is the number of genotypes and value is number of sites with that many genotypes
+    variant_gt_counts: CounterType[NumGenotypes] = Counter(variant_allele_counts.sum(axis=1))
+
+    # calculate watterson's theta as sum of equations for differing numbers of genotypes
+    # this is calculating Watterson's theta incorporating missing genotypes
+    watterson_theta: float = 0.0
+    for n, s in variant_gt_counts.items():
+        a1: float = np.sum(1 / np.arange(1, n))
+        watterson_theta += s / a1
+
+    # calculate denominator for Tajima's D as in scikit-allel; loop to incorporate missing genotypes
+    d_stdev: float = 0.0
+    for n in variant_gt_counts:
+        a1 = np.sum(1 / np.arange(1, n))
+        a2: float = np.sum(1 / (np.arange(1, n) ** 2))
+        b1: float = (n + 1) / (3 * (n - 1))
+        b2: float = 2 * (n**2 + n + 3) / (9 * n * (n - 1))
+        c1: float = b1 - (1 / a1)
+        c2: float = b2 - ((n + 2) / (a1 * n)) + (a2 / (a1**2))
+        e1: float = c1 / a1
+        e2: float = c2 / (a1**2 + a2)
+        d_stdev += np.sqrt(
+            (e1 * variant_gt_counts[n]) + (e2 * variant_gt_counts[n] * (variant_gt_counts[n] - 1))
+        )
+
+    tajima_d: Union[float, NA]
+    if d_stdev > 0 and not any(np.isnan(x) for x in [raw_pi, watterson_theta, d_stdev]):
+        tajima_d = (raw_pi - watterson_theta) / d_stdev
+    else:
+        tajima_d = "NA"
+
+    # return Tajima's D calculation using raw pi and Watterson's theta calculations above
+    # also return the raw pi calculation, raw Watterson's theta, and standard deviation of their
+    # covariance individually
+    # note that the "raw" values of pi and Watterson's theta are needed for Tajima's D, not the
+    # ones incorporating sites
+    return TajimaDResult(
+        tajima_d=tajima_d,
+        num_sites=num_sites,
+        raw_pi=raw_pi,
+        watterson_theta=watterson_theta,
+        d_stdev=d_stdev,
+    )
