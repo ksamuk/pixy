@@ -5,5 +5,3 @@ channels:
 dependencies:
   - bioconda::htslib=1.9
   - bioconda::samtools
-  - numpy>=1.25.0
-
