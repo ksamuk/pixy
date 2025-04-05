@@ -1,10 +1,9 @@
 [tool.poetry]
 name          = "pixy"
-version       = "1.2.12-dev"
+version       = "2.0.0-dev"
 description   = "An unbiased estimation of average nucleotide diversity within (π) and between (dxy) populations from a VCF"
 readme        = "README.md"
 authors       = [
-    "Katharine Korunes <kkorunes@gmail.com>",
     "Kieran Samuk <ksamuk@gmail.com>",
 ]
 license       = "MIT"

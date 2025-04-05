@@ -152,7 +152,7 @@ def precompute_filtered_variant_array(
 
 
 def compute_summary_pi(
-    popnames: NDArray[np.string_],
+    popnames: NDArray[np.bytes_],
     window_is_empty: bool,
     gt_region: Union[GenotypeVector, None],
     popindices: Dict[str, NDArray[np.int64]],
@@ -214,7 +214,7 @@ def compute_summary_pi(
 
 
 def compute_summary_dxy(
-    popnames: NDArray[np.string_],
+    popnames: NDArray[np.bytes_],
     window_is_empty: bool,
     gt_region: Union[GenotypeVector, None],
     popindices: Dict[str, NDArray[np.int64]],

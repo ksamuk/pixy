@@ -3,6 +3,6 @@ channels:
   - bioconda
   - conda-forge
 dependencies:
-  - bioconda::htslib=1.21
-  - bioconda::samtools=1.21
+  - bioconda::htslib=1.9
+  - bioconda::samtools
 
