@@ -1,11 +1,9 @@
 from collections import Counter
 from typing import Any
-from typing import Callable
 from typing import Counter as CounterType
 from typing import List
 from typing import Tuple
 from typing import Union
-from typing import cast
 
 import allel
 import numpy as np
@@ -98,11 +96,13 @@ def calc_pi(gt_array: GenotypeArray) -> PiResult:
     # the number of (haploid) samples in the population
     n_haps = gt_array.n_samples * gt_array.ploidy
 
+    def count_diff_comp_missing_wrapper(row: NDArray[Any]) -> Tuple[int, int, int]:
+        return count_diff_comp_missing(row, n_haps)
+
     diff_comp_missing_matrix = np.apply_along_axis(
-        func1d=cast(Callable[[NDArray[Any], int], Tuple[int, int, int]], count_diff_comp_missing),
+        func1d=count_diff_comp_missing_wrapper,
         axis=1,
         arr=allele_counts,
-        n_haps=n_haps,
     )
 
     # sum up the above quantities for totals for the region
