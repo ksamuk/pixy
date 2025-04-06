@@ -8,6 +8,8 @@ env:
 jobs:
   Tests:
     runs-on: ubuntu-24.04
+    env:
+      CFLAGS: "-mavx512f -mavx512cd -mavx512bw -mavx512dq"
     strategy:
       matrix:
         PYTHON_VERSION: ["3.8", "3.9", "3.10", "3.11"]
@@ -47,11 +49,17 @@ jobs:
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
-  
+
       - name: Ensure cache is healthy
         if: steps.cache.outputs.cache-hit == 'true'
         shell: bash
         run: poetry run pip --version >/dev/null 2>&1 || rm -rf .venv
+
+      - name: Set compiler flags
+        shell: bash
+        run: |
+          export CFLAGS="-march=native"
+          export CXXFLAGS="-march=native"
 
       - name: Install the library
         shell: bash -el {0}
@@ -65,4 +73,3 @@ jobs:
           poetry run ruff check
           poetry run mypy
           poetry run pytest
-
