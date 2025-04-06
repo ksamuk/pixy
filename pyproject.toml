@@ -13,7 +13,7 @@ repository    = "https://github.com/ksamuk/pixy"
 documentation = "https://pixy.readthedocs.io/en/latest/about.html"
 
 [tool.poetry.dependencies]
-python       = ">=3.8,<3.12"
+python       = ">=3.9,<3.12"
 multiprocess = "^0.70.16"
 numcodecs    = "^0.12.1"
 numpy        = "^1.25.0"
