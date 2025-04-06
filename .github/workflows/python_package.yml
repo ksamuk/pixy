@@ -12,7 +12,7 @@ jobs:
       CFLAGS: "-mavx512f -mavx512cd -mavx512bw -mavx512dq"
     strategy:
       matrix:
-        PYTHON_VERSION: ["3.8", "3.9", "3.10", "3.11"]
+        PYTHON_VERSION: ["3.9", "3.10", "3.11"]
     steps:
       - uses: actions/checkout@v4
 
