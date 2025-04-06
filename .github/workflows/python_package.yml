@@ -47,15 +47,13 @@ jobs:
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
-  
+
       - name: Ensure cache is healthy
         if: steps.cache.outputs.cache-hit == 'true'
         shell: bash
-        run: poetry run pip --version >/dev/null 2>&1 || rm -rf .venv
-
-      - name: Install numpy
         run: |
-          python -m pip install numpy==1.25.0  # Use a version known to support PEP 517 builds
+          poetry run pip --version >/dev/null 2>&1 || rm -rf .venv
+          rm -rf .venv  # Clear the cache to ensure dependencies are re-installed
 
       - name: Install the library
         shell: bash -el {0}
