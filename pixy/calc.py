@@ -102,7 +102,7 @@ def calc_pi(gt_array: GenotypeArray) -> PiResult:
         func1d=cast(Callable[[NDArray[Any], int], Tuple[int, int, int]], count_diff_comp_missing),
         axis=1,
         arr=allele_counts,
-        n_haps=n_haps
+        n_haps=n_haps,
     )
 
     # sum up the above quantities for totals for the region
