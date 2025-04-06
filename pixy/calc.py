@@ -31,7 +31,7 @@ VariantCount: TypeAlias = int
 SiteCount: TypeAlias = int
 
 
-def count_diff_comp_missing(row: AlleleCountsArray, n_haps: int) -> Tuple[int, int, int]:
+def count_diff_comp_missing(row: NDArray[Any], n_haps: int) -> Tuple[int, int, int]:
     """
     Helper function for the calculation of pi.
 
