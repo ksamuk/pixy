@@ -1,6 +1,6 @@
 name: Code checks
 
-on: [push]
+on: [push, pull_request]
 
 env:
   POETRY_VERSION: 1.8.5
