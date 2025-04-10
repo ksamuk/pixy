@@ -1,16 +1,16 @@
 name: Code checks
 
-on: [push]
+on: [push, pull_request]
 
 env:
-  POETRY_VERSION: 1.8.2
+  POETRY_VERSION: 1.8.5
 
 jobs:
   Tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        PYTHON_VERSION: ["3.9", "3.10", "3.11"]
+        PYTHON_VERSION: ["3.8", "3.9", "3.10", "3.11"]
     steps:
       - uses: actions/checkout@v4
 
@@ -19,51 +19,28 @@ jobs:
         with:
           python-version: ${{ matrix.PYTHON_VERSION }}
 
-      - name: Set up miniconda and install samtools
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1
         with:
-          miniforge-version: latest
-          channels: conda-forge,bioconda
-          activate-environment: pixy-dev
-          auto-activate-base: false
+          version: "${{env.POETRY_VERSION}}"
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
           environment-file: environment.yaml
-          channel-priority: flexible
-          auto-update-conda: true
-          python-version: ${{ matrix.PYTHON_VERSION }}
-
-      - name: Get full Python version
-        id: full-python-version
-        shell: bash
-        run: echo "version=$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")" >> $GITHUB_OUTPUT
-
-      - name: Install poetry
-        run: |
-          python -m pip install --upgrade pipx
-          pipx install poetry==${{env.POETRY_VERSION}}
-
-      - name: Set up cache
-        uses: actions/cache@v4
-        id: cache
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
-  
-      - name: Ensure cache is healthy
-        if: steps.cache.outputs.cache-hit == 'true'
-        shell: bash
-        run: poetry run pip --version >/dev/null 2>&1 || rm -rf .venv
-
-      - name: Install numpy
-        run: |
-          python -m pip install numpy==1.26.4
+          micromamba-version: latest
+          init-shell: bash
+          cache-environment: true
+          post-cleanup: 'all'
 
       - name: Install the library
-        shell: bash -el {0}
+        shell: micromamba-shell {0}
         run: |
-          poetry install -v
+          poetry config virtualenvs.create false
+          poetry install -v | poetry install -vvv
 
       - name: Test the library
-        shell: bash -el {0}
+        shell: micromamba-shell {0}
         run: |
           poetry run ruff format --check --diff
           poetry run ruff check

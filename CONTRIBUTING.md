@@ -1,5 +1,10 @@
 # Development and Testing
 
+Ensure you have installed the pre-requisite build tools using their official documentation:
+
+- [`mamba`](https://mamba.readthedocs.io/en/latest/index.html)
+- [`poetry`](https://python-poetry.org/docs/#installation)
+
 ## Installing development version of pixy
 
 Create a fresh conda environment with Python 3.8, install samtools and htslib
@@ -7,8 +12,9 @@ Create a fresh conda environment with Python 3.8, install samtools and htslib
 Python dependencies with poetry.
 
 ```console
-mamba create -n pixy-dev python=3.8
-mamba env update -f environment.yaml
+mamba env create -f environment.yaml
+mamba activate pixy-dev
+poetry self update 1.8.5
 poetry install
 ```
 
