@@ -19,27 +19,24 @@ jobs:
         with:
           python-version: ${{ matrix.PYTHON_VERSION }}
 
-      - name: Set up miniconda and install samtools
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1
         with:
-          miniforge-version: latest
-          channels: conda-forge,bioconda
-          activate-environment: pixy-dev
-          auto-activate-base: false
+          version: "${{env.POETRY_VERSION}}"
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
           environment-file: environment.yaml
-          channel-priority: flexible
-          auto-update-conda: true
-          python-version: ${{ matrix.PYTHON_VERSION }}
+          micromamba-version: latest
+          init-shell: bash
+          cache-environment: true
+          post-cleanup: 'all'
 
       - name: Get full Python version
         id: full-python-version
-        shell: bash
+        shell: micromamba-shell {0
         run: echo "version=$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")" >> $GITHUB_OUTPUT
-
-      - name: Install poetry
-        run: |
-          python -m pip install --upgrade pipx
-          pipx install poetry==${{env.POETRY_VERSION}}
 
       - name: Set up cache
         uses: actions/cache@v4
@@ -50,20 +47,15 @@ jobs:
   
       - name: Ensure cache is healthy
         if: steps.cache.outputs.cache-hit == 'true'
-        shell: bash
+        shell: micromamba-shell {0
         run: poetry run pip --version >/dev/null 2>&1 || rm -rf .venv
 
-      - name: Install numpy
-        run: |
-          python -m pip install numpy==1.26.4
-
       - name: Install the library
-        shell: bash -el {0}
-        run: |
-          poetry install -v
+        shell: micromamba-shell {0}
+        run: poetry install -v | poetry install -vvv
 
       - name: Test the library
-        shell: bash -el {0}
+        shell: micromamba-shell {0}
         run: |
           poetry run ruff format --check --diff
           poetry run ruff check
