@@ -43,7 +43,7 @@ poetry_command = "task"
 fix-format = "ruff format"
 fix-lint   = "ruff check --fix"
 
-fix-all.ignore_fail = true
+fix-all.ignore_fail = "return_non_zero"
 fix-all.sequence    = [
     "fix-format",
     "fix-lint"
@@ -55,7 +55,7 @@ check-lint   = "ruff check"
 check-tests  = "pytest"
 check-typing = "mypy"
 
-check-all.ignore_fail = true
+check-all.ignore_fail = "return_non_zero"
 check-all.sequence    = [
     "check-lock",
     "check-format",
@@ -64,7 +64,7 @@ check-all.sequence    = [
     "check-typing"
 ]
 
-fix-and-check-all.ignore_fail = true
+fix-and-check-all.ignore_fail = "return_non_zero"
 fix-and-check-all.sequence    = [
     "fix-all",
     "check-all"
