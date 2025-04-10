@@ -35,7 +35,7 @@ jobs:
 
       - name: Get full Python version
         id: full-python-version
-        shell: micromamba-shell {0
+        shell: micromamba-shell {0}
         run: echo "version=$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")" >> $GITHUB_OUTPUT
 
       - name: Set up cache
@@ -47,7 +47,7 @@ jobs:
   
       - name: Ensure cache is healthy
         if: steps.cache.outputs.cache-hit == 'true'
-        shell: micromamba-shell {0
+        shell: micromamba-shell {0}
         run: poetry run pip --version >/dev/null 2>&1 || rm -rf .venv
 
       - name: Install the library
