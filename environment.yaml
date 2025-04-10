@@ -2,7 +2,8 @@ name: pixy-dev
 channels:
   - bioconda
   - conda-forge
+  - nodefaults
 dependencies:
+  - conda-forge::python=3.8
   - bioconda::htslib=1.21
   - bioconda::samtools=1.21
-

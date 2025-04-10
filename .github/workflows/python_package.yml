@@ -3,11 +3,11 @@ name: Code checks
 on: [push]
 
 env:
-  POETRY_VERSION: 1.8.2
+  POETRY_VERSION: 1.8.5
 
 jobs:
   Tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         PYTHON_VERSION: ["3.9", "3.10", "3.11"]
