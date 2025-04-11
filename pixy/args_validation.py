@@ -116,7 +116,7 @@ class PixyArgs:
         return self.interval_start is not None
 
     @cached_property
-    def pop_names(self) -> NDArray[np.string_]:
+    def pop_names(self) -> NDArray[np.bytes_]:
         """
         Returns the list of unique population names from the provided `populations_df`.
 
@@ -126,7 +126,7 @@ class PixyArgs:
         return np.array(self.populations_df["Population"].unique(), dtype=np.str_)
 
     @cached_property
-    def pop_ids(self) -> NDArray[np.string_]:
+    def pop_ids(self) -> NDArray[np.bytes_]:
         """
         Returns the list of unique population identifiers from the provided `populations_df`.
 
