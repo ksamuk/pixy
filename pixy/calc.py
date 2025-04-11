@@ -1,4 +1,5 @@
 from collections import Counter
+from typing import Any
 from typing import Counter as CounterType
 from typing import List
 from typing import Tuple
@@ -28,7 +29,7 @@ VariantCount: TypeAlias = int
 SiteCount: TypeAlias = int
 
 
-def count_diff_comp_missing(row: AlleleCountsArray, n_haps: int) -> Tuple[int, int, int]:
+def count_diff_comp_missing(row: NDArray[Any], n_haps: int) -> Tuple[int, int, int]:
     """
     Helper function for the calculation of pi.
 
@@ -95,9 +96,13 @@ def calc_pi(gt_array: GenotypeArray) -> PiResult:
     # the number of (haploid) samples in the population
     n_haps = gt_array.n_samples * gt_array.ploidy
 
-    # compute the number of differences, comparisons, and missing data at each site
+    def count_diff_comp_missing_wrapper(row: NDArray[Any]) -> Tuple[int, int, int]:
+        return count_diff_comp_missing(row, n_haps)
+
     diff_comp_missing_matrix = np.apply_along_axis(
-        count_diff_comp_missing, 1, allele_counts, n_haps
+        func1d=count_diff_comp_missing_wrapper,
+        axis=1,
+        arr=allele_counts,
     )
 
     # sum up the above quantities for totals for the region
