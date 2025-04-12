@@ -4,13 +4,13 @@ requirements = ["scikit-allel", "pandas", "numpy", "multiprocess", "scipy", "num
 
 setup(
     name="pixy",
-    version="1.2.6.beta1",
+    version="2.0.0.beta2",
     packages=["pixy"],
     entry_points={"console_scripts": ["pixy=pixy.__main__:main"]},
     url="https://github.com/ksamuk/pixy",
     license="MIT",
-    author="Katharine Korunes, Kieran Samuk",
-    author_email="kkorunes@gmail.com, ksamuk@gmail.com",
+    author="Kieran Samuk, Katharine Korunes",
+    author_email="ksamuk@gmail.com,kkorunes@gmail.com",
     description="pixy",
     install_requires=requirements,
     keywords="pixy",

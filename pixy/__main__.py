@@ -40,7 +40,7 @@ def main() -> None:  # noqa: C901
         "pixy: unbiased estimates of pi, dxy, fst, Watterson's Theta, and Tajima's D from "
         "VCFs with invariant sites"
     )
-    version = "1.2.10.beta2"
+    version = "2.0.0.beta2"
     citation = (
         "Korunes, KL and K Samuk. "
         "pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of "
