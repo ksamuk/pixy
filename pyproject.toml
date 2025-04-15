@@ -1,6 +1,6 @@
 [tool.poetry]
 name          = "pixy"
-version       = "1.2.12-dev"
+version       = "2.0.0-dev2"
 description   = "An unbiased estimation of average nucleotide diversity within (π) and between (dxy) populations from a VCF"
 readme        = "README.md"
 authors       = [
@@ -14,7 +14,7 @@ repository    = "https://github.com/ksamuk/pixy"
 documentation = "https://pixy.readthedocs.io/en/latest/about.html"
 
 [tool.poetry.dependencies]
-python       = ">=3.8,<3.12"
+python       = ">=3.9,<3.12"
 multiprocess = "^0.70.16"
 numcodecs    = "^0.12.1"
 numpy        = "^1.24.4"
