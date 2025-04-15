@@ -14,5 +14,5 @@ setup(
     description="pixy",
     install_requires=requirements,
     keywords="pixy",
-    classifiers=["Programming Language :: Python :: 3.7.1"],
+    classifiers=["Programming Language :: Python :: 3.11"],
 )
