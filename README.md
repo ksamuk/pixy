@@ -45,15 +45,15 @@ conda config --add channels conda-forge
 ```
 Then, create and activate a new conda environment for pixy:
 ```
-conda create -n "pixy" python=3.8
+conda create -n "pixy" python=3.11
 conda activate pixy
 ```
 
-Then install pixy, htslib, and samtools 1.9:
+Then install pixy, htslib, and samtools 1.21:
 ```
-conda install -c conda-forge pixy=1.2.5
+conda install -c conda-forge pixy=2.0.0
 conda install -c bioconda htslib
-conda install -c bioconda samtools=1.9 --force-reinstall -y
+conda install -c bioconda samtools=1.21 --force-reinstall -y
 ```
 
 You can test your pixy installation by running:
