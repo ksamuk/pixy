@@ -51,16 +51,16 @@ conda activate pixy
 
 Then install pixy, htslib, and samtools 1.21:
 ```
-conda install -c conda-forge pixy=2.0.0
+conda install -c conda-forge pixy
 conda install -c bioconda htslib
-conda install -c bioconda samtools=1.21 --force-reinstall -y
+conda install -c bioconda samtools=1.21
 ```
 
 You can test your pixy installation by running:
 ```
 pixy --help
 ```
-If you have trouble installing pixy in an environment using python 3.9, try rolling back to python 3.8.
+If you have trouble installing pixy in an environment using python 3.11, try rolling back to python 3.9.
 
 For information in installing conda, see here:
 
