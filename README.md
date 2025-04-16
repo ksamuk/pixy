@@ -31,7 +31,7 @@ Go to https://zenodo.org/badge/latestdoi/181987337 and find the DOI that matches
 
 ## Supported Organisms and Data Formats
 
-Currently, pixy only supports computation using biallelic SNPs (and invariant sites) from diploid organisms. VCFs need to be compressed with bgzip and indexed with tabix.
+As of version 2.0.0, pixy supports organisms with arbitrary ploidy as well as multiallelic sites. VCFs need to be compressed with bgzip and indexed with tabix. Both .tbi and .csi indexes are supported.
 
 ## Documentation
 
