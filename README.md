@@ -39,7 +39,7 @@ As of version 2.0.0, pixy supports organisms with arbitrary ploidy as well as mu
 
 ## Documentation
 
-https://pixy.readthedocs.io/
+https://pixy.readthedocs.io/ (note: version 2.0.0 update is pending!).
 
 ## Installation
 
