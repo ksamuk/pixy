@@ -74,10 +74,16 @@ We have made every effort to ensure that pixy provides accurate and unbiased res
 ## Contribute to pixy
 We are very open to pull requests for new features or bugfixes. If a pull request implements a new substantial feature or fixes a substantial bug, we would be happy to considering including contributors as authors on future manuscripts decscribing new versions of pixy.
 
-## Development Roadmap (Planned Features as of Feb 2024)
-- Update to handle GATK missing data formats - COMPLETE (as of version 1.2.11.beta1)
-- Simplified alternative to "All-Sites VCF" workflow
-- Support for arbitrary and variable ploidy levels (including sex chromosomes)
+## Development Roadmap (Planned Features as of April 2025)
 - Computation of summary statistics from genotype likelihoods
+- Simplified alternative to "All-Sites VCF" workflow
+- Python 3.12 support
+- Reduced/simplified dependencies
+
+### Completed in pixy 2.0.0
+- Update to handle GATK missing data formats (reverted due to changes in GATK)
+- Support for multiallelic sites
+- Support for .csi indexes
+- Support for arbitrary and variable ploidy levels (including sex chromosomes) 
 - Simplified contributor workflows
-- Computation of Tajima's D
+- Computation of Watterson's Theta and Tajima's D
