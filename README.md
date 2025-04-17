@@ -15,7 +15,7 @@
 
 `pixy` is a command-line tool for painlessly computing unbiased estimators of population genetic summary statistics that measure genetic variation within (π, θw, Tajima’s D) and between (d<sub>xy</sub>, F<sub>ST</sub>) populations from a VCF. In particular, pixy facilitates the use of VCFs containing invariant (monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub> in the face of missing data (i.e. always).
 
-The [manuscript describing pixy](https://doi.org/10.1111/1755-0998.13326) is now published in Molecular Ecology Resources.
+The [manuscript describing pixy](https://doi.org/10.1111/1755-0998.13326) is now published in Molecular Ecology Resources. As of version 2.0.0, a new manuscript describing the unbiased estimators of Watterson's theta and Tajima's D used by pixy is also [published in the same journal](https://doi.org/10.1111/1755-0998.14104).
 
 ## Authors
 Kieran Samuk (UC Riverside) and Katharine Korunes (Duke University) <p>
