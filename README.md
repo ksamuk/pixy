@@ -13,7 +13,7 @@
 [![Install with Conda](https://img.shields.io/badge/Install%20with-conda-brightgreen.svg)](https://anaconda.org/conda-forge/pixy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-`pixy` is a command-line tool for painlessly computing unbiased estimators of population genetic summary statistics that measure genetic variation within (π, θw, Tajima’s D) and between (d<sub>xy</sub>, FST) populations from a VCF. In particular, pixy facilitates the use of VCFs containing invariant (monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub> in the face of missing data (i.e. always).
+`pixy` is a command-line tool for painlessly computing unbiased estimators of population genetic summary statistics that measure genetic variation within (π, θw, Tajima’s D) and between (d<sub>xy</sub>, F<sub>ST</sub>) populations from a VCF. In particular, pixy facilitates the use of VCFs containing invariant (monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub> in the face of missing data (i.e. always).
 
 The [manuscript describing pixy](https://doi.org/10.1111/1755-0998.13326) is now published in Molecular Ecology Resources.
 
