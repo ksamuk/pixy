@@ -76,7 +76,7 @@ miniconda (lighter weight): https://docs.conda.io/en/latest/miniconda.html
 We have made every effort to ensure that pixy provides accurate and unbiased results. As described in the paper, we use population genetic simulations, where the true value of parameters is exactly known, to assess the performance of pixy. However, because of the huge biological and methodological parameter space around preparing VCFs, it is not possible to guarantee that pixy will specifically work for your organism of interest. As such, it is ultimately up to the investigator to check that pixy is performing as expected for their use case, e.g. by simulating their data-generation process, including missingness. 
 
 ## Contribute to pixy
-We are very open to pull requests for new features or bugfixes. If a pull request implements a new substantial feature or fixes a substantial bug, we would be happy to considering including contributors as authors on future manuscripts decscribing new versions of pixy.
+We are very open to pull requests for new features or bugfixes. If a pull request implements a new substantial feature or fixes a substantial bug, we would be happy to considering including contributors as authors on future manuscripts decscribing new versions of pixy. See [CONTRIUBTING.md](https://github.com/ksamuk/pixy/blob/master/CONTRIBUTING.md) on how to establish a development environment for working locally.
 
 ## Development Roadmap (Planned Features as of April 2025)
 - Computation of summary statistics from genotype likelihoods
