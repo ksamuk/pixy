@@ -26,7 +26,8 @@ If you use `pixy` in your research, please cite the manuscripts below, and the [
 **Manuscripts**<br>
 Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. https://doi.org/10.1111/1755-0998.13326
 
-And, if using the unbiased estimator of Tajima's D or Watterson's theta:
+And, if using the unbiased estimator of Tajima's D or Watterson's theta:<br>
+
 Bailey, N., Stevison, L., & Samuk, K. (2025). Correcting for bias in estimates of θw and Tajima’s D from missing data in next-generation sequencing. Molecular Ecology Resources, e14104. https://doi.org/10.1111/1755-0998.14104
 
 **Zenodo DOI for various versions of pixy**<br>
