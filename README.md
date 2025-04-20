@@ -2,7 +2,6 @@
 ====================
 
 [![Install with Conda](https://img.shields.io/badge/Install%20with-conda-brightgreen.svg)](https://anaconda.org/conda-forge/pixy)
-[![DOI](https://zenodo.org/badge/181987337.svg)](https://zenodo.org/badge/latestdoi/181987337)
 [![Anaconda Version](https://anaconda.org/conda-forge/pixy/badges/version.svg)](https://anaconda.org/conda-forge/pixy)
 [![Anaconda Date](https://anaconda.org/conda-forge/pixy/badges/latest_release_date.svg)](https://anaconda.org/conda-forge/pixy)
 [![Anaconda Platforms](
@@ -12,6 +11,7 @@ https://anaconda.org/conda-forge/pixy/badges/platforms.svg)](https://anaconda.or
 [![mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://docs.astral.sh/ruff/)
+[![DOI](https://zenodo.org/badge/181987337.svg)](https://zenodo.org/badge/latestdoi/181987337)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 `pixy` is a command-line tool for painlessly computing unbiased estimators of population genetic summary statistics that measure genetic variation within (π, θ<sub>W</sub>, Tajima’s D) and between (d<sub>xy</sub>, F<sub>ST</sub>) populations from a VCF. In particular, pixy facilitates the use of VCFs containing invariant (monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub> in the face of missing data (i.e. always).
