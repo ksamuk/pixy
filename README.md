@@ -3,6 +3,9 @@
 
 [![DOI](https://zenodo.org/badge/181987337.svg)](https://zenodo.org/badge/latestdoi/181987337)
 [![Anaconda Version](https://anaconda.org/conda-forge/pixy/badges/version.svg)](https://anaconda.org/conda-forge/pixy)
+[![Anaconda Date](https://anaconda.org/conda-forge/pixy/badges/latest_release_date.svg)](https://anaconda.org/conda-forge/pixy)
+[![Anaconda Platforms](
+https://anaconda.org/conda-forge/pixy/badges/platforms.svg)](https://anaconda.org/conda-forge/pixy)
 [![Python Versions](https://img.shields.io/badge/python-3.9_|_3.10_|_3.11-blue)](https://github.com/ksamuk/pixy)
 
 [![CI](https://github.com/ksamuk/pixy/actions/workflows/python_package.yml/badge.svg?branch=master)](https://github.com/ksamuk/pixy/actions/workflows/python_package.yml?query=branch%3Amaster)
