@@ -2,7 +2,6 @@
 ====================
 
 [![Install with Conda](https://img.shields.io/badge/Install%20with-conda-brightgreen.svg)](https://anaconda.org/conda-forge/pixy)
-[![Anaconda Version](https://anaconda.org/conda-forge/pixy/badges/version.svg)](https://anaconda.org/conda-forge/pixy)
 [![Anaconda Date](https://anaconda.org/conda-forge/pixy/badges/latest_release_date.svg)](https://anaconda.org/conda-forge/pixy)
 [![Anaconda Platforms](
 https://anaconda.org/conda-forge/pixy/badges/platforms.svg)](https://anaconda.org/conda-forge/pixy)
