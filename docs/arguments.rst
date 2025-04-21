@@ -7,7 +7,7 @@ Below is a list of required and optional arguments that pixy accepts.
 Required:
 --------------
 
-**-\\-stats [pi|fst|dxy]**
+**-\\-stats [pi|fst|dxy|watterson_theta|tajima_d]**
     Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)
 
 **-\\-vcf [path/to/vcf.vcf.gz]**
@@ -15,6 +15,9 @@ Required:
 
 **-\\-populations [path/to/populations_file.txt]**
     Path to the populations file. See quick start for format.
+
+**-\\-output_folder [path/to/output/folder]**
+    Folder where output will be written, e.g. path/to/output_folder, defaults to current working directory.
 
 
 In addition, one of either:
@@ -30,10 +33,10 @@ Optional arguments:
 
 **-\\-n_cores [integer]**
     Number of CPUs to utilize for parallel processing (default=1).
-**-\\-output_folder [path/to/output/folder]**
-    Folder where output will be written, e.g. path/to/output_folder, defaults to current working directory.
 **-\\-output_prefix [prefix]**
     Optional prefix for output file(s), e.g. \'output\' will result in writing to [output folder]/output_pi.txt, defaults to \'pixy\'.
+**-\\-include_multiallelic_snps**
+    "Include sites with more than two alleles in the calculation. Disabled by default because computation is slightly slower than biallelic mode."
 **-\\-chromosomes ['list,of,chromosomes']**
     A single-quoted, comma separated list of chromosome(s) (e.g. 'X,1,2'). Defaults to all chromosomes in the VCF.
 **-\\-interval_start [integer]**
@@ -46,8 +49,8 @@ Optional arguments:
     Approximate number of sites to read from VCF at any given time.  Defaults to 100000. Smaller numbers can reduce memory use.
 **-\\-fst_type [wc|hudson]**
     FST estimator to use, one of either: 'wc' (Weir and Cockerham 1984) or 'hudson' (Hudson 1992, Bhatia et al. 2013). Defaults to 'wc'
-**-\\-bypass_invariant_check [no|yes]**
-    Bypass the check for invariant sites. Use with caution!
+**-\\-bypass_invariant_check**
+    Bypass the check for invariant sites. Disabled by default. *Use with caution! Should only be used in special cases (e.g. simulated data).*
 **-\\-version**
     Print the pixy version number.
 **-\\-citation**
@@ -61,7 +64,7 @@ An example:
 
 .. code:: console
 
-    pixy --stats pi fst dxy \
+    pixy --stats pi fst dxy wattersons_theta tajima_d \
     --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
     --populations Ag1000_sampleIDs_popfile.txt \
     --window_size 10000 \
