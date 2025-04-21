@@ -2,10 +2,9 @@
 ====================
 
 [![Install with Conda](https://img.shields.io/badge/Install%20with-conda-brightgreen.svg)](https://anaconda.org/conda-forge/pixy)
-[![Anaconda Version](https://anaconda.org/conda-forge/pixy/badges/version.svg)](https://anaconda.org/conda-forge/pixy)
-[![Anaconda Date](https://anaconda.org/conda-forge/pixy/badges/latest_release_date.svg)](https://anaconda.org/conda-forge/pixy)
-[![Anaconda Platforms](
-https://anaconda.org/conda-forge/pixy/badges/platforms.svg)](https://anaconda.org/conda-forge/pixy)
+[![Anaconda Version](https://img.shields.io/badge/Anaconda.org-2.0.0.beta4-blue.svg)](https://anaconda.org/conda-forge/pixy)
+[![Anaconda Date](https://img.shields.io/badge/Last%20updated-20%20Apr%202025-blue.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
+[![Anaconda Platforms](https://img.shields.io/badge/Platforms-osx--arm64,linux--64,osx--64-orange.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
 [![Python Versions](https://img.shields.io/badge/python-3.9_|_3.10_|_3.11-blue)](https://github.com/ksamuk/pixy)
 [![CI](https://github.com/ksamuk/pixy/actions/workflows/python_package.yml/badge.svg?branch=master)](https://github.com/ksamuk/pixy/actions/workflows/python_package.yml?query=branch%3Amaster)
 [![mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
