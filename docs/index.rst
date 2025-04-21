@@ -5,7 +5,7 @@
 
 .. raw:: html
 
-    <div align="center"><h1> pixy 1.2.7.beta1 </h1></div>
+    <div align="center"><h1> pixy 2.0.0.beta4 </h1></div>
 
 .. image:: images/pixy_logo.png
    :width: 200
@@ -13,9 +13,9 @@
    
 What is pixy?
 ------------
-pixy is a command line tool for calculating the population genetic summary statistics **pi** (average per site heterozygosity) and **dxy** (average number of nucleotide differences between populations per site) from a VCF file. 
+pixy is a command-line tool for painlessly computing unbiased estimators of population genetic summary statistics that measure genetic variation within (π, θW, Tajima’s D) and between (dxy, FST) populations from a VCF.
 
-Many tools for computing pi and dxy from VCFs produce biased estimates in the presence of missing data. This is because these methods often make the simplifying assumption that if a genotype is missing, it is homozygous reference (0/0) by state. See pixy's paper (https://doi.org/10.1111/1755-0998.13326) for more details.
+Many tools for computing summary statistics using VCFs produce biased estimates in the presence of missing data. This is because these methods often make the simplifying assumption that if a genotype is missing, it is homozygous reference (0/0) by state. See pixy's paper (https://doi.org/10.1111/1755-0998.13326) for more details.
 
 .. toctree::
    :caption: Documentation
@@ -44,6 +44,10 @@ If you use pixy in your research, please cite the manuscript below, as well the 
 
 **Manuscript:**
 Korunes, K.L. and Samuk, K. (2021), pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of missing data. Molecular Ecology Resources. Accepted Author Manuscript. https://doi.org/10.1111/1755-0998.13326
+
+And, if using the unbiased estimator of Tajima's D or Watterson's theta:
+
+Bailey, N., Stevison, L., & Samuk, K. (2025). Correcting for bias in estimates of θw and Tajima’s D from missing data in next-generation sequencing. Molecular Ecology Resources, e14104. https://doi.org/10.1111/1755-0998.14104
 
 **Zenodo DOI for various versions of pixy:**
 Go to https://zenodo.org/record/4432294 and find the DOI that matches the version used (the current version is shown first). 
