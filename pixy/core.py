@@ -622,7 +622,7 @@ def compute_summary_stats(  # noqa: C901
     if pixy_output:
         temp_pixy_content: str = "\n".join(f"{result}" for result in pixy_output)
         if args.n_cores > 1:
-            assert isinstance(q, (queues.Queue, BaseProxy)), "q should be a Queue object when multiprocessing"
+            assert isinstance(q, (queues.Queue, BaseProxy)), "q should be a Queue BaseProxy"
             q.put(temp_pixy_content)
         elif args.n_cores == 1:
             outfile = open(temp_file, "a")
