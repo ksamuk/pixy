@@ -10,6 +10,9 @@ output/*
 docs/_build
 debug/*.txt
 debug/*.vcf*
+.vscode/*
+pixy_tmp*
+debug_temp*
 
 __pycache__/
 .coverage
