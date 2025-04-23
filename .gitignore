@@ -8,6 +8,8 @@ data/vcf
 .ipynb_checkpoints/*
 output/*
 docs/_build
+debug/*.txt
+debug/*.vcf*
 
 __pycache__/
 .coverage

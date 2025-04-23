@@ -159,14 +159,10 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
     pop1_n_haps: int = pop1_gt_array.n_samples * pop1_gt_array.ploidy
     pop2_n_haps: int = pop2_gt_array.n_samples * pop2_gt_array.ploidy
 
-    # Find the highest index of an observed allele, and assume it is the allelism of every site
-    # (If a site has fewer alleles, they zero out)
-    allelism = np.max([pop1_allele_counts.max_allele(), pop2_allele_counts.max_allele()]) + 1
-
     # the total number of differences between populations summed across all sites
     persite_diffs: NDArray = np.zeros(n_sites)
-    for i in range(allelism):
-        for j in range(allelism):
+    for i in range(pop1_allele_counts.n_alleles):
+        for j in range(pop2_allele_counts.n_alleles):
             if i != j:
                 persite_diffs += pop1_allele_counts[:, i] * pop2_allele_counts[:, j]
 
