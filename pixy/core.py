@@ -525,7 +525,6 @@ def compute_summary_stats(  # noqa: C901
         # This is just a loose wrapper around the scikit-allel fst function
         # TBD: explicit fst when data is completely missing
         if (args.populations is not None) and ("fst" in args.stats) and window_size != 1:
-            
             # disabling these assertions for now, because they are handled by "window_is_empty"
             # i.e. genotype arrays CAN be empty.
             # assert gt_array_fst is not None, "genotype array is None"
@@ -547,7 +546,6 @@ def compute_summary_stats(  # noqa: C901
             pixy_output.extend(fst_results)
         # TODO: fix so that passed args should be a `PixyArgs` object
         if (args.populations is not None) and ("tajima_d" in args.stats):
-            
             for pop in popnames:
                 # if the window has no sites in the VCF, assign all NAs,
                 # otherwise calculate Tajima's D
@@ -585,7 +583,6 @@ def compute_summary_stats(  # noqa: C901
         # GENETIC DIVERSITY CALCULATED FROM NUMBER OF SEGREGATING (VARIANT) SITES
 
         if (args.populations is not None) and ("watterson_theta" in args.stats):
-            
             for pop in popnames:
                 # if the window has no sites in the VCF, assign all NAs,
                 # otherwise calculate Watterson's theta
