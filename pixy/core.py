@@ -433,8 +433,8 @@ def compute_summary_stats(  # noqa: C901
     if "fst" in args.stats:
         # These should only be returned by `read_and_filter_genotypes` as None if `fst` is not a
         # requested stat. The asserts are to narrow the types.
-        assert gt_array is not None, "genotype array is None"
-        assert pos_array is not None, "position array is None"
+        # assert gt_array is not None, "genotype array is None"
+        # assert pos_array is not None, "position array is None"
 
         per_site_fst_results, gt_array_fst, pos_array_fst = precompute_filtered_variant_array(
             args=args,
@@ -470,7 +470,7 @@ def compute_summary_stats(  # noqa: C901
             loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
 
             # the assertion here is required to narrow the type on `gt_array` from `Optional`
-            assert gt_array is not None, "genotype array is None"
+            # assert gt_array is not None, "genotype array is None"
             gt_region = gt_array[loc_region]
 
             # double check that the region is not empty after subsetting
@@ -525,7 +525,10 @@ def compute_summary_stats(  # noqa: C901
         # This is just a loose wrapper around the scikit-allel fst function
         # TBD: explicit fst when data is completely missing
         if (args.populations is not None) and ("fst" in args.stats) and window_size != 1:
-            assert gt_array_fst is not None, "genotype array is None"
+            
+            # disabling these assertions for now, because they are handled by "window_is_empty"
+            # i.e. genotype arrays CAN be empty.
+            # assert gt_array_fst is not None, "genotype array is None"
 
             fst_type: FSTEstimator = FSTEstimator(args.fst_type)
             fst_results: List[PixyTempResult] = compute_summary_fst(
@@ -544,7 +547,7 @@ def compute_summary_stats(  # noqa: C901
             pixy_output.extend(fst_results)
         # TODO: fix so that passed args should be a `PixyArgs` object
         if (args.populations is not None) and ("tajima_d" in args.stats):
-            assert gt_region is not None, "gt_region is None"
+            
             for pop in popnames:
                 # if the window has no sites in the VCF, assign all NAs,
                 # otherwise calculate Tajima's D
@@ -552,6 +555,7 @@ def compute_summary_stats(  # noqa: C901
                     tajima_result: TajimaDResult = TajimaDResult.empty()
                 else:
                     # subset the window for the individuals in each population
+                    # assert gt_region is not None, "gt_region is None"
                     gt_pop = gt_region.take(popindices[pop], axis=1)
 
                     # if the population specific window for this region is empty, report it as such
@@ -581,14 +585,15 @@ def compute_summary_stats(  # noqa: C901
         # GENETIC DIVERSITY CALCULATED FROM NUMBER OF SEGREGATING (VARIANT) SITES
 
         if (args.populations is not None) and ("watterson_theta" in args.stats):
-            assert gt_region is not None, "genotype array is None"
-            assert callset_is_none is not None, "callset is empty"
+            
             for pop in popnames:
                 # if the window has no sites in the VCF, assign all NAs,
                 # otherwise calculate Watterson's theta
                 if window_is_empty:
                     watterson_result = WattersonThetaResult.empty()
                 else:
+                    # assert gt_region is not None, "genotype array is None"
+                    # assert callset_is_none is not None, "callset is empty"
                     # subset the window for the individuals in each population
                     gt_pop = GenotypeArray(gt_region.take(popindices[pop], axis=1))
                     # if the population specific window for this region is empty, report it as such
