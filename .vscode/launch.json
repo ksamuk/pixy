@@ -10,8 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": "${command:pickArgs}",
-            "python": "/home/ksamuk/.local/share/mamba/envs/pixy-dev/bin/python"
+            "args": "${command:pickArgs}"
         }
     ]
 }
