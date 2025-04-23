@@ -4,7 +4,7 @@ requirements = ["scikit-allel", "pandas", "numpy", "multiprocess", "scipy", "num
 
 setup(
     name="pixy",
-    version="2.0.0.beta4",
+    version="2.0.0.beta5",
     packages=["pixy"],
     entry_points={"console_scripts": ["pixy=pixy.__main__:main"]},
     url="https://github.com/ksamuk/pixy",
