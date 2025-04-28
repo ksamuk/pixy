@@ -386,17 +386,26 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
 
     # calculate number of sites excluding missing sites (those with no genotypes)
     # this allows calculation of an averaged Watterson's in the context of missing sites
-    weighted_sites: int = np.sum(
-        np.multiply(
-            allele_freq_counts[:, 1:].sum(axis=1),
-            (allele_freq_counts[:, 0] / max(all_sites_counter)),
+
+    if max(all_sites_counter) == 0:
+        weighted_sites = 0
+    else:
+        weighted_sites: int = np.sum(
+            np.multiply(
+                allele_freq_counts[:, 1:].sum(axis=1),
+                (allele_freq_counts[:, 0] / max(all_sites_counter)),
+            )
         )
-    )
+
+    if num_sites == 0:
+        avg_theta = "NA"
+    else:
+        avg_theta = watterson_theta / num_sites
 
     return WattersonThetaResult(
         num_sites=num_sites,
         num_var_sites=num_var_sites,
-        avg_theta=(watterson_theta / num_sites),
+        avg_theta=avg_theta,
         raw_theta=watterson_theta,
         num_weighted_sites=weighted_sites,
     )
