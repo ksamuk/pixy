@@ -32,6 +32,8 @@ echo "$pixy --debug \
 --output_prefix test" 
 
 
---debug --stats dxy --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --bed_file debug/BEDfile.txt --output_folder debug --output_prefix test
+--stats dxy --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --bed_file debug/BEDfile.txt --output_folder debug --output_prefix test
 
---debug --stats dxy --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --window_size 10000 --output_folder debug --output_prefix test
+--debug --stats watterson_theta  --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --window_size 10000 --output_folder debug --output_prefix test
+
+--debug --stats tajima_d --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --window_size 10000 --output_folder debug --output_prefix test
