@@ -160,6 +160,10 @@ def validate_populations_path(populations_path: Path) -> pandas.DataFrame:
     poppanel: pandas.DataFrame = pandas.read_csv(
         populations_path, sep="\t", usecols=[0, 1], names=["ID", "Population"]
     )
+
+    # remove trailing whitespace from population names (if any)
+    poppanel = poppanel.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+
     poppanel["ID"] = poppanel["ID"].astype(str)
 
     # check for missing values
@@ -200,8 +204,9 @@ def validate_bed_path(bed_path: Path) -> pandas.DataFrame:
     if not os.path.exists(bed_path):
         raise FileNotFoundError(f"The specified BED file {bed_path} does not exist")
 
-    # read in the bed file and extract the chromosome column
+    # read in the bed file, strip trailing whitespace, and extract the chromosome column
     bed_df = pandas.read_csv(bed_path, sep="\t", usecols=[0, 1, 2], names=["chrom", "pos1", "pos2"])
+    bed_df = bed_df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
 
     # force chromosomes to strings
     bed_df["chrom"] = bed_df["chrom"].astype(str)
@@ -241,6 +246,7 @@ def validate_sites_path(sites_path: Path) -> pandas.DataFrame:
         raise FileNotFoundError(f"The specified sites file {sites_path} does not exist")
 
     sites_df = pandas.read_csv(sites_path, sep="\t", usecols=[0, 1], names=["chrom", "pos"])
+    sites_df = sites_df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
     sites_df["chrom"] = sites_df["chrom"].astype(str)
 
     if sites_df.isnull().values.any():
