@@ -872,7 +872,7 @@ def test_calc_tajima_d_haploid_singleton() -> None:
     assert result.tajima_d == "NA"
     assert result.raw_pi == pytest.approx(1.0)
     assert np.isinf(result.watterson_theta)
-    assert np.isnan(result.d_stdev)
+    assert result.d_stdev == pytest.approx(0.0)
 
 
 def test_calc_tajima_d_diploid_biallelic() -> None:
