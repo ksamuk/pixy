@@ -1,4 +1,5 @@
 import argparse
+import gzip
 import logging
 import os
 import shutil
@@ -416,6 +417,45 @@ def validate_window_and_interval_args(args: argparse.Namespace) -> str:
     return check_message
 
 
+# function for inferring ploidy directly from the first genotype line of a vcf
+# turns out scikit-allel does NOT do this automatically
+def infer_ploidy_from_vcf(vcf_path):
+    # Use gzip.open for .vcf.gz, otherwise use regular open
+    open_func = gzip.open if vcf_path.endswith(".gz") else open
+
+    with open_func(vcf_path, "rt") as f:  # 'rt' = read text mode
+        for line in f:
+            if line.startswith("#CHROM"):
+                sample_start_col = 9  # Standard VCF format
+            elif not line.startswith("#"):
+                fields = line.strip().split("\t")
+                genotypes = fields[sample_start_col:]
+
+                # Get the GT field from the first sample
+                first_gt = genotypes[0].split(":")[0]
+
+                # Determine ploidy
+                if "/" in first_gt:
+                    alleles = first_gt.split("/")
+                elif "|" in first_gt:
+                    alleles = first_gt.split("|")
+                else:
+                    # No separator: e.g., "0", ".", "1"
+                    alleles = [first_gt]
+
+                # Count non-missing alleles
+                non_missing = [a for a in alleles if a != "."]
+
+                if len(alleles) == 1 or (len(non_missing) == 1 and len(alleles) > 1):
+                    ploidy = 1
+                else:
+                    ploidy = len(alleles)
+
+                return ploidy
+
+    raise RuntimeError("No genotype lines found in VCF")
+
+
 def check_and_validate_args(  # noqa: C901
     args: argparse.Namespace,
 ) -> PixyArgs:
@@ -650,10 +690,15 @@ def check_and_validate_args(  # noqa: C901
 
     include_multiallelic_snps: bool = args.include_multiallelic_snps
 
+    # check ploidy
+    ploidy = infer_ploidy_from_vcf(vcf_path)
+    logger.info(f"Inferred ploidy: {ploidy}, remember to split VCFs in the case of variable ploidy")
+
     logger.info("All initial checks passed!")
     stats: List[PixyStat] = [PixyStat[stat.upper()] for stat in args.stats]
     tmp_path: Path = _generate_tmp_path(output_dir=output_folder)
     _check_tmp_path(tmp_path)
+
     return PixyArgs(
         stats=stats,
         vcf_path=Path(vcf_path),

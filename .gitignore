@@ -17,3 +17,5 @@ debug_temp*
 __pycache__/
 .coverage
 .python-version
+debug/test_haploid.py
+debug/debug_template.sh

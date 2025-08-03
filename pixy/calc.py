@@ -93,8 +93,12 @@ def calc_pi(gt_array: GenotypeArray) -> PiResult:
     # counts of each of the two alleles at each site
     allele_counts: AlleleCountsArray = gt_array.count_alleles()
 
-    # the number of (haploid) samples in the population
-    n_haps = gt_array.n_samples * gt_array.ploidy
+    # determine the number of (haploid) samples in the population
+    # include a check if we are working with haploid data
+    if isinstance(gt_array, allel.model.ndarray.HaplotypeArray):
+        n_haps = gt_array.n_haplotypes
+    else:
+        n_haps = gt_array.n_samples * gt_array.ploidy
 
     def count_diff_comp_missing_wrapper(row: NDArray[Any]) -> Tuple[int, int, int]:
         return count_diff_comp_missing(row, n_haps)

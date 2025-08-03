@@ -20,20 +20,23 @@ data_folder="tests/main/data"
 pixy="python pixy/__main__.py"
 data_folder="debug"
 bed_path="${data_folder}/BEDfile.txt"
-vcf_path="${data_folder}/subsampled_10K.vcf.gz"
-pop_path="${data_folder}/popfile.txt"
+vcf_path="${data_folder}/4x_11.vcf.gz"
+pop_path="${data_folder}/vcfsim_popfile.txt"
 
 echo "$pixy --debug \
 --stats dxy \
 --vcf $vcf_path  \
 --populations $pop_path \
---bed_file $bed_path \
 --output_folder debug \
 --output_prefix test" 
 
 
---stats dxy --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --bed_file debug/BEDfile.txt --output_folder debug --output_prefix test
+#--stats dxy --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --bed_file debug/BEDfile.txt --output_folder debug --output_prefix test
 
---debug --stats watterson_theta  --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --window_size 10000 --output_folder debug --output_prefix test
+#--debug --stats watterson_theta  --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --window_size 10000 --output_folder debug --output_prefix test
 
---debug --stats tajima_d --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --window_size 10000 --output_folder debug --output_prefix test
+#--debug --stats tajima_d --vcf debug/subsampled_10K.vcf.gz  --populations debug/popfile.txt --window_size 10000 --output_folder debug --output_prefix test
+
+--debug --stats pi --window_size 10000 --vcf debug/4x_11.vcf.gz  --populations debug/vcfsim_popfile.txt --output_folder debug --output_prefix test
+--stats pi --window_size 10000 --vcf debug/4x_11.vcf.gz  --populations debug/vcfsim_popfile.txt --output_folder debug --output_prefix test
+--stats pi --window_size 10000 --vcf debug/1x.vcf.gz  --populations debug/vcfsim_popfile.txt --output_folder debug --output_prefix test

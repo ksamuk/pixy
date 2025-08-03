@@ -26,6 +26,7 @@ from multiprocess.managers import BaseProxy
 from numpy.typing import NDArray
 
 from pixy.args_validation import get_chrom_list
+from pixy.args_validation import infer_ploidy_from_vcf
 from pixy.args_validation import validate_bed_path
 from pixy.args_validation import validate_output_path
 from pixy.args_validation import validate_populations_path
@@ -317,6 +318,9 @@ def read_and_filter_genotypes(
 
     include_multiallelic_snps: bool = args.include_multiallelic_snps
 
+    # get ploidy from first line of vcf
+    ploidy = infer_ploidy_from_vcf(args.vcf)
+
     # read in data from the source VCF for the current window
     callset = allel.read_vcf(
         args.vcf,
@@ -328,7 +332,13 @@ def read_and_filter_genotypes(
             "variants/is_snp",
             "variants/numalt",
         ],
+        numbers={"GT": ploidy},
     )
+
+    # if debugging, print the callset and ploidy
+    if args.debug:
+        print(callset)
+        print(ploidy)
 
     # keep track of whether the callset was empty (no sites for this range in the VCF)
     # used by compute_summary_stats to add info about completely missing sites
@@ -342,7 +352,10 @@ def read_and_filter_genotypes(
         callset_is_none = False
 
         # convert to a genotype array object
-        gt_array = allel.GenotypeArray(allel.GenotypeDaskArray(callset["calldata/GT"]))
+        if ploidy == 1:
+            gt_array = allel.HaplotypeArray(allel.HaplotypeDaskArray(callset["calldata/GT"]))
+        else:
+            gt_array = allel.GenotypeArray(allel.GenotypeDaskArray(callset["calldata/GT"]))
 
         # build an array of positions for the region
         pos_array = allel.SortedIndex(callset["variants/POS"])
@@ -366,7 +379,12 @@ def read_and_filter_genotypes(
 
         # remove rows that are NOT snps or invariant sites from the genotype array
         gt_ndarray = np.delete(gt_array, np.where(np.invert(snp_invar_mask)), axis=0)
-        gt_array = allel.GenotypeArray(gt_ndarray)
+
+        # use a haplotype array instead of a genotype array for haploid data
+        if ploidy == 1:
+            gt_array = allel.HaplotypeArray(gt_ndarray)
+        else:
+            gt_array = allel.GenotypeArray(gt_ndarray)
 
         # select rows that ARE snps or invariant sites in the position array
         pos_array = pos_array[snp_invar_mask]
