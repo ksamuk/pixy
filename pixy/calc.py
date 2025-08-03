@@ -455,20 +455,18 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
         a1: float = np.sum(1 / np.arange(1, n))
         watterson_theta += s / a1
 
-    # calculate denominator for Tajima's D as in scikit-allel; loop to incorporate missing genotypes
-    d_stdev: float = 0.0
-    for n in variant_gt_counts:
-        a1 = np.sum(1 / np.arange(1, n))
-        a2: float = np.sum(1 / (np.arange(1, n) ** 2))
-        b1: float = (n + 1) / (3 * (n - 1))
-        b2: float = 2 * (n**2 + n + 3) / (9 * n * (n - 1))
-        c1: float = b1 - (1 / a1)
-        c2: float = b2 - ((n + 2) / (a1 * n)) + (a2 / (a1**2))
-        e1: float = c1 / a1
-        e2: float = c2 / (a1**2 + a2)
-        d_stdev += np.sqrt(
-            (e1 * variant_gt_counts[n]) + (e2 * variant_gt_counts[n] * (variant_gt_counts[n] - 1))
-        )
+    n: float = np.nanmean(allele_counts.sum(axis=1))
+    n: int = np.rint(n).astype(int)
+    s: int = sum(variant_gt_counts.values())
+    a1 = np.sum(1 / np.arange(1, n))
+    a2: float = np.sum(1 / (np.arange(1, n) ** 2))
+    b1: float = (n + 1) / (3 * (n - 1))
+    b2: float = 2 * (n**2 + n + 3) / (9 * n * (n - 1))
+    c1: float = b1 - (1 / a1)
+    c2: float = b2 - ((n + 2) / (a1 * n)) + (a2 / (a1**2))
+    e1: float = c1 / a1
+    e2: float = c2 / (a1**2 + a2)
+    d_stdev: float = np.sqrt((e1 * s) + (e2 * s * (s - 1)))
 
     tajima_d: Union[float, NA]
     if d_stdev > 0 and not any(np.isnan(x) for x in [raw_pi, watterson_theta, d_stdev]):
