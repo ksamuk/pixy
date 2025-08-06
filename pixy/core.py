@@ -335,11 +335,6 @@ def read_and_filter_genotypes(
         numbers={"GT": ploidy},
     )
 
-    # if debugging, print the callset and ploidy
-    if args.debug:
-        print(callset)
-        print(ploidy)
-
     # keep track of whether the callset was empty (no sites for this range in the VCF)
     # used by compute_summary_stats to add info about completely missing sites
     if callset is None:
@@ -369,13 +364,20 @@ def read_and_filter_genotypes(
             callset["variants/is_snp"][:] == 1,
             callset["variants/numalt"][:] > 1,
         )
+
         is_invariant_site = callset["variants/numalt"][:] == 0
 
-        snp_invar_mask = np.logical_or(
-            is_biallelic_snp,
+        # build the mask for multiallelic or biallelic snps + invariant sites
+        # np.logical_or takes a maximum of TWO arrays, so need to nest them
+        if include_multiallelic_snps:
+            snp_invar_mask = np.logical_or(
+            is_biallelic_snp, np.logical_or(
             is_invariant_site,
-            np.logical_and(include_multiallelic_snps, is_multiallelic_snp),
-        )
+            is_multiallelic_snp))
+        else:
+            snp_invar_mask = np.logical_or(
+            is_biallelic_snp,
+            is_invariant_site)
 
         # remove rows that are NOT snps or invariant sites from the genotype array
         gt_ndarray = np.delete(gt_array, np.where(np.invert(snp_invar_mask)), axis=0)
@@ -388,6 +390,7 @@ def read_and_filter_genotypes(
 
         # select rows that ARE snps or invariant sites in the position array
         pos_array = pos_array[snp_invar_mask]
+
         # TODO: cannot index value of type None
         # if a list of target sites was specified, mask out all non-target sites
         if sites_list_chunk is not None:
@@ -399,7 +402,7 @@ def read_and_filter_genotypes(
             callset_is_none = True
             gt_array = None
             pos_array = None
-
+            
     return callset_is_none, gt_array, pos_array
 
 
