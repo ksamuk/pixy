@@ -420,6 +420,7 @@ def validate_window_and_interval_args(args: argparse.Namespace) -> str:
 # function for inferring ploidy directly from the first genotype line of a vcf
 # turns out scikit-allel does NOT do this automatically
 def infer_ploidy_from_vcf(vcf_path):
+    """Infer the ploidy of the data from the first genotypes in the VCF."""
     # Use gzip.open for .vcf.gz, otherwise use regular open
     open_func = gzip.open if vcf_path.endswith(".gz") else open
 

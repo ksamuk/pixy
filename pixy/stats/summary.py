@@ -67,17 +67,17 @@ def precompute_filtered_variant_array(
     if (not callset_is_none) and (args.populations is not None) and (len(gt_array) != 0):
         # compute allel freqs
         allele_counts: AlleleCountsArray = gt_array.count_alleles()
-        allele_freqs: NDArray[np.float64] = allele_counts.to_frequencies()
 
         # remove invariant/polyallelic sites
-        variants_array: List[bool] = [len(x) == 2 and x[0] < 1 for x in allele_freqs]
+        # we retain sites where numn ALTs > 2 but only have genotypes from two alleles
+        is_biallelic = allele_counts.is_biallelic()[:]
 
         # filter gt and position arrays for biallelic variable sites
         # NB: we are masking `gt_array` and `pos_array` with the filtered variants. Indexing either
         # `GenotypeArray` or `SortedIndex` with a boolean array returns a subset of the initial
         # object, but scikit-allel doesn't type this appropriately, so the cast is needed.
-        gt_array_fst = cast(GenotypeArray, gt_array[variants_array])
-        pos_array_fst = cast(SortedIndex, pos_array[variants_array])
+        gt_array_fst = gt_array.compress(is_biallelic, axis=0)
+        pos_array_fst = cast(SortedIndex, pos_array[is_biallelic])
 
     else:
         gt_array_fst = None

@@ -360,24 +360,20 @@ def read_and_filter_genotypes(
             callset["variants/is_snp"][:] == 1,
             callset["variants/numalt"][:] == 1,
         )
-        is_multiallelic_snp = np.logical_and(
-            callset["variants/is_snp"][:] == 1,
-            callset["variants/numalt"][:] > 1,
-        )
 
         is_invariant_site = callset["variants/numalt"][:] == 0
 
         # build the mask for multiallelic or biallelic snps + invariant sites
-        # np.logical_or takes a maximum of TWO arrays, so need to nest them
+        # NB: np.logical_or takes a maximum of TWO arrays
+
+        snp_invar_mask = np.logical_or(is_biallelic_snp, is_invariant_site)
+
         if include_multiallelic_snps:
-            snp_invar_mask = np.logical_or(
-            is_biallelic_snp, np.logical_or(
-            is_invariant_site,
-            is_multiallelic_snp))
-        else:
-            snp_invar_mask = np.logical_or(
-            is_biallelic_snp,
-            is_invariant_site)
+            is_multiallelic_snp = np.logical_and(
+                callset["variants/is_snp"][:] == 1,
+                callset["variants/numalt"][:] > 1,
+            )
+            snp_invar_mask = np.logical_or(snp_invar_mask, is_multiallelic_snp)
 
         # remove rows that are NOT snps or invariant sites from the genotype array
         gt_ndarray = np.delete(gt_array, np.where(np.invert(snp_invar_mask)), axis=0)
@@ -402,7 +398,7 @@ def read_and_filter_genotypes(
             callset_is_none = True
             gt_array = None
             pos_array = None
-            
+
     return callset_is_none, gt_array, pos_array
 
 
