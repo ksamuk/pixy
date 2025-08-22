@@ -369,10 +369,9 @@ def read_and_filter_genotypes(
         snp_invar_mask = np.logical_or(is_biallelic_snp, is_invariant_site)
 
         if include_multiallelic_snps:
-
             is_multiallelic_snp = np.logical_and(
-            callset["variants/is_snp"][:] == 1,
-            callset["variants/numalt"][:] > 1,
+                callset["variants/is_snp"][:] == 1,
+                callset["variants/numalt"][:] > 1,
             )
             snp_invar_mask = np.logical_or(snp_invar_mask, is_multiallelic_snp)
 
@@ -399,7 +398,7 @@ def read_and_filter_genotypes(
             callset_is_none = True
             gt_array = None
             pos_array = None
-            
+
     return callset_is_none, gt_array, pos_array
 
 

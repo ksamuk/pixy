@@ -67,7 +67,6 @@ def precompute_filtered_variant_array(
     if (not callset_is_none) and (args.populations is not None) and (len(gt_array) != 0):
         # compute allel freqs
         allele_counts: AlleleCountsArray = gt_array.count_alleles()
-        allele_freqs: NDArray[np.float64] = allele_counts.to_frequencies()
 
         # remove invariant/polyallelic sites
         # we retain sites where numn ALTs > 2 but only have genotypes from two alleles
