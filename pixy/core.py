@@ -609,7 +609,8 @@ def compute_summary_stats(  # noqa: C901
                     # assert gt_region is not None, "genotype array is None"
                     # assert callset_is_none is not None, "callset is empty"
                     # subset the window for the individuals in each population
-                    gt_pop = GenotypeArray(gt_region.take(popindices[pop], axis=1))
+                    gt_pop = gt_region.take(popindices[pop], axis=1)
+
                     # if the population specific window for this region is empty, report it as such
                     if len(gt_pop) == 0:
                         watterson_result = WattersonThetaResult.empty()
