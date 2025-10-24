@@ -1,6 +1,6 @@
 from setuptools import setup
 
-requirements = ["scikit-allel", "pandas", "numpy", "multiprocess", "scipy", "numcodecs"]
+requirements = ["scikit-allel", "pandas", "numpy", "multiprocess", "scipy", "numcodecs", "typing-extensions"]
 
 setup(
     name="pixy",
