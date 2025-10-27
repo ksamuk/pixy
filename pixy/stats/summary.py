@@ -13,6 +13,7 @@ from allel import AlleleCountsArray
 from allel import GenotypeArray
 from allel import GenotypeVector
 from allel import SortedIndex
+from allel import HaplotypeArray
 from allel import windowed_hudson_fst
 from allel import windowed_weir_cockerham_fst
 from numpy.typing import NDArray
@@ -442,14 +443,21 @@ def _compute_individual_fst_for_pair(
     fst_window_size = window_pos_2 - window_pos_1
 
     if fst_type is FSTEstimator.WC:
-        fst, window_positions, n_snps = windowed_weir_cockerham_fst(
-            pos_array_fst,
-            gt_array_fst,
-            subpops=fst_pop_indicies,
-            size=fst_window_size,
-            start=window_pos_1,
-            stop=window_pos_2,
-        )
+        if isinstance(gt_array_fst, HaplotypeArray):
+            raise NotImplementedError(
+                "`pixy` does not currently support calculation "
+                "of Weir-Cockerham FST in non-diploid genomes. "
+                "Use --fst_type hudson to resolve this error."
+            )
+        else:
+            fst, window_positions, n_snps = windowed_weir_cockerham_fst(
+                pos_array_fst,
+                gt_array_fst,
+                subpops=fst_pop_indicies,
+                size=fst_window_size,
+                start=window_pos_1,
+                stop=window_pos_2,
+            )
 
     elif fst_type is FSTEstimator.HUDSON:
         ac1 = gt_array_fst.count_alleles(subpop=fst_pop_indicies[0])
