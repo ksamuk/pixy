@@ -160,8 +160,19 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
     pop2_allele_counts: AlleleCountsArray = pop2_gt_array.count_alleles()
 
     # the number of (haploid) samples in each population
-    pop1_n_haps: int = pop1_gt_array.n_samples * pop1_gt_array.ploidy
-    pop2_n_haps: int = pop2_gt_array.n_samples * pop2_gt_array.ploidy
+    # haplotype arrays use n_haplotypes instead of n_samples * ploidy
+
+    if isinstance(pop1_gt_array, allel.model.ndarray.HaplotypeArray):
+        pop1_n_haps: int = pop1_gt_array.n_haplotypes
+    else:
+        pop1_n_haps: int = pop1_gt_array.n_samples * pop1_gt_array.ploidy
+
+    if isinstance(pop2_gt_array, allel.model.ndarray.HaplotypeArray):
+        pop2_n_haps: int = pop2_gt_array.n_haplotypes
+    else:
+        pop2_n_haps: int = pop2_gt_array.n_samples * pop2_gt_array.ploidy
+
+    
 
     # the total number of differences between populations summed across all sites
     persite_diffs: NDArray = np.zeros(n_sites)

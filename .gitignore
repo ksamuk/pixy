@@ -13,6 +13,7 @@ debug/*.vcf*
 .vscode/*
 pixy_tmp*
 debug_temp*
+debug/*
 
 __pycache__/
 .coverage

@@ -295,6 +295,13 @@ def validate_vcf_path(vcf_path: str) -> None:
             "The vcf is not indexed. Please either use `tabix` or `bcftools` to"
             "produce a `.tbi` or `.csi` index."
         )
+    
+    # update the date of the index 
+    # this apparently resolves issues of indexes being older than vcfs in some pipelines
+    if os.path.exists(vcf_path + ".tbi"):
+        subprocess.run(["touch", "-c", str(vcf_path + ".tbi")])
+    else:
+        subprocess.run(["touch", "-c", str(vcf_path + ".csi")])
 
 
 def validate_output_path(output_folder: str, output_prefix: str) -> Tuple[str, str]:
