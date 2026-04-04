@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import uuid
+import warnings
 from pathlib import Path
 from typing import Dict
 from typing import List
@@ -322,18 +323,20 @@ def read_and_filter_genotypes(
     ploidy = infer_ploidy_from_vcf(args.vcf)
 
     # read in data from the source VCF for the current window
-    callset = allel.read_vcf(
-        args.vcf,
-        region=window_region,
-        fields=[
-            "CHROM",
-            "POS",
-            "calldata/GT",
-            "variants/is_snp",
-            "variants/numalt",
-        ],
-        numbers={"GT": ploidy},
-    )
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, module="allel")
+        callset = allel.read_vcf(
+            args.vcf,
+            region=window_region,
+            fields=[
+                "CHROM",
+                "POS",
+                "calldata/GT",
+                "variants/is_snp",
+                "variants/numalt",
+            ],
+            numbers={"GT": ploidy},
+        )
 
     # keep track of whether the callset was empty (no sites for this range in the VCF)
     # used by compute_summary_stats to add info about completely missing sites
