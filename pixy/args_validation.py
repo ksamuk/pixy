@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import uuid
+import warnings
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -526,7 +527,9 @@ def check_and_validate_args(  # noqa: C901
     output_prefix = output_folder + args.output_prefix
 
     # get vcf header info
-    vcf_headers = allel.read_vcf_headers(vcf_path)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, module="allel")
+        vcf_headers = allel.read_vcf_headers(vcf_path)
 
     logger.info("Validating VCF and input parameters...")
 
@@ -569,7 +572,7 @@ def check_and_validate_args(  # noqa: C901
             subprocess.check_output(
                 "gunzip -c "
                 + vcf_path
-                + " | grep -v '#' | head -n 100000 | awk '{print $5}' | sort | uniq",
+                + " | grep -v '^#' | head -n 100000 | awk '{print $5}' | sort | uniq",
                 shell=True,
             )
             .decode("utf-8")
