@@ -1,6 +1,6 @@
-************
+*******************************
 Generating invariant sites VCFs
-************
+*******************************
 
 pixy facilitates the correct computation of π and dxy by allowing users to input data in a standard file format: Variant Call Format (VCF). AllSites VCFs contain invariant (AKA monomorphic) sites in addition to variant sites. Several commonly used, well-documented programs can generate AllSites VCFs. 
 
@@ -12,7 +12,7 @@ Here, we provide a quickstart guide for generating AllSites VCFs using two of th
     **Utilizing genomic intervals for improved runtime:** If generation of an AllSites VCF is time-consuming, we recommend parallelizing your pipeline by breaking analyses down into smaller genomic regions. In our test datasets, we ran individual chromosomes in parallel. Depending on the size of chromosomes in a dataset, it may be beneficial to break down chromosomes into smaller intervals for variant calling. Genomic intervals can be specified using the -L parameter in GATK or the -r parameter in bcftools mpileup.
 
 Generating AllSites VCFs using BCFtools (mpileup/call)
-===================
+======================================================
 
 BCFtools mpileup can be used to produce genotype likelihoods, and this operation can be followed by bcftools call to call SNPs/INDELS. BCFtools offers a number of flexible options documented here: https://samtools.github.io/bcftools/bcftools-man.html#call
 
@@ -28,7 +28,7 @@ Notes on the options selected here:
 * f GQ indicates that the FORMAT field GQ should be output for each sample
 
 Generating AllSites VCFs using GATK
-===================
+===================================
 
 GATK recommends first calling variants per-sample using HaplotypeCaller in GVCF mode (Step 1 below). Next, GenomicsDBImport consolidates information from GVCF files across samples to improve the efficiency joint genotyping (Step 2 below). In the 3rd step, GenotypeGVCFs produces a set of jointly-called SNPs and INDELS ready for filtering and analysis. We recommend consulting the full GATK documentation found here: https://software.broadinstitute.org/gatk/
 

@@ -1,0 +1,4 @@
+# Dependencies for building the pixy docs on Read the Docs.
+# Pin to compatible major versions so future Sphinx releases don't break the build.
+sphinx>=7,<9
+sphinx-rtd-theme>=2,<4

@@ -1,13 +1,13 @@
-************
+***********************************
 Step by Step Installation and Usage
-************
+***********************************
 
 .. note::
     pixy is currently only available for Linux and macOS systems.
     
  
 1. Generate a VCF with Invariant Sites and perform filtering
-======
+============================================================
 
 
 
@@ -20,7 +20,7 @@ If you did not already generate an 'allsites' VCF (VCF with invariant sites), `s
 We recommend using the standard tools dedicated to performing such operations on VCFs: VCFtools and BCFtools (both available on bioconda).
 
 Site-level filtration
-------------------------
+---------------------
 A full treatment of VCF filtering for population genetics is beyond our scope here, but for a good start see: https://speciationgenomics.github.io/filtering_vcfs/.
 
 At minumum, we reccomend filtering your VCF (a) using the GATK best practices site filtration procedure (if applicable) and (b) performing further filtering for missingness, site quality score, and mean depth (minimum and maxmium). 
@@ -41,7 +41,7 @@ Here is an example using VCFtools. The specific values (especially for min/max-m
  
  
 Optional: Population genetic filters
-------------------------
+------------------------------------
 Depending on your goal, you might also consider filtering out sites with strong HWE violations (try --hwe 0.001 with VCFtools), unusually high observed heterozygosity, or allelic depth imbalances. See this paper https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.12613 for more details on these considerations. 
 
 These last two considerations are particularly important if your study organism has high levels of gene duplication (e.g. re-diploidized after whole genome duplication as in many plant and fish species). 
@@ -78,26 +78,29 @@ If your VCF contains both variant and invariant sites (as it should at this poin
 
 
 2. Install Anaconda
-======
+===================
 If you haven't already, install Anaconda https://docs.anaconda.com/anaconda/install/ 
 
 3. Create a New Environment
-======
-Create and activate a new conda environment for working with pixy:
+===========================
+Create and activate a new conda environment for working with pixy.
+``pixy`` supports Python 3.9, 3.10 and 3.11 (3.12 is not yet supported):
 
 .. code:: console
 
-    conda create --name pixy
+    conda create -n "pixy" python=3.11
     conda activate pixy
 
 4. Install pixy
-======
-Install pixy via the conda-forge channel. Also install the required htslib package from bioconda.
+===============
+Install pixy via the conda-forge channel. Also install the required ``htslib``
+and ``samtools`` packages from bioconda.
 
 .. code:: console
 
     conda install --yes -c conda-forge pixy
     conda install --yes -c bioconda htslib
+    conda install --yes -c bioconda samtools=1.21
 
 To see a list of arguments and test the pixy installation, type:
 
@@ -105,9 +108,13 @@ To see a list of arguments and test the pixy installation, type:
 
     pixy --help
 
+.. note::
+    If you have trouble installing in a Python 3.11 environment, try rolling
+    back to Python 3.9.
+
 
 5. Create a populations file
-======
+============================
 Create a populations file. This is a headerless, tab-separated file where the first column contains sample names (exactly as represented in the VCF), and the second column contains population names (these can be anything, but should be consistent!).
 
 For example:
@@ -123,8 +130,8 @@ For example:
     ERS224168	KES
     ERS224314	KES
 
-6. Compress and Index your VCF 
-======
+6. Compress and Index your VCF
+==============================
 
 If you have not already, use bgzip and tabix to compress and index your VCF:
 
@@ -134,7 +141,7 @@ If you have not already, use bgzip and tabix to compress and index your VCF:
     tabix [your.file.vcf.gz]
 
 7. Run pixy
-======
+===========
 
 Run pixy! An example is shown below.
 
@@ -145,19 +152,33 @@ Run pixy! An example is shown below.
     --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
     --window_size 10000 \
     --n_cores 4 \
-    --chromosomes 'X' 
+    --chromosomes 'X'
+
+As of pixy 2.0, you can also request Watterson's θ and Tajima's *D*:
+
+.. code:: console
+
+    pixy --stats pi fst dxy watterson_theta tajima_d \
+    --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
+    --populations data/vcf/ag1000/Ag1000_sampleIDs_popfile.txt \
+    --window_size 10000 \
+    --n_cores 4 \
+    --chromosomes 'X'
 
 .. note::
-    pixy ignores non-biallelic sites and INDELs, even if they are left in the VCF after pre-filtering. 
+    By default, ``pixy`` ignores multiallelic sites and INDELs even if
+    they are left in the VCF after pre-filtering. Pass
+    ``--include_multiallelic_snps`` to include sites with more than two
+    alleles in the calculation (new in 2.0).
 
 8. Profit
-======
+=========
 
 Parse the output files and enjoy your unbiased estimates of pi and dxy!
 
 
 9. Stay up to date
-======
+==================
 
 You can keep pixy up to date by re-running:
 

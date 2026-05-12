@@ -1,153 +1,263 @@
-************
+*************************
 Understanding pixy output
-************
+*************************
 
 Output file contents
-================
+====================
 
-pixy outputs a slightly different file type for each summary statistic it calculates. The contents of the columns of these output files are detailed below.
+``pixy`` writes one output file per summary statistic that you request.
+Each file is a tab-separated table, named
+``[output_prefix]_[stat].txt`` (e.g. ``pixy_pi.txt``,
+``pixy_watterson_theta.txt``). The columns in each file are documented
+below.
 
-Within population nucleotide diversity (pi)
------------
+Within-population nucleotide diversity (pi)
+-------------------------------------------
 
-``pop`` - The ID of the population from the population file
+File: ``[prefix]_pi.txt``
 
-``chromosome`` - The chromosome/contig 
+``pop``
+    The ID of the population from the populations file.
 
-``window_pos_1`` - The first position of the genomic window
+``chromosome``
+    The chromosome or contig.
 
-``window_pos_2`` - The last position of the genomic window
+``window_pos_1``
+    First position of the genomic window.
 
-``avg_pi`` - Average per site nucleotide diversity for the window. More specifically, pixy computes the *weighted average nucleotide diversity per site* for all sites in the window, where the weights are determined by the number of genotyped samples at each site.
+``window_pos_2``
+    Last position of the genomic window.
 
-``no_sites`` - The total number of sites in the window that have at least one valid genotype. This statistic is included for the user, and not directly used in any calculations.
+``avg_pi``
+    Average per-site nucleotide diversity for the window. ``pixy``
+    computes the *weighted average nucleotide diversity per site* over
+    all sites in the window, where weights are determined by the number
+    of genotyped samples at each site.
 
-``count_diffs`` - The raw number of pairwise differences between all genotypes in the window. This is the numerator of avg_pi.
+``no_sites``
+    Total number of sites in the window with at least one valid
+    genotype. This is included for the user and is not directly used in
+    any calculation.
 
-``count_comparisons`` - The raw number of non-missing pairwise comparisons between all genotypes in the window (i.e. cases where two genotypes were compared and both were valid). This is the denominator of avg_pi.
+``count_diffs``
+    Raw number of pairwise differences between all genotypes in the
+    window. This is the numerator of ``avg_pi``.
 
-``count_missing`` - The raw number of missing pairwise comparisons between all genotypes in the window (i.e. cases where two genotypes were compared and at least one was missing). 
+``count_comparisons``
+    Raw number of non-missing pairwise comparisons between all genotypes
+    in the window. This is the denominator of ``avg_pi``.
 
-Between population nucleotide divergence (dxy)
------------
+``count_missing``
+    Raw number of missing pairwise comparisons in the window.
 
-``pop1`` - The ID of the first population from the population file.
+Between-population nucleotide divergence (dxy)
+----------------------------------------------
 
-``pop2`` - The ID of the second population from the population file.
+File: ``[prefix]_dxy.txt``
 
-``chromosome`` - The chromosome/contig.
+``pop1``, ``pop2``
+    The IDs of the two populations being compared.
 
-``window_pos_1`` - The first position of the genomic window.
+``chromosome``, ``window_pos_1``, ``window_pos_2``
+    The chromosome and window coordinates (as for ``pi``).
 
-``window_pos_2`` - The last position of the genomic window.
+``avg_dxy``
+    Average per-site nucleotide divergence for the window.
 
-``avg_dxy`` - Average per site nucleotide divergence for the window.
+``no_sites``
+    Number of sites in the window with at least one valid genotype in
+    *both* populations.
 
-``no_sites`` - The total number of sites in the window that have at least one valid genotype in both populations. This statistic is included for the user, and not directly used in any calculations.
+``count_diffs``, ``count_comparisons``, ``count_missing``
+    Raw numerator, denominator and missing-comparison counts, defined
+    analogously to the ``pi`` file but across the two populations.
 
-``count_diffs`` - The raw number of pairwise, cross-population differences between all genotypes. This is the numerator of avg_dxy.
+F\ :sub:`ST` (fst)
+------------------
 
-``count_comparisons`` - The raw number of non-missing pairwise cross-population comparisons between all genotypes in the window (i.e. cases where two genotypes were compared and both were valid). This is the denominator of avg_dxy.
+File: ``[prefix]_fst.txt``
 
-``count_missing`` - The raw number of missing pairwise cross-population comparisons between all genotypes in the window (i.e. cases where two genotypes were compared and at least one was missing). This statistic is included for the user, and not directly used in any calculations. 
+``pop1``, ``pop2``
+    The IDs of the two populations being compared.
 
-Weir and Cockerham's FST (fst)
------------
+``chromosome``, ``window_pos_1``, ``window_pos_2``
+    Window coordinates.
 
-``pop1`` - The ID of the first population from the population file.
+``avg_wc_fst`` *or* ``avg_hudson_fst``
+    The window-averaged F\ :sub:`ST`, per SNP (not per site). Which
+    column name you see depends on ``--fst_type``: ``wc`` (Weir &
+    Cockerham 1984, the default) produces ``avg_wc_fst``; ``hudson``
+    (Hudson 1992 / Bhatia *et al.* 2013) produces ``avg_hudson_fst``.
 
-``pop2`` - The ID of the second population from the population file.
+``no_snps``
+    Total number of variable sites (SNPs) in the window.
 
-``chromosome`` - The chromosome/contig.
+Watterson's θ (watterson_theta)
+-------------------------------
 
-``window_pos_1`` - The first position of the genomic window.
+File: ``[prefix]_watterson_theta.txt``
 
-``window_pos_2`` - The last position of the genomic window.
+Watterson's θ is an estimator of the population mutation rate computed
+from the number of segregating sites. The unbiased estimator implemented
+in ``pixy`` corrects for missing data and arbitrary ploidy. See Bailey,
+Stevison & Samuk (2025) for the derivation.
 
-``avg_wc_fst`` - Average Weir and Cockerham's FST for the window (per SNP, not per site).
+``pop``
+    The ID of the population.
 
-``no_snps`` - Total number of variable sites (SNPs) in the window.
+``chromosome``, ``window_pos_1``, ``window_pos_2``
+    Window coordinates.
+
+``avg_watterson_theta``
+    Per-site Watterson's θ for the window.
+
+``no_sites``
+    Total number of sites in the window with at least one valid
+    genotype in the focal population.
+
+``raw_watterson_theta``
+    Sum of per-site θ contributions over the window, used as the
+    numerator of ``avg_watterson_theta``.
+
+``no_var_sites``
+    Number of segregating (variant) sites in the window that
+    contributed to the estimate.
+
+``weighted_no_sites``
+    Sum of the per-site weights across the window. Used as the
+    denominator of ``avg_watterson_theta``.
+
+Tajima's *D* (tajima_d)
+-----------------------
+
+File: ``[prefix]_tajima_d.txt``
+
+Tajima's *D* contrasts two estimators of θ — π (based on pairwise
+differences) and Watterson's θ (based on segregating sites) — to detect
+departures from neutrality. ``pixy`` reports the unbiased estimator
+described in Bailey, Stevison & Samuk (2025), which handles missing
+data correctly.
+
+``pop``
+    The ID of the population.
+
+``chromosome``, ``window_pos_1``, ``window_pos_2``
+    Window coordinates.
+
+``tajima_d``
+    Tajima's *D* for the window.
+
+``no_sites``
+    Total number of sites in the window with at least one valid
+    genotype.
+
+``raw_pi``, ``raw_watterson_theta``
+    The unbiased per-site π and Watterson's θ values used to compute
+    *D* (the numerator is ``raw_pi - raw_watterson_theta``).
+
+``tajima_d_stdev``
+    Standard deviation of the *D* statistic over the window (the
+    denominator).
 
 Working with pixy output data
-================
+=============================
 
 Plotting results
-------------------------
+----------------
 
 .. code:: r
 
-    # Example R Script for simple output plots 
+    # Example R Script for simple output plots
     # Here, we use pi and dxy output files directly from pixy.
 
     library(ggplot2)
 
-    # Provide path to input. Can be pi or Dxy. 
+    # Provide path to input. Can be pi or dxy.
     # NOTE: this is the only line you should have to edit to run this code:
-    inp<-read.table("pixy_dxy.txt",sep="\t",header=T)
+    inp <- read.table("pixy_dxy.txt", sep = "\t", header = TRUE)
 
-    # Find the chromosome names and order them: first numerical order, then any non-numerical chromosomes
-    #   e.g., chr1, chr2, chr22, chrX
+    # Find the chromosome names and order them
     chroms <- unique(inp$chromosome)
     chrOrder <- sort(chroms)
-    inp$chrOrder <- factor(inp$chromosome,levels=chrOrder)
+    inp$chrOrder <- factor(inp$chromosome, levels = chrOrder)
 
     # Plot pi for each population found in the input file
-    # Saves a copy of each plot in the working directory
-    if("avg_pi" %in% colnames(inp)){
+    if ("avg_pi" %in% colnames(inp)) {
         pops <- unique(inp$pop)
-        for (p in pops){
+        for (p in pops) {
             thisPop <- subset(inp, pop == p)
-            # Plot stats along all chromosomes:
-            popPlot <- ggplot(thisPop, aes(window_pos_1, avg_pi, color=chrOrder)) +
-                geom_point()+
-                facet_grid(. ~ chrOrder)+
-                labs(title=paste("Pi for population", p))+
-                labs(x="Position of window start", y="Pi")+
-                scale_color_manual(values=rep(c("black","gray"),ceiling((length(chrOrder)/2))))+
-                theme_classic()+
+            popPlot <- ggplot(thisPop, aes(window_pos_1, avg_pi, color = chrOrder)) +
+                geom_point() +
+                facet_grid(. ~ chrOrder) +
+                labs(title = paste("Pi for population", p),
+                     x = "Position of window start", y = "Pi") +
+                scale_color_manual(values = rep(c("black", "gray"),
+                                                ceiling(length(chrOrder) / 2))) +
+                theme_classic() +
                 theme(legend.position = "none")
-            ggsave(paste("piplot_", p,".png", sep=""), plot = popPlot, device = "png", dpi = 300)
-            }
-    } else {
-        print("Pi not found in this file")
+            ggsave(paste0("piplot_", p, ".png"), plot = popPlot,
+                   device = "png", dpi = 300)
+        }
     }
 
     # Plot Dxy for each combination of populations found in the input file
-    # Saves a copy of each plot in the working directory
-    if("avg_dxy" %in% colnames(inp)){
-        # Get each unique combination of populations
+    if ("avg_dxy" %in% colnames(inp)) {
         pops <- unique(inp[c("pop1", "pop2")])
-        for (p in 1:nrow(pops)){
-            combo <- pops[p,]
-            thisPop <- subset(inp, pop1 == combo$pop1[[1]] & pop2 == combo$pop2[[1]])
-            # Plot stats along all chromosomes:
-            popPlot <- ggplot(thisPop, aes(window_pos_1, avg_dxy, color=chrOrder)) + 
-                geom_point()+
-                facet_grid(. ~ chrOrder)+
-                labs(title=paste("Dxy for", combo$pop1[[1]], "&", combo$pop2[[1]]))+
-                labs(x="Position of window start", y="Dxy")+
-                theme(legend.position = "none")+
-               scale_color_manual(values=rep(c("black","gray"),ceiling((length(chrOrder)/2))))+
-               theme_classic()+
-               theme(legend.position = "none") 
-            ggsave(paste("dxyplot_", combo$pop1[[1]], "_", combo$pop2[[1]],".png", sep=""), plot = popPlot, device = "png", dpi = 300)
+        for (p in 1:nrow(pops)) {
+            combo <- pops[p, ]
+            thisPop <- subset(inp,
+                              pop1 == combo$pop1[[1]] & pop2 == combo$pop2[[1]])
+            popPlot <- ggplot(thisPop, aes(window_pos_1, avg_dxy, color = chrOrder)) +
+                geom_point() +
+                facet_grid(. ~ chrOrder) +
+                labs(title = paste("Dxy for", combo$pop1[[1]], "&", combo$pop2[[1]]),
+                     x = "Position of window start", y = "Dxy") +
+                scale_color_manual(values = rep(c("black", "gray"),
+                                                ceiling(length(chrOrder) / 2))) +
+                theme_classic() +
+                theme(legend.position = "none")
+            ggsave(paste0("dxyplot_", combo$pop1[[1]], "_",
+                          combo$pop2[[1]], ".png"),
+                   plot = popPlot, device = "png", dpi = 300)
         }
-    } else {
-        print("Dxy not found in this file")
     }
 
+Running the script on a ``pixy_pi.txt`` file produces one
+``piplot_<pop>.png`` per population, faceted by chromosome. For example:
+
+.. image:: images/piplot_BFS.png
+   :width: 700
+   :align: center
+
+.. note::
+    The figure above was produced by running the snippet on a simulated
+    ``pixy_pi.txt`` table covering chromosomes ``2L``, ``2R``, ``3L``,
+    ``3R`` and ``X`` — see :doc:`example_data` for the underlying VCF
+    and the exact ``vcfsim`` command that produced it. The reduced
+    diversity visible on the X chromosome is a common biological
+    signal: the effective population size of an X-linked locus is
+    roughly 3/4 that of an autosomal locus, so π is expected to be
+    lower there.
+
+
+For richer plotting workflows (long-format conversion, multi-statistic
+panels, genome-wide plots) see :doc:`plotting`.
 
 Post-hoc aggregating
-------------------------
+--------------------
 
-Note that if the user wishes to combine information across windows (e.g. by averaging) after the fact, they should sum the raw counts and recompute the differences/comparisons ratios, and not take an average of the summary statistics themselves. 
-
-For example, to get average pi or dxy for two windows, the correct forumla is: 
+If you want to combine information across windows after the fact
+(e.g. by averaging), **do not** simply average the per-window summary
+statistics. Instead, sum the raw counts and recompute the ratio. For
+``pi`` and ``dxy``:
 
 .. parsed-literal::
 
-    (window 1 count_diffs + window 2 count_diffs) / (window 1 comparisons + window 2 comparisons)
+    (window 1 count_diffs + window 2 count_diffs) /
+    (window 1 count_comparisons + window 2 count_comparisons)
 
-
-
- 
+The same principle applies to Watterson's θ — sum the
+``raw_watterson_theta`` and ``weighted_no_sites`` columns across
+windows and divide. For Tajima's *D*, recompute from the raw π and θ
+contributions; do not average ``tajima_d`` values directly across
+windows.
