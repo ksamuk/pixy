@@ -162,85 +162,7 @@ data correctly.
 Working with pixy output data
 =============================
 
-Plotting results
-----------------
-
-.. code:: r
-
-    # Example R Script for simple output plots
-    # Here, we use pi and dxy output files directly from pixy.
-
-    library(ggplot2)
-
-    # Provide path to input. Can be pi or dxy.
-    # NOTE: this is the only line you should have to edit to run this code:
-    inp <- read.table("pixy_dxy.txt", sep = "\t", header = TRUE)
-
-    # Find the chromosome names and order them
-    chroms <- unique(inp$chromosome)
-    chrOrder <- sort(chroms)
-    inp$chrOrder <- factor(inp$chromosome, levels = chrOrder)
-
-    # Plot pi for each population found in the input file
-    if ("avg_pi" %in% colnames(inp)) {
-        pops <- unique(inp$pop)
-        for (p in pops) {
-            thisPop <- subset(inp, pop == p)
-            popPlot <- ggplot(thisPop, aes(window_pos_1, avg_pi, color = chrOrder)) +
-                geom_point() +
-                facet_grid(. ~ chrOrder) +
-                labs(title = paste("Pi for population", p),
-                     x = "Position of window start", y = "Pi") +
-                scale_color_manual(values = rep(c("black", "gray"),
-                                                ceiling(length(chrOrder) / 2))) +
-                theme_classic() +
-                theme(legend.position = "none")
-            ggsave(paste0("piplot_", p, ".png"), plot = popPlot,
-                   device = "png", dpi = 300)
-        }
-    }
-
-    # Plot Dxy for each combination of populations found in the input file
-    if ("avg_dxy" %in% colnames(inp)) {
-        pops <- unique(inp[c("pop1", "pop2")])
-        for (p in 1:nrow(pops)) {
-            combo <- pops[p, ]
-            thisPop <- subset(inp,
-                              pop1 == combo$pop1[[1]] & pop2 == combo$pop2[[1]])
-            popPlot <- ggplot(thisPop, aes(window_pos_1, avg_dxy, color = chrOrder)) +
-                geom_point() +
-                facet_grid(. ~ chrOrder) +
-                labs(title = paste("Dxy for", combo$pop1[[1]], "&", combo$pop2[[1]]),
-                     x = "Position of window start", y = "Dxy") +
-                scale_color_manual(values = rep(c("black", "gray"),
-                                                ceiling(length(chrOrder) / 2))) +
-                theme_classic() +
-                theme(legend.position = "none")
-            ggsave(paste0("dxyplot_", combo$pop1[[1]], "_",
-                          combo$pop2[[1]], ".png"),
-                   plot = popPlot, device = "png", dpi = 300)
-        }
-    }
-
-Running the script on a ``pixy_pi.txt`` file produces one
-``piplot_<pop>.png`` per population, faceted by chromosome. For example:
-
-.. image:: images/piplot_BFS.png
-   :width: 700
-   :align: center
-
-.. note::
-    The figure above was produced by running the snippet on a simulated
-    ``pixy_pi.txt`` table covering chromosomes ``2L``, ``2R``, ``3L``,
-    ``3R`` and ``X`` — see :doc:`example_data` for the underlying VCF
-    and the exact ``vcfsim`` command that produced it. The reduced
-    diversity visible on the X chromosome is a common biological
-    signal: the effective population size of an X-linked locus is
-    roughly 3/4 that of an autosomal locus, so π is expected to be
-    lower there.
-
-
-For richer plotting workflows (long-format conversion, multi-statistic
+For plotting workflows (long-format conversion, multi-statistic
 panels, genome-wide plots) see :doc:`plotting`.
 
 Post-hoc aggregating
@@ -261,3 +183,5 @@ The same principle applies to Watterson's θ — sum the
 windows and divide. For Tajima's *D*, recompute from the raw π and θ
 contributions; do not average ``tajima_d`` values directly across
 windows.
+
+

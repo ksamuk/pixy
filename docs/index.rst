@@ -27,8 +27,9 @@ As of version 2.0, ``pixy`` also supports organisms of arbitrary (and variable) 
    installation
    arguments
    companions
+   contributing
    changelog
-   
+
 
 .. toctree::
     :maxdepth: -1

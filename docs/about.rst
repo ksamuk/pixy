@@ -2,15 +2,22 @@
 About pixy
 **********
 
-**Authors: Kieran Samuk (UC Riverside) and Katharine Korunes (Duke University)**
+| **Maintainer:** Kieran Samuk (UC Riverside).
+| **Original authors:** Kieran Samuk (UC Riverside) and Katharine Korunes (Duke University).
+| **pixy 2.0.0 contributors:** Kieran Samuk (UC Riverside), Nicolas Bailey (St. Andrews), Matt Stone (Fulcrum Genomics), Erin McCauley (Fulcrum Genomics).
 
-``pixy`` is a command-line tool for painlessly and correctly estimating
-population genetic summary statistics that measure genetic variation within
-populations (π, θ\ :sub:`W`, Tajima's *D*) and between populations
-(d\ :sub:`xy`, F\ :sub:`ST`) from a VCF. In particular, ``pixy`` facilitates
-the use of VCFs containing invariant (a.k.a. monomorphic) sites, which are
-essential for the correct computation of π and d\ :sub:`xy` whenever data
-are missing.
+``pixy`` is a command-line tool that computes π, d\ :sub:`xy`, F\ :sub:`ST`,
+Watterson's θ, and Tajima's *D* from a VCF. Unlike most tools that compute
+these statistics, ``pixy`` produces **unbiased** estimates in the presence
+of missing data.
+
+In more detail: ``pixy`` is a command-line tool for painlessly and correctly
+estimating population genetic summary statistics that measure genetic
+variation within populations (π, θ\ :sub:`W`, Tajima's *D*) and between
+populations (d\ :sub:`xy`, F\ :sub:`ST`) from a VCF. In particular, ``pixy``
+facilitates the use of VCFs containing invariant (AKA monomorphic) sites,
+which are essential for the correct computation of π and d\ :sub:`xy`
+whenever data are missing.
 
 pixy avoids common pitfalls in computing pi and dxy
 ===================================================
