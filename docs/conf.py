@@ -20,13 +20,13 @@
 # -- Project information -----------------------------------------------------
 
 project = "pixy"
-copyright = "2019, Kieran Samuk, Katharine Korunes"
+copyright = "2019-2026, Kieran Samuk, Katharine Korunes"
 author = "Kieran Samuk, Katharine Korunes"
 
 # The short X.Y version
-version = ""
+version = "2.0"
 # The full version, including alpha/beta/rc tags
-release = ""
+release = "2.0.0.beta14"
 
 
 # -- General configuration ---------------------------------------------------
@@ -57,7 +57,7 @@ master_doc = "index"
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = "en"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -67,8 +67,8 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = None
 
-# Disable smart quotes (converts double dash to en dash)
-# smartquotes = False
+# Disable smart quotes so the parser doesn't turn '--flag' into '–flag' in CLI argument docs.
+smartquotes = False
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -87,13 +87,9 @@ html_theme = "sphinx_rtd_theme"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["_static"]
-
-# These paths are either relative to html_static_path
-# or fully qualified paths (eg. https://...)
-html_css_files = [
-    "css/custom.css",
-]
+# We intentionally leave this empty: the RTD theme defaults are fine and
+# avoiding a _static dir keeps the build clean.
+html_static_path = []
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.

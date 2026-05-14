@@ -7,7 +7,8 @@ data/vcf
 *.ipynb_*
 .ipynb_checkpoints/*
 output/*
-docs/_build
+docs/_build/*
+.claude/*
 debug/*.txt
 debug/*.vcf*
 .vscode/*

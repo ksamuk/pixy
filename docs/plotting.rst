@@ -1,50 +1,48 @@
-************
+********************
 Plotting pixy output
-************
+********************
 
 A common method of visualizing population summary statistics is to create scatter or line plots of each statistic along the genome. Examples of how to do this using the `tidyverse packge <https://www.tidyverse.org/>`_ in R. are shown below.
 
 Converting pixy output files to long format
-================
+===========================================
 The output files created by pixy are in wide format by default. Plotting in the tidyverse is much easier if data is in long format, and so the function below can be used to convert a list of pixy output files to a single long format data frame.
 
 .. code:: r
-    
-    pixy_to_long <- function(pixy_files){
-      
+
+    # Convert a set of pixy output files to a single long-format data frame.
+    # Handles both single-population stats (pi, watterson_theta, tajima_d) and
+    # pairwise stats (dxy, fst).
+    pixy_to_long <- function(pixy_files) {
+
+      single_pop_stats <- c("pi", "watterson_theta", "tajima_d")
       pixy_df <- list()
-      
-      for(i in 1:length(pixy_files)){
-        
-        stat_file_type <- gsub(".*_|.txt", "", pixy_files[i])
-        
-        if(stat_file_type == "pi"){
-          
-          df <- read_delim(pixy_files[i], delim = "\t")
+
+      for (i in seq_along(pixy_files)) {
+
+        # Extract the suffix from filenames like "pixy_watterson_theta.txt"
+        stat_file_type <- sub("\\.txt$", "",
+                              sub("^.*?_", "", basename(pixy_files[i])))
+
+        df <- read_delim(pixy_files[i], delim = "\t")
+
+        if (stat_file_type %in% single_pop_stats) {
           df <- df %>%
-            gather(-pop, -window_pos_1, -window_pos_2, -chromosome, 
+            gather(-pop, -window_pos_1, -window_pos_2, -chromosome,
                    key = "statistic", value = "value") %>%
             rename(pop1 = pop) %>%
             mutate(pop2 = NA)
-          
-          pixy_df[[i]] <- df
-          
-          
-        } else{
-          
-          df <- read_delim(pixy_files[i], delim = "\t")
+        } else {
           df <- df %>%
-            gather(-pop1, -pop2, -window_pos_1, -window_pos_2, -chromosome, 
+            gather(-pop1, -pop2, -window_pos_1, -window_pos_2, -chromosome,
                    key = "statistic", value = "value")
-          pixy_df[[i]] <- df
-          
         }
-        
+
+        pixy_df[[i]] <- df
       }
-      
+
       bind_rows(pixy_df) %>%
         arrange(pop1, pop2, chromosome, window_pos_1, statistic)
-      
     }
 
 For example, the below code converts all the pixy files found in the folder 'output' to a single data frame:
@@ -70,22 +68,26 @@ This results in a data frame (pixy_df) that looks like this:
     BFS  KES          X        10001        20000        avg_wc_fst 1.479964e-01
     
 Single chromosome view
-================
+======================
 
 We are often interested in local patterns of diversity along individual chromosomes. The below code plots the three main summary statistics calculated by pixy (pi, Dxy, FST) along a single chromosome. A custom labelling function is also provided to handle symbols/subscripts in the summary statistic's labels.
 
 .. code:: r
 
-    # custom labeller for special characters in pi/dxy/fst
-    pixy_labeller <- as_labeller(c(avg_pi = "pi", 
-                                 avg_dxy = "D[XY]", 
-                                 avg_wc_fst = "F[ST]"),
+    # custom labeller for special characters in the pixy summary stats
+    pixy_labeller <- as_labeller(c(avg_pi              = "pi",
+                                   avg_dxy             = "D[XY]",
+                                   avg_wc_fst          = "F[ST]",
+                                   avg_hudson_fst      = "F[ST]",
+                                   avg_watterson_theta = "theta[W]",
+                                   tajima_d            = "Tajima*minute*s~D"),
                                  default = label_parsed)
-    
+
     # plotting summary statistics along a single chromosome
     pixy_df %>%
       filter(chromosome == 1) %>%
-      filter(statistic %in% c("avg_pi", "avg_dxy", "avg_wc_fst")) %>%
+      filter(statistic %in% c("avg_pi", "avg_dxy", "avg_wc_fst",
+                              "avg_watterson_theta", "tajima_d")) %>%
       mutate(chr_position = ((window_pos_1 + window_pos_2)/2)/1000000) %>%
       ggplot(aes(x = chr_position, y = value, color = statistic))+
       geom_line(size = 0.25)+
@@ -111,25 +113,29 @@ This results in the following plot :
    :align: center
 	
 A genome-wide plot of summary statistics
-================
+========================================
 
 We can also visualize patterns of diversity at the genome wide scale. While finer scale patterns are lost, this can be useful for identifying chrosomal scale variation (e.g. depressed diversity on sex chromosomes), or visualizing the distribution of loci of interest (e.g. FST outliers, or GWAS hits).  Some common features of these types of plots (alterating chromosome colors, enforced chromosome order, axis limits) are included. 
 
 .. code:: r
 
-    # create a custom labeller for special characters in pi/dxy/fst
-    pixy_labeller <- as_labeller(c(avg_pi = "pi", 
-                                 avg_dxy = "D[XY]", 
-                                 avg_wc_fst = "F[ST]"),
+    # create a custom labeller for special characters in the pixy summary stats
+    pixy_labeller <- as_labeller(c(avg_pi              = "pi",
+                                   avg_dxy             = "D[XY]",
+                                   avg_wc_fst          = "F[ST]",
+                                   avg_hudson_fst      = "F[ST]",
+                                   avg_watterson_theta = "theta[W]",
+                                   tajima_d            = "Tajima*minute*s~D"),
                                  default = label_parsed)
-    
+
     # plotting summary statistics across all chromosomes
     pixy_df %>%
       mutate(chrom_color_group = case_when(as.numeric(chromosome) %% 2 != 0 ~ "even",
                                      chromosome == "X" ~ "even",
                                      TRUE ~ "odd" )) %>%
       mutate(chromosome = factor(chromosome, levels = c(1:22, "X", "Y"))) %>%
-      filter(statistic %in% c("avg_pi", "avg_dxy", "avg_wc_fst")) %>%
+      filter(statistic %in% c("avg_pi", "avg_dxy", "avg_wc_fst",
+                              "avg_watterson_theta", "tajima_d")) %>%
       ggplot(aes(x = (window_pos_1 + window_pos_2)/2, y = value, color = chrom_color_group))+
       geom_point(size = 0.5, alpha = 0.5, stroke = 0)+
       facet_grid(statistic ~ chromosome, 

@@ -1,70 +1,111 @@
-************
+*********
 Arguments
-************
+*********
 
-Below is a list of required and optional arguments that pixy accepts. 
+Below is the full list of arguments accepted by ``pixy``. You can also see the
+canonical help text at any time with ``pixy --help``.
 
-Required:
---------------
+Required
+========
 
-**-\\-stats [pi|fst|dxy|watterson_theta|tajima_d]**
-    Which statistics to calculate from the VCF (pi, dxy, and/or fst, separated by spaces)
+**--stats [pi|dxy|fst|watterson_theta|tajima_d]**
+    Which statistics to calculate from the VCF. Provide one or more, separated
+    by spaces. For example, ``--stats pi fst`` will compute π and F\ :sub:`ST`.
 
-**-\\-vcf [path/to/vcf.vcf.gz]**
-    Path to the input VCF (bgzipped and tabix indexed).
+**--vcf [path/to/vcf.vcf.gz]**
+    Path to the input VCF. The VCF must be bgzipped and indexed with ``tabix``
+    (``.tbi``) or with ``bcftools index`` (``.csi``).
 
-**-\\-populations [path/to/populations_file.txt]**
-    Path to the populations file. See quick start for format.
+**--populations [path/to/populations_file.txt]**
+    Path to a headerless, tab-separated populations file with columns
+    ``[SampleID Population]``. See :doc:`companions` for the exact format.
 
-**-\\-output_folder [path/to/output/folder]**
-    Folder where output will be written, e.g. path/to/output_folder, defaults to current working directory.
+In addition, one of
+===================
 
+**--window_size [integer]**
+    Window size, in base pairs, over which to calculate statistics. Window
+    coordinates are determined automatically across the chromosomes selected.
 
-In addition, one of either:
---------------
+**--bed_file [path/to/regions.bed]**
+    Path to a headerless BED file containing custom regions
+    (``chrom``, ``chromStart``, ``chromEnd``) over which to compute the
+    statistics. Useful when windows must match a specific genomic feature set
+    (genes, introns, etc.) and may be heterogeneous in size.
 
-**-\\-window_size [integer]** 
-    Window size in base pairs over which to calculate pi/dxy. 
-**-\\-bed_file [path/to/populations_file.txt]**
-    Path to a headerless .BED file containing regions (chrom, chromStart, chromEnd) over which to calculate summary statistics
+Optional
+========
 
-Optional arguments:
---------------
+**--n_cores [integer]**
+    Number of CPUs to use for parallel processing (default: ``1``).
 
-**-\\-n_cores [integer]**
-    Number of CPUs to utilize for parallel processing (default=1).
-**-\\-output_prefix [prefix]**
-    Optional prefix for output file(s), e.g. \'output\' will result in writing to [output folder]/output_pi.txt, defaults to \'pixy\'.
-**-\\-include_multiallelic_snps**
-    "Include sites with more than two alleles in the calculation. Disabled by default because computation is slightly slower than biallelic mode."
-**-\\-chromosomes ['list,of,chromosomes']**
-    A single-quoted, comma separated list of chromosome(s) (e.g. 'X,1,2'). Defaults to all chromosomes in the VCF.
-**-\\-interval_start [integer]**
-    The start of a specific interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome. Defaults to 1.
-**-\\-interval_end [integer]**
-    The end of a specific interval over which to calculate pi/dxy. Only valid when calculating over a single chromosome. Defaults to the last position for a chromosome.
-**-\\-sites_file [path/to/sites_file.txt]**
-    Path to a tab separated file containing a headerless list of sites (CHROM, POS) to (exclusively) include in calculations 
-**-\\-chunk_size [integer]**
-    Approximate number of sites to read from VCF at any given time.  Defaults to 100000. Smaller numbers can reduce memory use.
-**-\\-fst_type [wc|hudson]**
-    FST estimator to use, one of either: 'wc' (Weir and Cockerham 1984) or 'hudson' (Hudson 1992, Bhatia et al. 2013). Defaults to 'wc'
-**-\\-bypass_invariant_check**
-    Bypass the check for invariant sites. Disabled by default. *Use with caution! Should only be used in special cases (e.g. simulated data).*
-**-\\-version**
-    Print the pixy version number.
-**-\\-citation**
-    Print the citation for pixy.
-**-\\-help**
-    Print the help message. 
-**-\\-silent**
-    Suppress all console output (flag, no value required).
+**--output_folder [path/to/output/folder]**
+    Folder where output will be written. Defaults to the current working
+    directory.
 
-An example:
+**--output_prefix [prefix]**
+    Prefix for output file(s). For example ``--output_prefix run1`` produces
+    ``[output_folder]/run1_pi.txt`` and so on. Defaults to ``pixy``.
+
+**--chromosomes ['list,of,chromosomes']**
+    A single-quoted, comma-separated list of chromosomes (e.g. ``'X,1,2'``).
+    Defaults to all chromosomes in the VCF.
+
+**--interval_start [integer]**
+    Start position of an interval to restrict the analysis to. Only valid
+    when computing over a single chromosome. Defaults to position 1.
+
+**--interval_end [integer]**
+    End position of an interval to restrict the analysis to. Only valid
+    when computing over a single chromosome. Defaults to the last position
+    on the chromosome.
+
+**--sites_file [path/to/sites_file.txt]**
+    Path to a headerless, tab-separated file with columns
+    ``[CHROM POS]`` defining the sites over which statistics should be
+    calculated. Can be combined with ``--window_size`` and ``--bed_file``.
+
+**--chunk_size [integer]**
+    Approximate number of sites to read from the VCF at a time
+    (default: ``100000``). Smaller values reduce memory use; larger values
+    reduce I/O overhead.
+
+**--fst_type [wc|hudson]**
+    F\ :sub:`ST` estimator to use: ``wc`` (Weir & Cockerham 1984) or
+    ``hudson`` (Hudson 1992 / Bhatia et al. 2013). Defaults to ``wc``.
+
+**--include_multiallelic_snps**
+    Include sites with more than two alleles in the calculation. Disabled by
+    default because biallelic-only mode is slightly faster. Added in
+    ``pixy 2.0``.
+
+**--bypass_invariant_check**
+    Skip the check that ensures invariant sites are present in the VCF.
+    Disabled by default. *Use with extreme caution.* Without invariant sites,
+    estimates of π and d\ :sub:`xy` are systematically biased and will be
+    wrong unless your data are simulated.
+
+**--silent**
+    Suppress all console output.
+
+**--version**
+    Print the ``pixy`` version number and exit.
+
+**--citation**
+    Print the ``pixy`` citation and exit.
+
+**--help**
+    Print the full help message and exit.
+
+Example
+=======
+
+A typical multi-statistic run including the new Watterson's θ and Tajima's
+*D* estimators:
 
 .. code:: console
 
-    pixy --stats pi fst dxy wattersons_theta tajima_d \
+    pixy --stats pi fst dxy watterson_theta tajima_d \
     --vcf data/vcf/ag1000/chrX_36Ag_allsites.vcf.gz \
     --populations Ag1000_sampleIDs_popfile.txt \
     --window_size 10000 \
