@@ -66,6 +66,18 @@ def ag1000_csi_path(datadir: Path) -> Path:
 
 
 @pytest.fixture()
+def multiallelic_vcf_path(datadir: Path) -> Path:
+    """Path to a simulated VCF containing multiallelic sites (generated via vcfsim)."""
+    return datadir / "multiallelic_test.vcf.gz"
+
+
+@pytest.fixture()
+def multiallelic_pop_path(datadir: Path) -> Path:
+    """Path to a populations file for the multiallelic test VCF (2 populations of 5 samples)."""
+    return datadir / "multiallelic_populations.txt"
+
+
+@pytest.fixture()
 def missing50_vcf_path(datadir: Path) -> Path:
     """Path to a simulated VCF that is known to be missing a small number of genotypes."""
     return datadir / "simulated_data_missing50p_genos.vcf.gz"

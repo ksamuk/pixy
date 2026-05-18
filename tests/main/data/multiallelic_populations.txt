@@ -1,0 +1,10 @@
+tsk_1	pop1
+tsk_2	pop1
+tsk_3	pop1
+tsk_4	pop1
+tsk_5	pop1
+tsk_6	pop2
+tsk_7	pop2
+tsk_8	pop2
+tsk_9	pop2
+tsk_10	pop2
