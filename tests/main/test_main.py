@@ -758,3 +758,113 @@ def test_pixy_multiallelic(
         assert generated_data_path.exists()
         # shutil.copy(generated_data_path, exp_data_path)
         assert_files_are_consistent(generated_data_path, exp_data_path)
+# Tests for pixy.main(): variable-ploidy VCFs
+################################################################################
+
+
+def _read_chromosomes_from_pixy_output(path: Path) -> List[str]:
+    """Return the unique chromosome values from a pixy output file (tab-separated)."""
+    with open(path) as f:
+        header = f.readline().rstrip("\n").split("\t")
+        chrom_idx = header.index("chromosome")
+        chroms = {line.rstrip("\n").split("\t")[chrom_idx] for line in f if line.strip()}
+    return sorted(chroms)
+
+
+@pytest.mark.regression
+def test_mixed_ploidy_pi_dxy(
+    pixy_out_dir: Path,
+    mixed_ploidy_vcf_path: Path,
+    mixed_ploidy_pop_path: Path,
+) -> None:
+    """
+    pixy runs end-to-end on a VCF with variable ploidy across contigs.
+
+    The simulated VCF has 500 diploid sites on ``chr1`` and 500 haploid sites on ``chrX``.
+    With per-contig ploidy inference, pi and dxy should be computed for both contigs without
+    needing the user to split the VCF.
+    """
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        stats=["pi", "dxy"],
+        window_size=100,
+        vcf_path=mixed_ploidy_vcf_path,
+        populations_path=mixed_ploidy_pop_path,
+        output_prefix="mixed",
+    )
+
+    pi_path = pixy_out_dir / "mixed_pi.txt"
+    dxy_path = pixy_out_dir / "mixed_dxy.txt"
+    assert pi_path.exists()
+    assert dxy_path.exists()
+
+    # both contigs (one diploid, one haploid) must appear in the output
+    assert _read_chromosomes_from_pixy_output(pi_path) == ["chr1", "chrX"]
+    assert _read_chromosomes_from_pixy_output(dxy_path) == ["chr1", "chrX"]
+
+
+@pytest.mark.regression
+def test_mixed_ploidy_hudson_fst_runs_on_both_contigs(
+    pixy_out_dir: Path,
+    mixed_ploidy_vcf_path: Path,
+    mixed_ploidy_pop_path: Path,
+) -> None:
+    """Hudson's FST is defined for any ploidy and should run on both contigs."""
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        stats=["fst"],
+        window_size=100,
+        vcf_path=mixed_ploidy_vcf_path,
+        populations_path=mixed_ploidy_pop_path,
+        output_prefix="mixed",
+        fst_type="hudson",
+    )
+
+    fst_path = pixy_out_dir / "mixed_fst.txt"
+    assert fst_path.exists()
+    chroms = _read_chromosomes_from_pixy_output(fst_path)
+    assert "chr1" in chroms
+    assert "chrX" in chroms
+
+
+@pytest.mark.regression
+def test_mixed_ploidy_wc_fst_skips_haploid_contig(
+    pixy_out_dir: Path,
+    mixed_ploidy_vcf_path: Path,
+    mixed_ploidy_pop_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Weir-Cockerham FST is diploid-only.
+
+    When WC is requested on a mixed-ploidy VCF, the haploid contig should be skipped (with a
+    warning) and pi should still be computed for both contigs.
+    """
+    with caplog.at_level(logging.WARNING):
+        run_pixy_helper(
+            pixy_out_dir=pixy_out_dir,
+            stats=["pi", "fst"],
+            window_size=100,
+            vcf_path=mixed_ploidy_vcf_path,
+            populations_path=mixed_ploidy_pop_path,
+            output_prefix="mixed",
+            fst_type="wc",
+        )
+
+    # pi runs on both contigs regardless of FST estimator
+    pi_path = pixy_out_dir / "mixed_pi.txt"
+    assert pi_path.exists()
+    assert _read_chromosomes_from_pixy_output(pi_path) == ["chr1", "chrX"]
+
+    # FST output should only contain the diploid contig (chr1); chrX was skipped.
+    fst_path = pixy_out_dir / "mixed_fst.txt"
+    if fst_path.exists():
+        fst_chroms = _read_chromosomes_from_pixy_output(fst_path)
+        assert "chrX" not in fst_chroms, (
+            "WC FST output unexpectedly contains the haploid contig chrX"
+        )
+        assert fst_chroms == ["chr1"]
+
+    # a warning about WC FST being skipped on non-diploid contigs should have been emitted
+    warning_msgs = " ".join(record.getMessage() for record in caplog.records)
+    assert "Weir-Cockerham FST is not supported for non-diploid contigs" in warning_msgs

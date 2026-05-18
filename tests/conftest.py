@@ -84,6 +84,23 @@ def missing50_vcf_path(datadir: Path) -> Path:
 
 
 @pytest.fixture()
+def mixed_ploidy_vcf_path(datadir: Path) -> Path:
+    """
+    Path to a simulated VCF with two contigs of different ploidy.
+
+    Built with `vcfsim`: 500 diploid sites on ``chr1`` and 500 haploid sites on ``chrX``;
+    20 samples shared across both contigs (``tsk_1`` .. ``tsk_20``).
+    """
+    return datadir / "mixed_ploidy_test.vcf.gz"
+
+
+@pytest.fixture()
+def mixed_ploidy_pop_path(datadir: Path) -> Path:
+    """Populations file pairing the mixed-ploidy VCF (10 samples in A, 10 in B)."""
+    return datadir / "mixed_ploidy_populations.txt"
+
+
+@pytest.fixture()
 def missing5000_vcf_path(datadir: Path) -> Path:
     """Path to a simulated VCF that is known to be missing a larger number of genotypes."""
     return datadir / "simulated_data_missing5000_sites.vcf.gz"

@@ -74,9 +74,13 @@ Notable features of pixy
   computation — making post-hoc aggregation across windows straightforward
   and statistically correct.
 * As of ``pixy 2.0``: support for organisms of arbitrary and *variable*
-  ploidy (including sex chromosomes), multiallelic sites, and both
-  ``.tbi`` and ``.csi`` VCF indexes.
+  ploidy (including sex chromosomes and organellar contigs in the same
+  VCF), multiallelic sites, and both ``.tbi`` and ``.csi`` VCF indexes.
+  Per-contig ploidy is detected automatically — no need to split VCFs
+  by ploidy.
 * Two F\ :sub:`ST` estimators available: Weir & Cockerham (1984) and
-  Hudson (1992) / Bhatia *et al.* (2013).
+  Hudson (1992) / Bhatia *et al.* (2013). Only Hudson's estimator
+  supports non-diploid data; WC F\ :sub:`ST` is skipped on non-diploid
+  contigs with a warning.
 * Heavy use of the data structures and routines from the excellent
   `scikit-allel <https://scikit-allel.readthedocs.io/>`_ library.
