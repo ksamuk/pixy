@@ -1,5 +1,4 @@
 import argparse
-import gzip
 import logging
 import os
 import shutil
@@ -9,6 +8,7 @@ import warnings
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Union
@@ -66,6 +66,9 @@ class PixyArgs:
             'HUDSON' (Hudson 1992, Bhatia et al. 2013). Defaults to 'WC'.
         temp_file: a Path to which to write intermediate `pixy` results, assigned based on the value
             of `output_dir`
+        ploidy_map: a mapping from contig name to inferred ploidy. Built from the first record of
+            each analyzed contig in the input VCF, allowing per-contig variable ploidy (e.g.
+            diploid autosomes alongside haploid sex chromosomes or organellar contigs).
 
     Raises:
         ValueError: if an interval is specified without both start and end positions
@@ -90,6 +93,7 @@ class PixyArgs:
     interval_start: Union[int, None] = None
     interval_end: Union[int, None] = None
     sites_df: Union[pandas.DataFrame, None] = None
+    ploidy_map: Union[Dict[str, int], None] = None
 
     def __post_init__(self) -> None:
         """Checks a subset of mutually exclusive `pixy` args to ensure compliance."""
@@ -425,44 +429,73 @@ def validate_window_and_interval_args(args: argparse.Namespace) -> str:
     return check_message
 
 
-# function for inferring ploidy directly from the first genotype line of a vcf
-# turns out scikit-allel does NOT do this automatically
-def infer_ploidy_from_vcf(vcf_path):
-    """Infer the ploidy of the data from the first genotypes in the VCF."""
-    # Use gzip.open for .vcf.gz, otherwise use regular open
-    open_func = gzip.open if vcf_path.endswith(".gz") else open
+# helper for parsing ploidy from a single GT string (e.g. "0/0", "0|1", "1")
+def _ploidy_from_gt(gt_str: str) -> int:
+    """Infer ploidy from a single GT genotype string."""
+    if "/" in gt_str:
+        alleles = gt_str.split("/")
+    elif "|" in gt_str:
+        alleles = gt_str.split("|")
+    else:
+        # No separator: e.g., "0", ".", "1"
+        alleles = [gt_str]
 
-    with open_func(vcf_path, "rt") as f:  # 'rt' = read text mode
-        for line in f:
-            if line.startswith("#CHROM"):
-                sample_start_col = 9  # Standard VCF format
-            elif not line.startswith("#"):
-                fields = line.strip().split("\t")
-                genotypes = fields[sample_start_col:]
+    # Count non-missing alleles
+    non_missing = [a for a in alleles if a != "."]
 
-                # Get the GT field from the first sample
-                first_gt = genotypes[0].split(":")[0]
+    if len(alleles) == 1 or (len(non_missing) == 1 and len(alleles) > 1):
+        return 1
+    return len(alleles)
 
-                # Determine ploidy
-                if "/" in first_gt:
-                    alleles = first_gt.split("/")
-                elif "|" in first_gt:
-                    alleles = first_gt.split("|")
-                else:
-                    # No separator: e.g., "0", ".", "1"
-                    alleles = [first_gt]
 
-                # Count non-missing alleles
-                non_missing = [a for a in alleles if a != "."]
+# function for inferring ploidy per contig from a VCF, using tabix to read the
+# first record for each contig. Returns a dict mapping contig name -> ploidy.
+# Supports VCFs with variable ploidy across contigs (e.g. autosomes vs. sex
+# chromosomes or organellar contigs).
+def infer_ploidy_per_contig(vcf_path: str, chrom_list: List[str]) -> "dict[str, int]":
+    """
+    Infer ploidy per contig by reading the first record of each contig via tabix.
 
-                if len(alleles) == 1 or (len(non_missing) == 1 and len(alleles) > 1):
-                    ploidy = 1
-                else:
-                    ploidy = len(alleles)
+    Args:
+        vcf_path: path to a bgzipped, tabix-indexed VCF
+        chrom_list: contigs over which to infer ploidy (typically the list of contigs
+            that will be analyzed)
 
-                return ploidy
+    Returns:
+        A dict mapping each contig name to its inferred ploidy.
 
-    raise RuntimeError("No genotype lines found in VCF")
+    Raises:
+        RuntimeError: if a contig has no records in the VCF.
+    """
+    ploidy_map: dict[str, int] = {}
+    for chrom in chrom_list:
+        # stream tabix output and stop after the first data record for the contig
+        with subprocess.Popen(
+            ["tabix", vcf_path, chrom],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ) as proc:
+            assert proc.stdout is not None
+            first_line = proc.stdout.readline()
+            # terminate tabix early — we only need the first record
+            proc.terminate()
+
+        if not first_line:
+            raise RuntimeError(
+                f"No genotype records found in VCF for contig {chrom!r}; cannot infer ploidy."
+            )
+
+        fields = first_line.rstrip("\n").split("\t")
+        # standard VCF format: sample columns start at column 9 (0-indexed)
+        if len(fields) < 10:
+            raise RuntimeError(
+                f"First record for contig {chrom!r} has no sample columns; cannot infer ploidy."
+            )
+        first_gt = fields[9].split(":")[0]
+        ploidy_map[chrom] = _ploidy_from_gt(first_gt)
+
+    return ploidy_map
 
 
 def check_and_validate_args(  # noqa: C901
@@ -701,9 +734,25 @@ def check_and_validate_args(  # noqa: C901
 
     include_multiallelic_snps: bool = args.include_multiallelic_snps
 
-    # check ploidy
-    ploidy = infer_ploidy_from_vcf(vcf_path)
-    logger.info(f"Inferred ploidy: {ploidy}, remember to split VCFs in the case of variable ploidy")
+    # check ploidy per contig (supports VCFs with variable ploidy across contigs)
+    ploidy_map: Dict[str, int] = infer_ploidy_per_contig(vcf_path, chrom_list)
+    distinct_ploidies = sorted(set(ploidy_map.values()))
+    if len(distinct_ploidies) == 1:
+        logger.info(f"Inferred ploidy: {distinct_ploidies[0]} (uniform across contigs)")
+    else:
+        logger.info(
+            f"Inferred variable ploidy across contigs: {ploidy_map}"
+        )
+        # WC-FST is only supported for diploid data; warn up front if a non-diploid contig
+        # will be encountered while WC-FST is requested.
+        if "fst" in args.stats and args.fst_type.upper() == "WC":
+            non_diploid = [c for c, p in ploidy_map.items() if p != 2]
+            if non_diploid:
+                logger.warning(
+                    "Weir-Cockerham FST is not supported for non-diploid contigs. "
+                    f"FST will be skipped for: {non_diploid}. "
+                    "Use --fst_type hudson to compute FST on these contigs."
+                )
 
     logger.info("All initial checks passed!")
     stats: List[PixyStat] = [PixyStat[stat.upper()] for stat in args.stats]
@@ -728,6 +777,7 @@ def check_and_validate_args(  # noqa: C901
         chunk_size=args.chunk_size,
         fst_type=FSTEstimator[args.fst_type.upper()],
         temp_file=tmp_path,
+        ploidy_map=ploidy_map,
     )
 
 

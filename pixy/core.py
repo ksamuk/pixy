@@ -27,7 +27,6 @@ from multiprocess.managers import BaseProxy
 from numpy.typing import NDArray
 
 from pixy.args_validation import get_chrom_list
-from pixy.args_validation import infer_ploidy_from_vcf
 from pixy.args_validation import validate_bed_path
 from pixy.args_validation import validate_output_path
 from pixy.args_validation import validate_populations_path
@@ -289,6 +288,7 @@ def read_and_filter_genotypes(
     window_pos_1: int,
     window_pos_2: int,
     sites_list_chunk: Optional[List[int]],
+    ploidy: int,
 ) -> Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
     """
     Ingests genotypes from a VCF file, retains biallelic SNPs or invariant sites.
@@ -304,6 +304,9 @@ def read_and_filter_genotypes(
         window_pos_2 (int): The end position of the genomic window
         sites_list_chunk (list): An optional list of positions in which to mask non-target sites
             If `None`, no masking is applied.
+        ploidy (int): The ploidy of the given chromosome, used to correctly shape the genotype
+            array read from the VCF. Typically obtained from
+            ``args.ploidy_map[chromosome]``.
 
     Returns:
         Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
@@ -318,9 +321,6 @@ def read_and_filter_genotypes(
     window_region = chromosome + ":" + str(window_pos_1) + "-" + str(window_pos_2)
 
     include_multiallelic_snps: bool = args.include_multiallelic_snps
-
-    # get ploidy from first line of vcf
-    ploidy = infer_ploidy_from_vcf(args.vcf)
 
     # read in data from the source VCF for the current window
     with warnings.catch_warnings():
@@ -444,13 +444,31 @@ def compute_summary_stats(  # noqa: C901
     """
     pixy_output: List[PixyTempResult] = []
 
+    # look up the ploidy of the current chromosome from the per-contig ploidy map
+    # (built once during argument validation).
+    ploidy_map: Dict[str, int] = getattr(args, "ploidy_map", {}) or {}
+    if chromosome not in ploidy_map:
+        raise KeyError(
+            f"No ploidy entry for chromosome {chromosome!r} in args.ploidy_map. "
+            "This indicates that the per-contig ploidy map was not initialized correctly."
+        )
+    chrom_ploidy: int = ploidy_map[chromosome]
+
+    # Weir-Cockerham FST requires diploid data; skip FST for non-diploid contigs when WC is
+    # requested. Hudson FST works for any ploidy.
+    skip_fst_for_chrom: bool = (
+        "fst" in args.stats
+        and str(args.fst_type).upper() == "WC"
+        and chrom_ploidy != 2
+    )
+
     # read in the genotype data for the chunk
     callset_is_none, gt_array, pos_array = read_and_filter_genotypes(
-        args, chromosome, chunk_pos_1, chunk_pos_2, sites_list_chunk
+        args, chromosome, chunk_pos_1, chunk_pos_2, sites_list_chunk, chrom_ploidy
     )
 
     # if computing FST, pre-compute a filtered array of variants (only)
-    if "fst" in args.stats:
+    if "fst" in args.stats and not skip_fst_for_chrom:
         # These should only be returned by `read_and_filter_genotypes` as None if `fst` is not a
         # requested stat. The asserts are to narrow the types.
         # assert gt_array is not None, "genotype array is None"
@@ -544,7 +562,12 @@ def compute_summary_stats(  # noqa: C901
         # WEIR AND COCKERHAMS FST
         # This is just a loose wrapper around the scikit-allel fst function
         # TBD: explicit fst when data is completely missing
-        if (args.populations is not None) and ("fst" in args.stats) and window_size != 1:
+        if (
+            (args.populations is not None)
+            and ("fst" in args.stats)
+            and window_size != 1
+            and not skip_fst_for_chrom
+        ):
             # disabling these assertions for now, because they are handled by "window_is_empty"
             # i.e. genotype arrays CAN be empty.
             # assert gt_array_fst is not None, "genotype array is None"

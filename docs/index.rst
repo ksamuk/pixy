@@ -17,7 +17,7 @@ What is pixy?
 
 Many tools for computing these summary statistics from VCFs produce biased estimates in the presence of missing data. This is because they often make the simplifying assumption that if a genotype is missing, it is homozygous reference (``0/0``) by state. See the `pixy paper <https://doi.org/10.1111/1755-0998.13326>`_ and the `Watterson's θ / Tajima's D follow-up paper <https://doi.org/10.1111/1755-0998.14104>`_ for the details.
 
-As of version 2.0, ``pixy`` also supports organisms of arbitrary (and variable) ploidy, multiallelic sites, and both ``.tbi`` and ``.csi`` VCF indexes.
+As of version 2.0, ``pixy`` also supports organisms of arbitrary ploidy and VCFs with variable ploidy across contigs (e.g. diploid autosomes plus haploid sex chromosomes in one file — no need to split the VCF), multiallelic sites, and both ``.tbi`` and ``.csi`` VCF indexes.
 
 .. toctree::
    :caption: Documentation
