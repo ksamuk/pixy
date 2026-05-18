@@ -35,9 +35,14 @@ New features
   ``--include_multiallelic_snps`` to include sites with more than two
   alleles. Disabled by default (biallelic mode is slightly faster).
 - **Arbitrary and variable ploidy.** ``pixy`` now handles organisms of
-  any ploidy, and ploidy may vary across samples and chromosomes
-  (so sex chromosomes and mixed-ploidy datasets work without special
-  handling).
+  any ploidy, and ploidy may vary across chromosomes/contigs
+  (so diploid autosomes alongside haploid sex chromosomes or
+  organellar contigs work without splitting the VCF). Per-contig
+  ploidy is inferred from the first record of each contig at startup.
+  Note that the Weir & Cockerham (1984) F\ :sub:`ST` estimator is only
+  defined for diploid data; on non-diploid contigs ``pixy`` will skip
+  WC F\ :sub:`ST` and emit a warning. Use ``--fst_type hudson`` to
+  compute F\ :sub:`ST` on non-diploid contigs.
 - **CSI index support.** Both ``.tbi`` (tabix) and ``.csi``
   (``bcftools index``) VCF indexes are accepted.
 - **Hudson's F**\ :sub:`ST`. Pass ``--fst_type hudson`` to use the

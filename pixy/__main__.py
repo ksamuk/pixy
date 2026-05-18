@@ -274,6 +274,9 @@ def main() -> None:  # noqa: C901
     logger.info("[pixy] See documentation at https://pixy.readthedocs.io/en/latest/")
 
     pixy_args: PixyArgs = pixy.args_validation.check_and_validate_args(args)
+    # propagate per-contig ploidy map onto the raw args namespace so it is available to
+    # worker functions (which currently receive `args`, not `pixy_args`).
+    args.ploidy_map = pixy_args.ploidy_map
     popindices = {}
     for name in pixy_args.pop_names:
         popindices[name] = pixy_args.populations_df[
