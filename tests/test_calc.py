@@ -419,7 +419,7 @@ def test_calc_fst_wc() -> None:
     a, b, c = weir_cockerham_fst(
         g=combined_gt_array,
         subpops=subpops,
-        max_allele=1,  # TODO add test coverage over multiallelic sites
+        max_allele=1,  # biallelic; see test_calc_fst_wc_multiallelic for multiallelic coverage
     )
 
     expected_fst = a.sum() / (a.sum() + b.sum() + c.sum())
@@ -462,7 +462,7 @@ def test_calc_fst_wc_single_locus() -> None:
     a, b, c = weir_cockerham_fst(
         g=combined_gt_array,
         subpops=subpops,
-        max_allele=1,  # TODO add test coverage over multiallelic sites
+        max_allele=1,  # biallelic; see test_calc_fst_wc_multiallelic for multiallelic coverage
     )
 
     expected_fst = a.sum() / (a.sum() + b.sum() + c.sum())

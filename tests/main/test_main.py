@@ -724,6 +724,40 @@ def test_pixy_hudson_fst(
 
 
 ################################################################################
+# Tests for pixy.main(): multiallelic SNPs
+################################################################################
+
+
+@pytest.mark.regression
+def test_pixy_multiallelic(
+    pixy_out_dir: Path,
+    expected_outputs: Path,
+    multiallelic_pop_path: Path,
+    multiallelic_vcf_path: Path,
+) -> None:
+    """Test that pixy produces deterministic stats with multiallelic SNPs included."""
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        stats=["pi", "dxy", "fst"],
+        window_size=10000,
+        vcf_path=multiallelic_vcf_path,
+        populations_path=multiallelic_pop_path,
+        include_multiallelic_snps=True,
+        bypass_invariant_check=True,
+        output_prefix="multiallelic",
+    )
+
+    expected_out_files: List[Path] = [
+        Path("multiallelic_pi.txt"),
+        Path("multiallelic_dxy.txt"),
+        Path("multiallelic_fst.txt"),
+    ]
+    for file in expected_out_files:
+        generated_data_path: Path = pixy_out_dir / file
+        exp_data_path: Path = expected_outputs / "multiallelic" / file
+        assert generated_data_path.exists()
+        # shutil.copy(generated_data_path, exp_data_path)
+        assert_files_are_consistent(generated_data_path, exp_data_path)
 # Tests for pixy.main(): variable-ploidy VCFs
 ################################################################################
 
