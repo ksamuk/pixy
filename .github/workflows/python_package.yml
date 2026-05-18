@@ -37,7 +37,7 @@ jobs:
         shell: micromamba-shell {0}
         run: |
           poetry config virtualenvs.create false
-          poetry install -v | poetry install -vvv
+          poetry install -vvv
 
       - name: Test the library
         shell: micromamba-shell {0}
