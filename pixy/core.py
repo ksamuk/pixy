@@ -275,7 +275,7 @@ def mask_non_target_sites(
 
     gt_mask_indexes: List[int] = list(np.flatnonzero(pos_array.locate_keys(masked_sites)))
 
-    # a missing row of data to use as a mask; HaplotypeArray rows are 1-D, GenotypeArray rows are 2-D
+    # missing-row mask: HaplotypeArray rows are 1-D, GenotypeArray rows are 2-D (n_samples x ploidy)
     missing_row: Union[List[int], List[List[int]]]
     if isinstance(gt_array, allel.HaplotypeArray):
         missing_row = [-1] * gt_array.n_haplotypes
