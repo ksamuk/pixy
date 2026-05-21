@@ -971,3 +971,58 @@ def test_calc_tajima_d_tetraploidy() -> None:
     # There is no standalone function or helper for the denominator - this was manually calculated
     # from scikit-allel's code
     assert result.d_stdev == pytest.approx(0.2266425)
+
+
+def test_calc_tajima_d_with_masked_sites_matches_unmasked_subset() -> None:
+    """
+    Tajima's D should ignore fully-missing (masked) sites when computing ``n_mean``.
+
+    Regression for https://github.com/ksamuk/pixy/issues/186 and
+    https://github.com/ksamuk/pixy/issues/188: when ``--sites_file`` masks non-target sites
+    they become rows of ``-1``. Previously their zero allele-count rows pulled ``n_mean`` toward
+    0, which either returned NA or produced wildly negative outliers. The masked array should
+    now yield the same Tajima's D as the equivalent array containing only the unmasked sites.
+    """
+    real_sites = [
+        [[0, 0], [0, 1], [1, 1]],
+        [[0, 1], [0, 1], [1, 1]],
+        [[0, 0], [0, 1], [0, 1]],
+    ]
+    masked_row = [[-1, -1], [-1, -1], [-1, -1]]
+    # 3 real sites surrounded by 6 masked rows (typical `--sites_file` scenario)
+    array_with_masked = GenotypeArray([
+        masked_row,
+        masked_row,
+        *real_sites,
+        masked_row,
+        masked_row,
+        masked_row,
+        masked_row,
+    ])
+    array_unmasked = GenotypeArray(real_sites)
+
+    result_masked = calc_tajima_d(array_with_masked)
+    result_unmasked = calc_tajima_d(array_unmasked)
+
+    assert result_masked.tajima_d == pytest.approx(result_unmasked.tajima_d)
+    assert result_masked.raw_pi == pytest.approx(result_unmasked.raw_pi)
+    assert result_masked.watterson_theta == pytest.approx(result_unmasked.watterson_theta)
+    assert result_masked.d_stdev == pytest.approx(result_unmasked.d_stdev)
+
+
+def test_calc_tajima_d_all_sites_masked_returns_na() -> None:
+    """
+    If every site is masked, Tajima's D is undefined and must return NA without crashing.
+
+    Regression for https://github.com/ksamuk/pixy/issues/186: previously the all-masked window
+    fell through to a divide-by-zero in the ``b1``/``c2`` terms.
+    """
+    array = GenotypeArray([
+        [[-1, -1], [-1, -1], [-1, -1]],
+        [[-1, -1], [-1, -1], [-1, -1]],
+    ])
+
+    result: TajimaDResult = calc_tajima_d(array)
+
+    assert result.tajima_d == "NA"
+    assert result.num_sites == 0

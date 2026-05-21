@@ -478,9 +478,27 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
             a1: float = np.sum(1 / np.arange(1, n))
             watterson_theta += s / a1
 
-    n_mean: float = np.nanmean(allele_counts.sum(axis=1))
+    # Compute n_mean only over sites with at least one observed allele. Masked or fully-missing
+    # sites have an allele-count sum of 0; including them would pull n_mean toward 0 and break
+    # the denominator (b1, c2) when `--sites_file` masks most of the window — producing either
+    # spurious NAs (#186) or wildly inflated values (#188).
+    per_site_n: NDArray[np.int_] = allele_counts.sum(axis=1)
+    observed_per_site_n: NDArray[np.int_] = per_site_n[per_site_n > 0]
+    n_mean: float = float(np.mean(observed_per_site_n)) if observed_per_site_n.size > 0 else 0.0
     # `n` was the per-site count above; re-bind it here to the across-sites rounded mean
     n = int(np.rint(n_mean).astype(int))
+
+    # If no site has even 2 observed alleles, Tajima's D is undefined and the formula below
+    # divides by zero (b1 has `3 * (n - 1)`). Return NA without attempting the calculation.
+    if n < 2:
+        return TajimaDResult(
+            tajima_d="NA",
+            num_sites=int(num_sites),
+            raw_pi=raw_pi,
+            watterson_theta=watterson_theta,
+            d_stdev=float("nan"),
+        )
+
     s_total: int = sum(variant_gt_counts.values())
     a1 = float(np.sum(1 / np.arange(1, n)))
     a2: float = float(np.sum(1 / (np.arange(1, n) ** 2)))
