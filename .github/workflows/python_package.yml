@@ -29,8 +29,8 @@ jobs:
         uses: mamba-org/setup-micromamba@v2
         with:
           environment-file: environment.yaml
-          # Override the python pin from environment.yaml so the matrix actually
-          # tests each Python version rather than always 3.11.
+          # `environment.yaml` carries `python >=3.10,<3.15`; this narrows the
+          # solve to one specific version per matrix entry.
           create-args: >-
             python=${{ matrix.PYTHON_VERSION }}
           micromamba-version: latest
@@ -38,11 +38,18 @@ jobs:
           cache-environment: true
           post-cleanup: 'all'
 
+      # Runtime deps are installed by `setup-micromamba` from environment.yaml so we
+      # get conda-forge wheels (which cover newer Pythons — notably cp314 — that PyPI
+      # doesn't yet ship wheels for). We then install pixy itself with `--no-deps`
+      # to avoid re-resolving them from PyPI, and use poetry only for the dev-tool
+      # group (ruff, mypy, pytest, etc.) since those are pure-Python and trivially
+      # wheel-available everywhere.
       - name: Install the library
         shell: micromamba-shell {0}
         run: |
           poetry config virtualenvs.create false
-          poetry install -vvv
+          pip install --no-deps -e .
+          poetry install --only dev --no-root -vvv
 
       # Run each check as its own step so a failure in (e.g.) ruff isn't masked by a
       # passing `pytest` at the end of a single multi-line `run:` block.

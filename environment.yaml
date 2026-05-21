@@ -4,12 +4,26 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  # The Python version is intentionally unpinned here. In CI, the workflow's
-  # `create-args: python=${{ matrix.PYTHON_VERSION }}` supplies the version per
-  # matrix entry; `setup-micromamba` would otherwise *conflict* with any pin set
-  # here (it adds both specs rather than overriding). For local development,
-  # pass `--name pixy-dev` to `micromamba env create` with a Python version of
-  # your choice, e.g. `micromamba create -n pixy-dev -f environment.yaml python=3.12`.
+  # The Python version is a range — kept loose so CI's
+  # `create-args: python=${{ matrix.PYTHON_VERSION }}` can narrow it per matrix entry.
+  # `setup-micromamba` would otherwise *conflict* with any equality pin set here.
+  # For local development, pass a specific python version on the command line,
+  # e.g. `micromamba create -n pixy-dev -f environment.yaml python=3.12`.
   - python >=3.10,<3.15
+
+  # Non-Python tooling
   - bioconda::htslib>=1.9
   - bioconda::samtools>=1.9
+
+  # Python runtime dependencies. These are also declared in `pyproject.toml` for the
+  # benefit of pip-based installs, but conda-forge ships wheels for newer Python
+  # versions (notably cp314) that PyPI doesn't yet — so CI installs them from
+  # conda-forge here, then runs `pip install --no-deps -e .` to install pixy itself
+  # without re-resolving these. Keep these in sync with the pyproject ranges.
+  - conda-forge::numpy>=1.24,<3
+  - conda-forge::pandas>=1.5,<4
+  - conda-forge::scipy>=1.10,<2
+  - conda-forge::scikit-allel>=1.3.13
+  - conda-forge::numcodecs>=0.13
+  - conda-forge::multiprocess>=0.70.17
+  - conda-forge::typing_extensions
