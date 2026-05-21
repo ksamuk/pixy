@@ -323,7 +323,7 @@ def files_are_consistent(gen_file_path: Path, exp_file_path: Path) -> bool:
         generated_data.sort()
         expected_data.sort()
 
-        for line1, line2 in zip(generated_data, expected_data):
+        for line1, line2 in zip(generated_data, expected_data, strict=True):
             if line1 != line2:
                 return False
     return True

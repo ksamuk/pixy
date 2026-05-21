@@ -88,7 +88,7 @@ def calc_pi(gt_array: GenotypeArray) -> PiResult:
 
     # determine the number of (haploid) samples in the population
     # include a check if we are working with haploid data
-    if isinstance(gt_array, allel.model.ndarray.HaplotypeArray):
+    if isinstance(gt_array, allel.HaplotypeArray):
         n_haps = gt_array.n_haplotypes
     else:
         n_haps = gt_array.n_samples * gt_array.ploidy
@@ -155,17 +155,17 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
     # the number of (haploid) samples in each population
     # haplotype arrays use n_haplotypes instead of n_samples * ploidy
 
-    if isinstance(pop1_gt_array, allel.model.ndarray.HaplotypeArray):
-        pop1_n_haps: int = pop1_gt_array.n_haplotypes
+    pop1_n_haps: int
+    if isinstance(pop1_gt_array, allel.HaplotypeArray):
+        pop1_n_haps = pop1_gt_array.n_haplotypes
     else:
-        pop1_n_haps: int = pop1_gt_array.n_samples * pop1_gt_array.ploidy
+        pop1_n_haps = pop1_gt_array.n_samples * pop1_gt_array.ploidy
 
-    if isinstance(pop2_gt_array, allel.model.ndarray.HaplotypeArray):
-        pop2_n_haps: int = pop2_gt_array.n_haplotypes
+    pop2_n_haps: int
+    if isinstance(pop2_gt_array, allel.HaplotypeArray):
+        pop2_n_haps = pop2_gt_array.n_haplotypes
     else:
-        pop2_n_haps: int = pop2_gt_array.n_samples * pop2_gt_array.ploidy
-
-    
+        pop2_n_haps = pop2_gt_array.n_samples * pop2_gt_array.ploidy
 
     # the total number of differences between populations summed across all sites
     persite_diffs: NDArray = np.zeros(n_sites)
@@ -387,32 +387,45 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
 
     # calculate Watterson's theta as sum of equations for differing numbers of genotypes
     # this is calculating Watterson's theta incorporating missing genotypes
+    #
+    # NB: when only a single (haploid) genotype is observed at a site (num_genotypes == 1),
+    # `np.arange(1, 1)` is empty so `reciprocal_sum == 0`, and `site_count / 0` evaluates to
+    # `inf`. This is the mathematically correct sentinel — Watterson's theta is undefined when
+    # you can't observe variation across samples — and is exactly what the
+    # `test_calc_watterson_theta_haploid_singleton` test asserts. `np.errstate` suppresses the
+    # accompanying RuntimeWarning so it doesn't pollute pytest output for this known case.
     watterson_theta: float = 0.0
-    for num_genotypes, site_count in variant_sites_counter.items():
-        reciprocal_sum: float = np.sum(1 / np.arange(1, num_genotypes))
-        watterson_theta += site_count / reciprocal_sum
+    with np.errstate(divide="ignore"):
+        for num_genotypes, site_count in variant_sites_counter.items():
+            reciprocal_sum: float = np.sum(1 / np.arange(1, num_genotypes))
+            watterson_theta += site_count / reciprocal_sum
 
     # calculate number of sites excluding missing sites (those with no genotypes)
     # this allows calculation of an averaged Watterson's in the context of missing sites
 
+    weighted_sites: float
     if max(all_sites_counter) == 0:
-        weighted_sites = 0
+        weighted_sites = 0.0
     else:
-        weighted_sites: int = np.sum(
-            np.multiply(
-                allele_freq_counts[:, 1:].sum(axis=1),
-                (allele_freq_counts[:, 0] / max(all_sites_counter)),
+        # NB: this is a fractional weighted count — the inner division produces floats.
+        weighted_sites = float(
+            np.sum(
+                np.multiply(
+                    allele_freq_counts[:, 1:].sum(axis=1),
+                    (allele_freq_counts[:, 0] / max(all_sites_counter)),
+                )
             )
         )
 
+    avg_theta: Union[float, NA]
     if num_sites == 0:
         avg_theta = "NA"
     else:
         avg_theta = watterson_theta / num_sites
 
     return WattersonThetaResult(
-        num_sites=num_sites,
-        num_var_sites=num_var_sites,
+        num_sites=int(num_sites),
+        num_var_sites=int(num_var_sites),
         avg_theta=avg_theta,
         raw_theta=watterson_theta,
         num_weighted_sites=weighted_sites,
@@ -454,23 +467,30 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
 
     # calculate watterson's theta as sum of equations for differing numbers of genotypes
     # this is calculating Watterson's theta incorporating missing genotypes
+    #
+    # NB: same singleton-haploid corner as in `calc_watterson_theta` — when `n == 1` the
+    # denominator `a1` is 0 and `s / a1` evaluates to `inf`. The
+    # `test_calc_tajima_d_haploid_singleton` test asserts exactly that; `np.errstate` suppresses
+    # the accompanying RuntimeWarning.
     watterson_theta: float = 0.0
-    for n, s in variant_gt_counts.items():
-        a1: float = np.sum(1 / np.arange(1, n))
-        watterson_theta += s / a1
+    with np.errstate(divide="ignore"):
+        for n, s in variant_gt_counts.items():
+            a1: float = np.sum(1 / np.arange(1, n))
+            watterson_theta += s / a1
 
-    n: float = np.nanmean(allele_counts.sum(axis=1))
-    n: int = np.rint(n).astype(int)
-    s: int = sum(variant_gt_counts.values())
-    a1 = np.sum(1 / np.arange(1, n))
-    a2: float = np.sum(1 / (np.arange(1, n) ** 2))
+    n_mean: float = np.nanmean(allele_counts.sum(axis=1))
+    # `n` was the per-site count above; re-bind it here to the across-sites rounded mean
+    n = int(np.rint(n_mean).astype(int))
+    s_total: int = sum(variant_gt_counts.values())
+    a1 = float(np.sum(1 / np.arange(1, n)))
+    a2: float = float(np.sum(1 / (np.arange(1, n) ** 2)))
     b1: float = (n + 1) / (3 * (n - 1))
     b2: float = 2 * (n**2 + n + 3) / (9 * n * (n - 1))
     c1: float = b1 - (1 / a1)
     c2: float = b2 - ((n + 2) / (a1 * n)) + (a2 / (a1**2))
     e1: float = c1 / a1
     e2: float = c2 / (a1**2 + a2)
-    d_stdev: float = np.sqrt((e1 * s) + (e2 * s * (s - 1)))
+    d_stdev: float = np.sqrt((e1 * s_total) + (e2 * s_total * (s_total - 1)))
 
     tajima_d: Union[float, NA]
     if d_stdev > 0 and not any(np.isnan(x) for x in [raw_pi, watterson_theta, d_stdev]):
@@ -485,7 +505,7 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
     # ones incorporating sites
     return TajimaDResult(
         tajima_d=tajima_d,
-        num_sites=num_sites,
+        num_sites=int(num_sites),
         raw_pi=raw_pi,
         watterson_theta=watterson_theta,
         d_stdev=d_stdev,

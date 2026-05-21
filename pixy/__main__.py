@@ -320,13 +320,18 @@ def main() -> None:  # noqa: C901
     logger.info(f"[pixy] Using {pixy_args.num_cores} out of {mp.cpu_count()} available CPU cores")
     # if in mc mode, set up multiprocessing
     if pixy_args.num_cores > 1:
-        # use forking context on linux, and spawn otherwise (macOS)
+        # Use `forkserver` on Linux and `spawn` elsewhere (macOS, Windows).
+        # Plain `fork` would be marginally faster on Linux but is deprecated in
+        # Python 3.14+ when the parent process has any threads — and numpy/scipy
+        # BLAS initialization can start threads on import, which would trigger
+        # the deprecation. `forkserver` keeps fork-style copy-on-write semantics
+        # while running the actual fork from a dedicated single-threaded helper.
         ctx: BaseContext
 
         # `cast` is necessary because `multiprocess` is an untyped module, so mypy can only infer
         # that `get_context()` returns `Any`
         if sys.platform == "linux":
-            ctx = cast(BaseContext, mp.get_context("fork"))
+            ctx = cast(BaseContext, mp.get_context("forkserver"))
         else:
             ctx = cast(BaseContext, mp.get_context("spawn"))
 
@@ -415,7 +420,7 @@ def main() -> None:  # noqa: C901
                 pixy_args.sites_df is not None and window_size == 1
             ):  # TODO: dig into why `window_size` might be unbound
                 # reference https://github.com/fulcrumgenomics/pixy-dev/issues/70
-                window_list = [list(a) for a in zip(sites_pre_list, sites_pre_list)]
+                window_list = [list(a) for a in zip(sites_pre_list, sites_pre_list, strict=True)]
             else:
                 # if the interval is smaller than one window, make a list of length 1
                 if (interval_end - interval_start) <= window_size:
@@ -437,7 +442,13 @@ def main() -> None:  # noqa: C901
                         )
                     ]
 
-                window_list = [list(a) for a in zip(window_pos_1_list, window_pos_2_list)]
+                # `strict=False` is intentional: when `window_size == 1`, `window_pos_2_list`
+                # is one element longer than `window_pos_1_list` by construction (the trailing
+                # entry is meaningful for larger window sizes but spurious here), and the loop
+                # relies on `zip()` truncating to the shorter sequence.
+                window_list = [
+                    list(a) for a in zip(window_pos_1_list, window_pos_2_list, strict=False)
+                ]
 
             # Set aggregate to true if
             # 1) the window size is larger than the chunk size OR
@@ -455,7 +466,8 @@ def main() -> None:  # noqa: C901
             aggregate = False
             bed_df_chrom = pixy_args.bed_df.loc[pixy_args.bed_df["chrom"] == chromosome]
             window_list = [
-                list(a) for a in zip(bed_df_chrom["chromStart"], bed_df_chrom["chromEnd"])
+                list(a)
+                for a in zip(bed_df_chrom["chromStart"], bed_df_chrom["chromEnd"], strict=True)
             ]
 
         if len(window_list) == 0:

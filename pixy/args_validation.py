@@ -300,8 +300,8 @@ def validate_vcf_path(vcf_path: str) -> None:
             "The vcf is not indexed. Please either use `tabix` or `bcftools` to"
             "produce a `.tbi` or `.csi` index."
         )
-    
-    # update the date of the index 
+
+    # update the date of the index
     # this apparently resolves issues of indexes being older than vcfs in some pipelines
     if os.path.exists(vcf_path + ".tbi"):
         subprocess.run(["touch", "-c", str(vcf_path + ".tbi")])
@@ -740,9 +740,7 @@ def check_and_validate_args(  # noqa: C901
     if len(distinct_ploidies) == 1:
         logger.info(f"Inferred ploidy: {distinct_ploidies[0]} (uniform across contigs)")
     else:
-        logger.info(
-            f"Inferred variable ploidy across contigs: {ploidy_map}"
-        )
+        logger.info(f"Inferred variable ploidy across contigs: {ploidy_map}")
         # WC-FST is only supported for diploid data; warn up front if a non-diploid contig
         # will be encountered while WC-FST is requested.
         if "fst" in args.stats and args.fst_type.upper() == "WC":

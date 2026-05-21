@@ -758,6 +758,8 @@ def test_pixy_multiallelic(
         assert generated_data_path.exists()
         # shutil.copy(generated_data_path, exp_data_path)
         assert_files_are_consistent(generated_data_path, exp_data_path)
+
+
 # Tests for pixy.main(): variable-ploidy VCFs
 ################################################################################
 

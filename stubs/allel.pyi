@@ -57,6 +57,7 @@ class AlleleCountsArray(NumpyArrayWrapper):
     def to_frequencies(self, fill: float = np.nan) -> NDArray: ...
     def max_allele(self) -> NDArray: ...
     def count_segregating(self) -> int: ...
+    def is_biallelic(self, min_mac: Optional[int] = None) -> NDArray: ...
     @property
     def n_alleles(self) -> int: ...
 
@@ -77,11 +78,32 @@ class GenotypeArray(Genotypes):
         max_allele: Optional[int] = None,
         subpop: Optional[Sequence[int]] = None,
     ) -> AlleleCountsArray: ...
+    def compress(  # type: ignore[override]
+        self, condition: NDArray, axis: int = 0
+    ) -> "GenotypeArray": ...
     def concatenate(
         self,
         others: Union["GenotypeArray", List["GenotypeArray"], Tuple["GenotypeArray"]],
         axis: int = 0,
     ) -> "GenotypeArray": ...
+
+# TYPING-ONLY LIE: at runtime `HaplotypeArray` and `GenotypeArray` are siblings (both inherit
+# from `NumpyArrayWrapper`), not parent/child. We declare the inheritance here purely so that
+# pixy code typed as `gt_array: GenotypeArray` can pass either array — they share the methods
+# pixy calls (count_alleles, compress, take, indexing) and pixy's `isinstance(..., HaplotypeArray)`
+# branches handle the divergence safely. Do not rely on this hierarchy at runtime.
+class HaplotypeArray(GenotypeArray):
+    def __init__(
+        self,
+        data: NDArray | List[List[int]],
+        copy: bool = False,
+        **kwargs: Any,
+    ) -> None: ...
+    @property
+    def n_haplotypes(self) -> int: ...
+    def compress(  # type: ignore[override]
+        self, condition: NDArray, axis: int = 0
+    ) -> "HaplotypeArray": ...
 
 class GenotypeVector(Genotypes):
     def __init__(self, data: NDArray, copy: bool = False, **kwargs: Any) -> None: ...
@@ -105,6 +127,15 @@ class SortedIndex(NumpyArrayWrapper):
 # https://github.com/cggh/scikit-allel/blob/master/allel/model/dask.py
 ####################################################################################################
 class GenotypeDaskArray(ArrayWrapper):
+    def __init__(
+        self,
+        data: NDArray,
+        chunks: Optional[Tuple[int, ...]] = None,
+        name: Optional[Union[str, bool]] = None,
+        lock: bool = False,
+    ) -> None: ...
+
+class HaplotypeDaskArray(ArrayWrapper):
     def __init__(
         self,
         data: NDArray,

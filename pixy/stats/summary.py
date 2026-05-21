@@ -12,8 +12,8 @@ import numpy as np
 from allel import AlleleCountsArray
 from allel import GenotypeArray
 from allel import GenotypeVector
-from allel import SortedIndex
 from allel import HaplotypeArray
+from allel import SortedIndex
 from allel import windowed_hudson_fst
 from allel import windowed_weir_cockerham_fst
 from numpy.typing import NDArray
@@ -190,7 +190,7 @@ def compute_summary_pi(
             else:
                 # number of sites genotyped in the population
                 # not directly used in the calculation
-                no_sites = np.count_nonzero(np.sum(gt_pop.count_alleles(max_allele=1), 1))
+                no_sites = int(np.count_nonzero(np.sum(gt_pop.count_alleles(max_allele=1), 1)))
                 pi_result = calc_pi(gt_pop)
 
         # create a `PixyTempResult` composed of pi results to write to file
@@ -292,7 +292,7 @@ def compute_summary_dxy(
 
 def compute_summary_fst(
     fst_type: FSTEstimator,
-    gt_array_fst: GenotypeArray,
+    gt_array_fst: Union[GenotypeArray, None],
     pos_array_fst: Union[SortedIndex, None],
     window_is_empty: bool,
     callset_is_none: bool,
@@ -305,8 +305,9 @@ def compute_summary_fst(
     """Compute fst for all filtered sites."""
     pixy_results: List[PixyTempResult] = []
 
-    # If there are no valid sites, exit early
-    if pos_array_fst is None:
+    # If there are no valid sites, exit early. `gt_array_fst` and `pos_array_fst` are paired —
+    # they're both `None` when no sites pass filtering, and both populated otherwise.
+    if pos_array_fst is None or gt_array_fst is None:
         return pixy_results
 
     # If there are no valid sites in the current window, exit early
@@ -474,7 +475,7 @@ def _compute_individual_fst_for_pair(
     else:
         raise ValueError("unreachable")
 
-    for fst_stat, wind, snps in zip(fst, window_positions, n_snps):
+    for fst_stat, wind, snps in zip(fst, window_positions, n_snps, strict=True):
         # append trailing NAs so that pi/dxy/fst have the same # of columns
         pixy_result = PixyTempResult(
             pixy_stat=PixyStat.FST,
