@@ -1,7 +1,6 @@
 import allel
 import numpy as np
 import pytest
-from scipy import special
 from allel import AlleleCountsArray
 from allel import GenotypeArray
 from allel import hudson_fst
@@ -9,6 +8,7 @@ from allel import mean_pairwise_difference
 from allel import mean_pairwise_difference_between
 from allel import watterson_theta
 from allel import weir_cockerham_fst
+from scipy import special
 
 from pixy.calc import calc_dxy
 from pixy.calc import calc_fst
@@ -483,7 +483,8 @@ def test_calc_fst_wc_single_locus() -> None:
 
 
 def test_count_diff_comp_missing_non_consecutive_alleles() -> None:
-    """Regression test: non-consecutive allele indices must not zero out diffs.
+    """
+    Regression test: non-consecutive allele indices must not zero out diffs.
 
     When an intermediate ALT allele (index 1) is absent after population filtering,
     the allele count row has a gap: row = [79, 0, 1]. The previously buggy code used
@@ -495,7 +496,7 @@ def test_count_diff_comp_missing_non_consecutive_alleles() -> None:
 
     diffs, comps, missing = count_diff_comp_missing(row, n_haps)
 
-    assert diffs == 79   # 79 * 1 (REF × ALT2); ALT1 absent contributes 0
+    assert diffs == 79  # 79 * 1 (REF × ALT2); ALT1 absent contributes 0
     assert comps == int(special.comb(N=80, k=2))
     assert missing == 0
 

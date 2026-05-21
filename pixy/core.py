@@ -165,7 +165,9 @@ def assign_subwindows_to_windows(
         # end of last window is always the end of the original window
         subwindow_pos_2_list[-1] = original_stop
 
-        sub_windows = [list(a) for a in zip(subwindow_pos_1_list, subwindow_pos_2_list)]
+        sub_windows = [
+            list(a) for a in zip(subwindow_pos_1_list, subwindow_pos_2_list, strict=True)
+        ]
         window_lst.extend(sub_windows)
 
     return window_lst
@@ -200,7 +202,8 @@ def assign_windows_to_chunks(window_pre_list: List[List[int]], chunk_size: int) 
 
     # bind the lists back together
     window_lst = [
-        list(a) for a in zip(window_pos_1_list, window_pos_2_list, chunk_list_1, chunk_list_2)
+        list(a)
+        for a in zip(window_pos_1_list, window_pos_2_list, chunk_list_1, chunk_list_2, strict=True)
     ]
 
     # nudge windows that overlap two chunks into the first chunk
@@ -237,7 +240,7 @@ def assign_sites_to_chunks(sites_pre_list: List[int], chunk_size: int) -> List[L
     chunk_list = [np.floor(x / (chunk_size + 1)) for x in sites_pre_list]
 
     # bind the lists back together
-    sites_list = [list(a) for a in zip(sites_pre_list, chunk_list)]
+    sites_list = [list(a) for a in zip(sites_pre_list, chunk_list, strict=True)]
 
     return sites_list
 
@@ -337,6 +340,11 @@ def read_and_filter_genotypes(
             ],
             numbers={"GT": ploidy},
         )
+
+    # Pre-declare the array vars so mypy widens to the union type rather than narrowing to
+    # whichever subclass appears first below (HaplotypeArray vs GenotypeArray).
+    gt_array: Optional[GenotypeArray]
+    pos_array: Optional[SortedIndex]
 
     # keep track of whether the callset was empty (no sites for this range in the VCF)
     # used by compute_summary_stats to add info about completely missing sites
@@ -457,9 +465,7 @@ def compute_summary_stats(  # noqa: C901
     # Weir-Cockerham FST requires diploid data; skip FST for non-diploid contigs when WC is
     # requested. Hudson FST works for any ploidy.
     skip_fst_for_chrom: bool = (
-        "fst" in args.stats
-        and str(args.fst_type).upper() == "WC"
-        and chrom_ploidy != 2
+        "fst" in args.stats and str(args.fst_type).upper() == "WC" and chrom_ploidy != 2
     )
 
     # read in the genotype data for the chunk
@@ -471,8 +477,8 @@ def compute_summary_stats(  # noqa: C901
     if "fst" in args.stats and not skip_fst_for_chrom:
         # These should only be returned by `read_and_filter_genotypes` as None if `fst` is not a
         # requested stat. The asserts are to narrow the types.
-        # assert gt_array is not None, "genotype array is None"
-        # assert pos_array is not None, "position array is None"
+        assert gt_array is not None, "genotype array is None"
+        assert pos_array is not None, "position array is None"
 
         per_site_fst_results, gt_array_fst, pos_array_fst = precompute_filtered_variant_array(
             args=args,
@@ -508,7 +514,7 @@ def compute_summary_stats(  # noqa: C901
             loc_region = pos_array.locate_range(window_pos_1, window_pos_2)
 
             # the assertion here is required to narrow the type on `gt_array` from `Optional`
-            # assert gt_array is not None, "genotype array is None"
+            assert gt_array is not None, "genotype array is None"
             gt_region = gt_array[loc_region]
 
             # double check that the region is not empty after subsetting
@@ -596,7 +602,7 @@ def compute_summary_stats(  # noqa: C901
                     tajima_result: TajimaDResult = TajimaDResult.empty()
                 else:
                     # subset the window for the individuals in each population
-                    # assert gt_region is not None, "gt_region is None"
+                    assert gt_region is not None, "gt_region is None"
                     gt_pop = gt_region.take(popindices[pop], axis=1)
 
                     # if the population specific window for this region is empty, report it as such
@@ -632,8 +638,7 @@ def compute_summary_stats(  # noqa: C901
                 if window_is_empty:
                     watterson_result = WattersonThetaResult.empty()
                 else:
-                    # assert gt_region is not None, "genotype array is None"
-                    # assert callset_is_none is not None, "callset is empty"
+                    assert gt_region is not None, "genotype array is None"
                     # subset the window for the individuals in each population
                     gt_pop = gt_region.take(popindices[pop], axis=1)
 

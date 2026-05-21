@@ -1,9 +1,36 @@
 name: pixy-dev
+# Channel order matters: `conda-forge` MUST come before `bioconda` so that
+# system libraries (libcurl, libdeflate, libnghttp2, c-ares, …) resolve from
+# conda-forge's modern versions. `bioconda` only ships its own bioinformatics
+# tools (htslib, samtools) — those are still picked up here because they
+# don't exist in conda-forge. Listing bioconda first triggers strict channel
+# priority and yields unsolvable envs.
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - nodefaults
 dependencies:
-  - python=3.11
+  # The Python version is a range — kept loose so CI's
+  # `create-args: python=${{ matrix.PYTHON_VERSION }}` can narrow it per matrix entry.
+  # `setup-micromamba` would otherwise *conflict* with any equality pin set here.
+  # For local development, pass a specific python version on the command line,
+  # e.g. `micromamba create -n pixy-dev -f environment.yaml python=3.12`.
+  - python >=3.10,<3.15
+
+  # Non-Python tooling
   - bioconda::htslib>=1.9
   - bioconda::samtools>=1.9
+
+  # Python runtime dependencies. These are also declared in `pyproject.toml` for the
+  # benefit of pip-based installs, but conda-forge ships wheels for newer Python
+  # versions (notably cp314) that PyPI doesn't yet — so CI installs them from
+  # conda-forge here, then runs `pip install --no-deps -e .` to install pixy itself
+  # without re-resolving these. Keep these in sync with the pyproject ranges.
+  - conda-forge::numpy>=1.24,<3
+  - conda-forge::pandas>=1.5,<4
+  - conda-forge::scipy>=1.10,<2
+  - conda-forge::scikit-allel>=1.3.13
+  - conda-forge::dask>=2024.1
+  - conda-forge::numcodecs>=0.13
+  - conda-forge::multiprocess>=0.70.17
+  - conda-forge::typing_extensions

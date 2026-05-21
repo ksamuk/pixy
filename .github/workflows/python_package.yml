@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        PYTHON_VERSION: ["3.9", "3.10", "3.11"]
+        PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -18,6 +18,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.PYTHON_VERSION }}
+          allow-prereleases: true
 
       - name: Install and configure Poetry
         uses: snok/install-poetry@v1
@@ -28,21 +29,42 @@ jobs:
         uses: mamba-org/setup-micromamba@v2
         with:
           environment-file: environment.yaml
+          # `environment.yaml` carries `python >=3.10,<3.15`; this narrows the
+          # solve to one specific version per matrix entry.
+          create-args: >-
+            python=${{ matrix.PYTHON_VERSION }}
           micromamba-version: latest
           init-shell: bash
           cache-environment: true
           post-cleanup: 'all'
 
+      # Runtime deps are installed by `setup-micromamba` from environment.yaml so we
+      # get conda-forge wheels (which cover newer Pythons — notably cp314 — that PyPI
+      # doesn't yet ship wheels for). We then install pixy itself with `--no-deps`
+      # to avoid re-resolving them from PyPI, and use poetry only for the dev-tool
+      # group (ruff, mypy, pytest, etc.) since those are pure-Python and trivially
+      # wheel-available everywhere.
       - name: Install the library
         shell: micromamba-shell {0}
         run: |
           poetry config virtualenvs.create false
-          poetry install -vvv
+          pip install --no-deps -e .
+          poetry install --only dev --no-root -vvv
 
-      - name: Test the library
+      # Run each check as its own step so a failure in (e.g.) ruff isn't masked by a
+      # passing `pytest` at the end of a single multi-line `run:` block.
+      - name: Check formatting (ruff format)
         shell: micromamba-shell {0}
-        run: |
-          poetry run ruff format --check --diff
-          poetry run ruff check
-          poetry run mypy
-          poetry run pytest
+        run: poetry run ruff format --check --diff
+
+      - name: Lint (ruff check)
+        shell: micromamba-shell {0}
+        run: poetry run ruff check
+
+      - name: Type check (mypy)
+        shell: micromamba-shell {0}
+        run: poetry run mypy
+
+      - name: Run tests
+        shell: micromamba-shell {0}
+        run: poetry run pytest
