@@ -249,20 +249,24 @@ def assign_sites_to_chunks(sites_pre_list: List[int], chunk_size: int) -> List[L
 # used in conjuctions with the --sites_list command line option
 # NB: `SortedIndex` is of type `int`, but is not generic (at least in 3.8)
 def mask_non_target_sites(
-    gt_array: GenotypeArray, pos_array: SortedIndex, sites_list_chunk: List[int]
-) -> GenotypeArray:
+    gt_array: Union[GenotypeArray, allel.HaplotypeArray],
+    pos_array: SortedIndex,
+    sites_list_chunk: List[int],
+) -> Union[GenotypeArray, allel.HaplotypeArray]:
     """
-    Masks non-target sites in a genotype array.
+    Masks non-target sites in a genotype or haplotype array.
 
-    Masked sites are set to missing data (`-1`).
+    Masked sites are set to missing data (`-1`). Haploid data is represented as a
+    ``HaplotypeArray`` (2-D, no ``ploidy``/``n_samples`` attributes), so the missing-row shape is
+    chosen per array type.
 
     Args:
-        gt_array: the `GenotypeArray` of interest
+        gt_array: the `GenotypeArray` (diploid+) or `HaplotypeArray` (haploid) of interest
         pos_array: positions corresponding to the sites in `gt_array`
         sites_list_chunk: target site positions that should remain unmasked
 
     Returns:
-        gt_array: a modified `GenotypeArray`
+        gt_array: a modified array of the same type as the input
     """
     # get the indexes of sites that are NOT the target sites
     # (these will be masked with missing rows to remove them from the calculations)
@@ -271,8 +275,12 @@ def mask_non_target_sites(
 
     gt_mask_indexes: List[int] = list(np.flatnonzero(pos_array.locate_keys(masked_sites)))
 
-    # a missing row of data to use as a mask
-    missing_row: List[List[int]] = [[-1] * gt_array.ploidy] * gt_array.n_samples
+    # a missing row of data to use as a mask; HaplotypeArray rows are 1-D, GenotypeArray rows are 2-D
+    missing_row: Union[List[int], List[List[int]]]
+    if isinstance(gt_array, allel.HaplotypeArray):
+        missing_row = [-1] * gt_array.n_haplotypes
+    else:
+        missing_row = [[-1] * gt_array.ploidy] * gt_array.n_samples
 
     # apply the mask to all non-target sites
     for pos in gt_mask_indexes:

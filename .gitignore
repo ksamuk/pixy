@@ -19,5 +19,7 @@ debug/*
 __pycache__/
 .coverage
 .python-version
+.venv*
+venv/
 debug/test_haploid.py
 debug/debug_template.sh
