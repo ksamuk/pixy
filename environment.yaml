@@ -1,7 +1,13 @@
 name: pixy-dev
+# Channel order matters: `conda-forge` MUST come before `bioconda` so that
+# system libraries (libcurl, libdeflate, libnghttp2, c-ares, …) resolve from
+# conda-forge's modern versions. `bioconda` only ships its own bioinformatics
+# tools (htslib, samtools) — those are still picked up here because they
+# don't exist in conda-forge. Listing bioconda first triggers strict channel
+# priority and yields unsolvable envs.
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - nodefaults
 dependencies:
   # The Python version is a range — kept loose so CI's
