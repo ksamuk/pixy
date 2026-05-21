@@ -1,6 +1,7 @@
 import allel
 import numpy as np
 import pytest
+from scipy import special
 from allel import AlleleCountsArray
 from allel import GenotypeArray
 from allel import hudson_fst
@@ -14,6 +15,7 @@ from pixy.calc import calc_fst
 from pixy.calc import calc_pi
 from pixy.calc import calc_tajima_d
 from pixy.calc import calc_watterson_theta
+from pixy.calc import count_diff_comp_missing
 from pixy.enums import FSTEstimator
 from pixy.models import DxyResult
 from pixy.models import FstResult
@@ -478,6 +480,24 @@ def test_calc_fst_wc_single_locus() -> None:
     assert result.b == pytest.approx(b.sum())
     assert result.c == pytest.approx(c.sum())
     assert result.n_sites == combined_gt_array.n_variants
+
+
+def test_count_diff_comp_missing_non_consecutive_alleles() -> None:
+    """Regression test: non-consecutive allele indices must not zero out diffs.
+
+    When an intermediate ALT allele (index 1) is absent after population filtering,
+    the allele count row has a gap: row = [79, 0, 1]. The previously buggy code used
+    np.argmax instead of np.max and computed allelism=2, causing the loop to miss
+    the REF×ALT2 pair and return diffs=0 instead of diffs=79.
+    """
+    row = np.array([79, 0, 1])  # REF=79, ALT1=0 (filtered out), ALT2=1
+    n_haps = 80
+
+    diffs, comps, missing = count_diff_comp_missing(row, n_haps)
+
+    assert diffs == 79   # 79 * 1 (REF × ALT2); ALT1 absent contributes 0
+    assert comps == int(special.comb(N=80, k=2))
+    assert missing == 0
 
 
 def test_calc_pi_single_locus_multiallelic() -> None:

@@ -1,4 +1,5 @@
 from collections import Counter
+from itertools import combinations
 from typing import Any
 from typing import Counter as CounterType
 from typing import List
@@ -56,20 +57,12 @@ def count_diff_comp_missing(row: NDArray[Any], n_haps: int) -> Tuple[int, int, i
         # No observed genotypes in the row
         return 0, 0, n_possible_comps
 
-    # Find the highest index of an observed allele, and assume it is the allelism of the site
-    # (If the variant technically has other alleles, they zero out anyways)
     observed_alleles: NDArray = np.nonzero(row)[0]
-    allelism = np.argmax(observed_alleles) + 1
 
     comps = int(special.comb(N=n_gts, k=2))  # calculate combinations, return an integer
     missing = n_possible_comps - comps
 
-    # Use shortcut: the number of differences is the sum of all pairwise products of the observed
-    # allele counts
-    diffs = 0
-    for i in range(allelism - 1):
-        for j in range(i + 1, allelism):
-            diffs += row[i] * row[j]
+    diffs = sum(int(row[i]) * int(row[j]) for i, j in combinations(observed_alleles, 2))
 
     return diffs, comps, missing
 
