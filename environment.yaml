@@ -4,6 +4,12 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  - python=3.12
+  # The Python version is intentionally unpinned here. In CI, the workflow's
+  # `create-args: python=${{ matrix.PYTHON_VERSION }}` supplies the version per
+  # matrix entry; `setup-micromamba` would otherwise *conflict* with any pin set
+  # here (it adds both specs rather than overriding). For local development,
+  # pass `--name pixy-dev` to `micromamba env create` with a Python version of
+  # your choice, e.g. `micromamba create -n pixy-dev -f environment.yaml python=3.12`.
+  - python >=3.10,<3.15
   - bioconda::htslib>=1.9
   - bioconda::samtools>=1.9
