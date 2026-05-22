@@ -64,6 +64,7 @@ class PixyArgs:
         chunk_size: the approximate number of sites to read from VCF at any given time
         fst_type: the FST estimator to use, one of either 'WC' (Weir and Cockerham 1984) or
             'HUDSON' (Hudson 1992, Bhatia et al. 2013). Defaults to 'WC'.
+        fst_components: whether to include FST estimator components in the final FST output table
         temp_file: a Path to which to write intermediate `pixy` results, assigned based on the value
             of `output_dir`
         ploidy_map: a mapping from contig name to inferred ploidy. Built from the first record of
@@ -86,6 +87,7 @@ class PixyArgs:
     include_multiallelic_snps: bool
     num_cores: int = 1
     fst_type: FSTEstimator = FSTEstimator.WC
+    fst_components: bool = False
     output_prefix: str = "pixy"
     chunk_size: int = 100000
     bed_df: Union[pandas.DataFrame, None] = None
@@ -774,6 +776,7 @@ def check_and_validate_args(  # noqa: C901
         sites_df=sites_df,
         chunk_size=args.chunk_size,
         fst_type=FSTEstimator[args.fst_type.upper()],
+        fst_components=getattr(args, "fst_components", False),
         temp_file=tmp_path,
         ploidy_map=ploidy_map,
     )

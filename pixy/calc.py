@@ -305,7 +305,7 @@ def calc_fst_persite(
     gt_array_fst: GenotypeArray,
     fst_pop_indicies: List[List[int]],
     fst_type: str,
-) -> NDArray[np.float64]:
+) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Calculates site-specific FST according to Weir and Cockerham (1984) or Hudson (1992).
 
@@ -315,17 +315,28 @@ def calc_fst_persite(
         fst_type: one of either WC or Hudson, corresponding to the method of calculation
 
     Returns:
-        fst: the site-specific variance
+        A tuple of arrays containing site-specific FST and the summed components used to compute it.
+        For Weir-Cockerham FST these components are ``a``, ``b``, and ``c``. For Hudson FST they
+        are numerator, denominator, and a zero-valued placeholder.
 
     """
     # compute basic (multisite) FST via scikit allel
     fst: NDArray[np.float64]
+    a_sum: NDArray[np.float64]
+    b_sum: NDArray[np.float64]
+    c_sum: NDArray[np.float64]
 
     # WC 84
     if fst_type == "wc":
         a, b, c = allel.weir_cockerham_fst(gt_array_fst, subpops=fst_pop_indicies)
 
-        fst = np.sum(a, axis=1) / (np.sum(a, axis=1) + np.sum(b, axis=1) + np.sum(c, axis=1))
+        a_raw = np.sum(a, axis=1)
+        b_raw = np.sum(b, axis=1)
+        c_raw = np.sum(c, axis=1)
+        a_sum = np.nansum(a, axis=1)
+        b_sum = np.nansum(b, axis=1)
+        c_sum = np.nansum(c, axis=1)
+        fst = a_raw / (a_raw + b_raw + c_raw)
 
     # Hudson 92
     elif fst_type == "hudson":
@@ -337,12 +348,15 @@ def calc_fst_persite(
         # hudson fst has two components (numerator & denominator)
         num, den = allel.hudson_fst(ac1, ac2)
 
+        a_sum = np.nan_to_num(num, nan=0.0)
+        b_sum = np.nan_to_num(den, nan=0.0)
+        c_sum = np.zeros_like(num)
         fst = num / den
 
     else:
         raise ValueError("fst_type must be either 'wc' or 'hudson'")
 
-    return fst
+    return fst, a_sum, b_sum, c_sum
 
 
 def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:

@@ -92,6 +92,16 @@ File: ``[prefix]_fst.txt``
 ``no_snps``
     Total number of variable sites (SNPs) in the window.
 
+``wc_fst_a``, ``wc_fst_b``, ``wc_fst_c``
+    Present when ``--fst_components`` and ``--fst_type wc`` are used.
+    These are the summed Weir & Cockerham variance components for all
+    SNPs in the window.
+
+``hudson_fst_num``, ``hudson_fst_den``
+    Present when ``--fst_components`` and ``--fst_type hudson`` are used.
+    These are the summed numerator and denominator terms for all SNPs in
+    the window.
+
 Watterson's θ (watterson_theta)
 -------------------------------
 
@@ -184,4 +194,15 @@ windows and divide. For Tajima's *D*, recompute from the raw π and θ
 contributions; do not average ``tajima_d`` values directly across
 windows.
 
+For F\ :sub:`ST`, run with ``--fst_components`` and recompute from the
+summed estimator components. For Weir & Cockerham F\ :sub:`ST`:
 
+.. parsed-literal::
+
+    sum(wc_fst_a) / (sum(wc_fst_a) + sum(wc_fst_b) + sum(wc_fst_c))
+
+For Hudson F\ :sub:`ST`:
+
+.. parsed-literal::
+
+    sum(hudson_fst_num) / sum(hudson_fst_den)
