@@ -184,6 +184,7 @@ def run_pixy_helper(  # noqa: C901
     debug: bool = False,
     cores: Optional[int] = None,
     fst_type: Optional[str] = None,
+    fst_components: bool = False,
 ) -> None:
     """
     Run `pixy` with the specified arguments.
@@ -243,6 +244,9 @@ def run_pixy_helper(  # noqa: C901
 
     if fst_type is not None:
         test_args.extend((["--fst_type", f"{fst_type}"]))
+
+    if fst_components:
+        test_args.extend(["--fst_components"])
 
     if bypass_invariant_check:
         test_args.extend(["--bypass_invariant_check"])

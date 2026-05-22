@@ -213,6 +213,18 @@ def main() -> None:  # noqa: C901
         ),
         required=False,
     )
+    optional.add_argument(
+        "--fst_components",
+        action="store_true",
+        default=False,
+        help=(
+            "Include FST estimator components in the FST output table. "
+            "For --fst_type wc, output wc_fst_a, wc_fst_b, and wc_fst_c. "
+            "For --fst_type hudson, output hudson_fst_num and hudson_fst_den. "
+            "Defaults to False."
+        ),
+        required=False,
+    )
     (
         optional.add_argument(
             "--include_multiallelic_snps",
@@ -280,7 +292,7 @@ def main() -> None:  # noqa: C901
     popindices = {}
     for name in pixy_args.pop_names:
         popindices[name] = pixy_args.populations_df[
-            pixy_args.populations_df.Population == name
+            pixy_args.populations_df.Population.astype(str) == str(name)
         ].callset_index.values
     chrom_list = pixy_args.chromosomes
 
@@ -744,24 +756,21 @@ def main() -> None:  # noqa: C901
             os.remove(fst_file)
 
         outfile = open(fst_file, "a")
-        outfile.write(
-            "pop1"
-            + "\t"
-            + "pop2"
-            + "\t"
-            + "chromosome"
-            + "\t"
-            + "window_pos_1"
-            + "\t"
-            + "window_pos_2"
-            + "\t"
-            + "avg_"
-            + args.fst_type
-            + "_fst"
-            + "\t"
-            + "no_snps"
-            + "\n"
-        )
+        fst_header_columns = [
+            "pop1",
+            "pop2",
+            "chromosome",
+            "window_pos_1",
+            "window_pos_2",
+            "avg_" + args.fst_type + "_fst",
+            "no_snps",
+        ]
+        if pixy_args.fst_components:
+            if pixy_args.fst_type is FSTEstimator.WC:
+                fst_header_columns.extend(["wc_fst_a", "wc_fst_b", "wc_fst_c"])
+            else:
+                fst_header_columns.extend(["hudson_fst_num", "hudson_fst_den"])
+        outfile.write("\t".join(fst_header_columns) + "\n")
 
         # keep track of chrosomes with no fst data
         chroms_with_no_data = []
@@ -788,7 +797,10 @@ def main() -> None:  # noqa: C901
                     outsorted = pixy.core.aggregate_output(
                         outfst, stat, chromosome, window_size, pixy_args.fst_type.value
                     )
-                    outsorted = outsorted.iloc[:, :-3]  # drop components (for now)
+                    if not pixy_args.fst_components:
+                        outsorted = outsorted.iloc[:, :-3]
+                    elif pixy_args.fst_type is FSTEstimator.HUDSON:
+                        outsorted = outsorted.iloc[:, :-1]  # drop the unused c placeholder
                     outsorted.to_csv(
                         outfile,
                         sep="\t",
@@ -820,7 +832,10 @@ def main() -> None:  # noqa: C901
                     # make sure sites (but not components like pi/dxy)
                     cols = [7]
                     outsorted[cols] = outsorted[cols].astype("Int64")
-                    outsorted = outsorted.iloc[:, :-3]  # drop components (for now)
+                    if not pixy_args.fst_components:
+                        outsorted = outsorted.iloc[:, :-3]
+                    elif pixy_args.fst_type is FSTEstimator.HUDSON:
+                        outsorted = outsorted.iloc[:, :-1]  # drop the unused c placeholder
                     outsorted.to_csv(
                         outfile,
                         sep="\t",

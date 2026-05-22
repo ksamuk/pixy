@@ -74,6 +74,12 @@ Optional
     F\ :sub:`ST` estimator to use: ``wc`` (Weir & Cockerham 1984) or
     ``hudson`` (Hudson 1992 / Bhatia et al. 2013). Defaults to ``wc``.
 
+**--fst_components**
+    Include the F\ :sub:`ST` estimator components in the F\ :sub:`ST`
+    output table. For ``--fst_type wc``, this adds ``wc_fst_a``,
+    ``wc_fst_b``, and ``wc_fst_c``. For ``--fst_type hudson``, this
+    adds ``hudson_fst_num`` and ``hudson_fst_den``.
+
 **--include_multiallelic_snps**
     Include sites with more than two alleles in the calculation. Disabled by
     default because biallelic-only mode is slightly faster. Added in

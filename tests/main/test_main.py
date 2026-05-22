@@ -723,6 +723,68 @@ def test_pixy_hudson_fst(
         assert_files_are_consistent(generated_data_path, exp_data_path)
 
 
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "fst_type, output_prefix",
+    [
+        ("wc", "wc_fst_components"),
+        ("hudson", "hudson_fst_components"),
+    ],
+)
+def test_pixy_fst_components_flag(
+    pixy_out_dir: Path,
+    expected_outputs: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+    fst_type: str,
+    output_prefix: str,
+) -> None:
+    """The --fst_components flag should append estimator components to FST output."""
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        stats=["fst"],
+        window_size=10000,
+        vcf_path=ag1000_vcf_path,
+        populations_path=ag1000_pop_path,
+        output_prefix=output_prefix,
+        debug=True,
+        cores=1,
+        fst_type=fst_type,
+        fst_components=True,
+    )
+
+    generated_data_path: Path = pixy_out_dir / f"{output_prefix}_fst.txt"
+    exp_data_path: Path = expected_outputs / "fst_components" / f"{output_prefix}_fst.txt"
+    assert generated_data_path.exists()
+    assert_files_are_consistent(generated_data_path, exp_data_path)
+
+
+@pytest.mark.regression
+def test_pixy_fst_numeric_population_labels(
+    pixy_out_dir: Path,
+    expected_outputs: Path,
+    simulated_pop_dxy_path: Path,
+    missing50_vcf_path: Path,
+) -> None:
+    """Numeric population labels should still map to the correct VCF sample indices."""
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        stats=["fst"],
+        window_size=10000,
+        vcf_path=missing50_vcf_path,
+        populations_path=simulated_pop_dxy_path,
+        output_prefix="missing_genotypes",
+        bypass_invariant_check=True,
+        debug=True,
+        cores=1,
+    )
+
+    generated_data_path: Path = pixy_out_dir / "missing_genotypes_fst.txt"
+    exp_data_path: Path = expected_outputs / "missing_genotypes" / "missing_genotypes_fst.txt"
+    assert generated_data_path.exists()
+    assert_files_are_consistent(generated_data_path, exp_data_path)
+
+
 ################################################################################
 # Tests for pixy.main(): multiallelic SNPs
 ################################################################################

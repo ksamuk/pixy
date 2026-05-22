@@ -12,6 +12,7 @@ from scipy import special
 
 from pixy.calc import calc_dxy
 from pixy.calc import calc_fst
+from pixy.calc import calc_fst_persite
 from pixy.calc import calc_pi
 from pixy.calc import calc_tajima_d
 from pixy.calc import calc_watterson_theta
@@ -480,6 +481,71 @@ def test_calc_fst_wc_single_locus() -> None:
     assert result.b == pytest.approx(b.sum())
     assert result.c == pytest.approx(c.sum())
     assert result.n_sites == combined_gt_array.n_variants
+
+
+def test_calc_fst_persite_wc_components() -> None:
+    """Per-site WC FST should expose the same summed components used to compute FST."""
+    pop1_gt_array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # population 1/site 1
+        [[0, 1], [0, 0], [1, 1]],  # population 1/site 2
+    ])
+    pop2_gt_array = GenotypeArray([
+        [[0, 1], [0, 1], [1, 1]],  # population 2/site 1
+        [[0, 1], [1, 1], [1, 1]],  # population 2/site 2
+    ])
+    combined_gt_array = pop1_gt_array.concatenate(pop2_gt_array, axis=1)
+    subpops = [
+        [0, 1, 2],  # population 1
+        [3, 4, 5],  # population 2
+    ]
+
+    a, b, c = weir_cockerham_fst(
+        g=combined_gt_array,
+        subpops=subpops,
+        max_allele=1,
+    )
+
+    expected_a = np.nansum(a, axis=1)
+    expected_b = np.nansum(b, axis=1)
+    expected_c = np.nansum(c, axis=1)
+    expected_fst = expected_a / (expected_a + expected_b + expected_c)
+
+    fst, fst_a, fst_b, fst_c = calc_fst_persite(combined_gt_array, subpops, "wc")
+
+    np.testing.assert_allclose(fst, expected_fst)
+    np.testing.assert_allclose(fst_a, expected_a)
+    np.testing.assert_allclose(fst_b, expected_b)
+    np.testing.assert_allclose(fst_c, expected_c)
+
+
+def test_calc_fst_persite_hudson_components() -> None:
+    """Per-site Hudson FST should expose numerator and denominator terms."""
+    pop1_gt_array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # population 1/site 1
+        [[0, 1], [0, 0], [1, 1]],  # population 1/site 2
+    ])
+    pop2_gt_array = GenotypeArray([
+        [[0, 1], [0, 1], [1, 1]],  # population 2/site 1
+        [[0, 1], [1, 1], [1, 1]],  # population 2/site 2
+    ])
+    combined_gt_array = pop1_gt_array.concatenate(pop2_gt_array, axis=1)
+    subpops = [
+        [0, 1, 2],  # population 1
+        [3, 4, 5],  # population 2
+    ]
+
+    num, den = hudson_fst(
+        ac1=pop1_gt_array.count_alleles(),
+        ac2=pop2_gt_array.count_alleles(),
+    )
+    expected_fst = num / den
+
+    fst, fst_num, fst_den, fst_c = calc_fst_persite(combined_gt_array, subpops, "hudson")
+
+    np.testing.assert_allclose(fst, expected_fst)
+    np.testing.assert_allclose(fst_num, num)
+    np.testing.assert_allclose(fst_den, den)
+    np.testing.assert_allclose(fst_c, np.zeros_like(num))
 
 
 def test_count_diff_comp_missing_non_consecutive_alleles() -> None:

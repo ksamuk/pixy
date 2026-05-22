@@ -12,10 +12,7 @@ import numpy as np
 from allel import AlleleCountsArray
 from allel import GenotypeArray
 from allel import GenotypeVector
-from allel import HaplotypeArray
 from allel import SortedIndex
-from allel import windowed_hudson_fst
-from allel import windowed_weir_cockerham_fst
 from numpy.typing import NDArray
 
 from pixy.args_validation import PixyStat
@@ -122,7 +119,7 @@ def precompute_filtered_variant_array(
                 "if gt_array_fst is not None, pos_array_fst should be not None as well"
             )
 
-            per_site_fsts: NDArray[np.float64] = calc_fst_persite(
+            per_site_fsts, per_site_a, per_site_b, per_site_c = calc_fst_persite(
                 gt_array_fst, fst_pop_indicies, args.fst_type
             )
             assert gt_array_fst.shape[0] == pos_array_fst.shape[0] == per_site_fsts.shape[0], (
@@ -142,9 +139,9 @@ def precompute_filtered_variant_array(
                     window_pos_2=pos_array_fst[i],
                     calculated_stat=fst,
                     shared_sites_with_alleles=snps,
-                    total_differences="NA",
-                    total_missing="NA",
-                    total_comparisons="NA",
+                    total_differences=per_site_a[i],
+                    total_comparisons=per_site_b[i],
+                    total_missing=per_site_c[i],
                 )
 
                 pixy_results.append(pixy_result)
@@ -420,7 +417,7 @@ def _compute_individual_fst_for_pair(
     pop_pair: Tuple[str, str],
     chromosome: str,
 ) -> List[PixyTempResult]:
-    """Compte individual FST for a pair of populations."""
+    """Compute individual-window FST for a pair of populations."""
     if gt_matrix_is_empty:
         pixy_result = PixyTempResult(
             pixy_stat=PixyStat.FST,
@@ -438,59 +435,22 @@ def _compute_individual_fst_for_pair(
 
         return [pixy_result]
 
-    pixy_results: List[PixyTempResult] = []
+    site_mask = np.logical_and(pos_array_fst >= window_pos_1, pos_array_fst <= window_pos_2)
+    gt_region_fst = gt_array_fst.compress(site_mask, axis=0)
+    result = calc_fst(gt_region_fst, fst_pop_indicies, fst_type)
 
-    # compute an ad-hoc window size
-    fst_window_size = window_pos_2 - window_pos_1
+    pixy_result = PixyTempResult(
+        pixy_stat=PixyStat.FST,
+        population_1=pop_pair[0],
+        population_2=pop_pair[1],
+        chromosome=chromosome,
+        window_pos_1=window_pos_1,
+        window_pos_2=window_pos_2,
+        calculated_stat=result.fst,
+        shared_sites_with_alleles=result.n_sites,
+        total_differences=result.a,
+        total_comparisons=result.b,
+        total_missing=result.c,
+    )
 
-    if fst_type is FSTEstimator.WC:
-        if isinstance(gt_array_fst, HaplotypeArray):
-            raise NotImplementedError(
-                "`pixy` does not currently support calculation "
-                "of Weir-Cockerham FST in non-diploid genomes. "
-                "Use --fst_type hudson to resolve this error."
-            )
-        else:
-            fst, window_positions, n_snps = windowed_weir_cockerham_fst(
-                pos_array_fst,
-                gt_array_fst,
-                subpops=fst_pop_indicies,
-                size=fst_window_size,
-                start=window_pos_1,
-                stop=window_pos_2,
-            )
-
-    elif fst_type is FSTEstimator.HUDSON:
-        ac1 = gt_array_fst.count_alleles(subpop=fst_pop_indicies[0])
-        ac2 = gt_array_fst.count_alleles(subpop=fst_pop_indicies[1])
-        fst, window_positions, n_snps = windowed_hudson_fst(
-            pos_array_fst,
-            ac1,
-            ac2,
-            size=fst_window_size,
-            start=window_pos_1,
-            stop=window_pos_2,
-        )
-
-    else:
-        raise ValueError("unreachable")
-
-    for fst_stat, wind, snps in zip(fst, window_positions, n_snps, strict=True):
-        # append trailing NAs so that pi/dxy/fst have the same # of columns
-        pixy_result = PixyTempResult(
-            pixy_stat=PixyStat.FST,
-            population_1=pop_pair[0],
-            population_2=pop_pair[1],
-            chromosome=chromosome,
-            window_pos_1=wind[0],
-            window_pos_2=wind[1],
-            calculated_stat=fst_stat,
-            shared_sites_with_alleles=snps,
-            total_differences="NA",
-            total_comparisons="NA",
-            total_missing="NA",
-        )
-
-        pixy_results.append(pixy_result)
-
-    return pixy_results
+    return [pixy_result]
