@@ -48,11 +48,11 @@ from pixy.stats.summary import compute_summary_fst
 from pixy.stats.summary import compute_summary_pi
 from pixy.stats.summary import precompute_filtered_variant_array
 
-agg_label_column = 12
-agg_window_pos_1_column = 13
-agg_window_pos_2_column = 14
-agg_chromosome_column = 15
-agg_stat_column = 16
+agg_label_column = -1
+agg_window_pos_1_column = -2
+agg_window_pos_2_column = -3
+agg_chromosome_column = -4
+agg_stat_column = -5
 
 
 def _coerce_aggregated_output_types(outsorted: pandas.DataFrame, stat: str) -> pandas.DataFrame:
@@ -187,7 +187,7 @@ def aggregate_output(
     Returns:
         outsorted: a pandas.DataFrame that stores aggregated statistics for each window
     """
-    outsorted = df_for_stat.sort_values([4])  # sort by position
+    outsorted = df_for_stat.sort_values([4]).copy()  # sort by position
     interval_start = df_for_stat[4].min()
     interval_end = df_for_stat[4].max()
     # create a subset of the window list specific to this chunk
@@ -201,9 +201,8 @@ def aggregate_output(
     outsorted[agg_window_pos_2_column] = edges[assignments + 1]
 
     outsorted = _group_aggregated_output(outsorted, stat)
-    outsorted[[agg_window_pos_1_column, agg_window_pos_2_column]] = outsorted[
-        [agg_window_pos_1_column, agg_window_pos_2_column]
-    ].astype("int64")
+    outsorted[agg_window_pos_1_column] = outsorted[agg_window_pos_1_column].astype("int64")
+    outsorted[agg_window_pos_2_column] = outsorted[agg_window_pos_2_column].astype("int64")
     outsorted = _calculate_aggregated_stat(outsorted, stat, fst_type)
 
     outsorted[agg_stat_column] = outsorted[agg_stat_column].fillna("NA")
