@@ -57,10 +57,6 @@ agg_stat_column = 16
 
 def _coerce_aggregated_output_types(outsorted: pandas.DataFrame, stat: str) -> pandas.DataFrame:
     """Coerce aggregate output columns to the dtypes expected in final output."""
-    outsorted[[agg_window_pos_1_column, agg_window_pos_2_column]] = outsorted[
-        [agg_window_pos_1_column, agg_window_pos_2_column]
-    ].astype("int64")
-
     if stat == "pi" or stat == "dxy":
         outsorted[[7, 8, 9, 10]] = outsorted[[7, 8, 9, 10]].astype("int32")
     elif stat == "watterson_theta":
@@ -205,6 +201,9 @@ def aggregate_output(
     outsorted[agg_window_pos_2_column] = edges[assignments + 1]
 
     outsorted = _group_aggregated_output(outsorted, stat)
+    outsorted[[agg_window_pos_1_column, agg_window_pos_2_column]] = outsorted[
+        [agg_window_pos_1_column, agg_window_pos_2_column]
+    ].astype("int64")
     outsorted = _calculate_aggregated_stat(outsorted, stat, fst_type)
 
     outsorted[agg_stat_column] = outsorted[agg_stat_column].fillna("NA")
