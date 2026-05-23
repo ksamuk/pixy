@@ -34,7 +34,10 @@ from pixy.args_validation import validate_sites_path
 from pixy.args_validation import validate_vcf_path
 from pixy.args_validation import validate_window_and_interval_args
 from pixy.calc import calc_tajima_d
+from pixy.calc import calc_tajima_d_stdev
 from pixy.calc import calc_watterson_theta
+from pixy.calc import deserialize_tajima_d_variant_counts
+from pixy.calc import serialize_tajima_d_variant_counts
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
 from pixy.models import PixyTempResult
@@ -44,6 +47,111 @@ from pixy.stats.summary import compute_summary_dxy
 from pixy.stats.summary import compute_summary_fst
 from pixy.stats.summary import compute_summary_pi
 from pixy.stats.summary import precompute_filtered_variant_array
+
+AGG_LABEL_COLUMN = 12
+AGG_WINDOW_POS_1_COLUMN = 13
+AGG_WINDOW_POS_2_COLUMN = 14
+AGG_CHROMOSOME_COLUMN = 15
+AGG_STAT_COLUMN = 16
+
+
+def _coerce_aggregated_output_types(outsorted: pandas.DataFrame, stat: str) -> pandas.DataFrame:
+    """Coerce aggregate output columns to the dtypes expected in final output."""
+    if stat == "pi" or stat == "dxy":
+        outsorted[[7, 8, 9, 10]] = outsorted[[7, 8, 9, 10]].astype("int32")
+    elif stat == "watterson_theta":
+        outsorted[7] = outsorted[7].astype("int32")
+        outsorted[8] = outsorted[8].astype("float64")
+        outsorted[9] = outsorted[9].astype("int32")
+        outsorted[10] = outsorted[10].astype("float64")
+    elif stat == "tajima_d":
+        outsorted[7] = outsorted[7].astype("int32")
+        outsorted[[8, 9, 10]] = outsorted[[8, 9, 10]].astype("float64")
+    elif stat == "fst":
+        outsorted[7] = outsorted[7].astype("int32")
+
+    return outsorted
+
+
+def _aggregate_tajima_d_variant_counts(count_strings: pandas.Series) -> str:
+    """Aggregates serialized Tajima's D observed-allele-count classes from temp rows."""
+    variant_gt_counts: Dict[int, int] = {}
+    for count_string in count_strings:
+        for n, s in deserialize_tajima_d_variant_counts(count_string).items():
+            variant_gt_counts[n] = variant_gt_counts.get(n, 0) + s
+
+    return serialize_tajima_d_variant_counts(variant_gt_counts)
+
+
+def _group_aggregated_output(outsorted: pandas.DataFrame, stat: str) -> pandas.DataFrame:
+    """Groups temp rows by the final output-window coordinates."""
+    if stat in {"pi", "watterson_theta"}:
+        return (
+            outsorted.groupby(
+                [1, AGG_WINDOW_POS_1_COLUMN, AGG_WINDOW_POS_2_COLUMN],
+                as_index=False,
+                dropna=False,
+            )
+            .agg({7: "sum", 8: "sum", 9: "sum", 10: "sum"})
+            .reset_index(drop=True)
+        )
+
+    if stat == "tajima_d":
+        if 11 not in outsorted.columns:
+            raise ValueError("Tajima's D aggregation requires observed-allele-count classes.")
+
+        grouped = (
+            outsorted.groupby(
+                [1, AGG_WINDOW_POS_1_COLUMN, AGG_WINDOW_POS_2_COLUMN],
+                as_index=False,
+                dropna=False,
+            )
+            .agg({7: "sum", 8: "sum", 9: "sum", 11: _aggregate_tajima_d_variant_counts})
+            .reset_index(drop=True)
+        )
+        grouped[10] = grouped[11].apply(
+            lambda value: calc_tajima_d_stdev(deserialize_tajima_d_variant_counts(value))
+        )
+        return grouped
+
+    if stat == "dxy" or stat == "fst":
+        return (
+            outsorted.groupby(
+                [1, 2, AGG_WINDOW_POS_1_COLUMN, AGG_WINDOW_POS_2_COLUMN],
+                as_index=False,
+                dropna=False,
+            )
+            .agg({7: "sum", 8: "sum", 9: "sum", 10: "sum"})
+            .reset_index(drop=True)
+        )
+
+    raise ValueError(f"Unsupported statistic for aggregation: {stat}")
+
+
+def _calculate_aggregated_stat(
+    outsorted: pandas.DataFrame, stat: str, fst_type: str
+) -> pandas.DataFrame:
+    """Calculates the final statistic from aggregated temp-row components."""
+    if stat == "pi" or stat == "dxy":
+        outsorted[AGG_STAT_COLUMN] = outsorted[8] / outsorted[9]
+    elif stat == "watterson_theta":
+        outsorted[AGG_STAT_COLUMN] = outsorted[8] / outsorted[7]
+    elif stat == "tajima_d":
+        d_stdev = outsorted[10]
+        outsorted[AGG_STAT_COLUMN] = np.where(
+            d_stdev.gt(0) & d_stdev.notna(),
+            (outsorted[8] - outsorted[9]) / d_stdev,
+            np.nan,
+        )
+    elif stat == "fst":
+        if fst_type == "wc":
+            outsorted[AGG_STAT_COLUMN] = outsorted[8] / (
+                outsorted[8] + outsorted[9] + outsorted[10]
+            )
+        elif fst_type == "hudson":
+            outsorted[AGG_STAT_COLUMN] = outsorted[8] / outsorted[9]
+
+    return outsorted
 
 
 def aggregate_output(
@@ -88,54 +196,63 @@ def aggregate_output(
     assignments, edges = pandas.cut(
         outsorted[4], bins=bins, labels=False, retbins=True, include_lowest=True
     )
-    outsorted["label"] = assignments
-    outsorted["window_pos_1"] = edges[assignments] + 1
-    outsorted["window_pos_2"] = edges[assignments + 1]
+    outsorted[AGG_LABEL_COLUMN] = assignments
+    outsorted[AGG_WINDOW_POS_1_COLUMN] = edges[assignments] + 1
+    outsorted[AGG_WINDOW_POS_2_COLUMN] = edges[assignments + 1]
 
-    # group by population, window
-    if stat == "pi" or stat == "tajima_d":  # pi and tajima_d only have one population field
-        outsorted = (
-            outsorted.groupby([1, "window_pos_1", "window_pos_2"], as_index=False, dropna=False)
-            .agg({7: "sum", 8: "sum", 9: "sum", 10: "sum"})
-            .reset_index()
-        )
-    elif stat == "dxy" or stat == "fst":  # dxy and fst have 2 population fields
-        outsorted = (
-            outsorted.groupby([1, 2, "window_pos_1", "window_pos_2"], as_index=False, dropna=False)
-            .agg({7: "sum", 8: "sum", 9: "sum", 10: "sum"})
-            .reset_index()
-        )
+    outsorted = _group_aggregated_output(outsorted, stat)
+    outsorted = _calculate_aggregated_stat(outsorted, stat, fst_type)
 
-    if stat == "pi" or stat == "dxy" or stat == "watterson_theta" or stat == "tajima_d":
-        outsorted[stat] = outsorted[8] / outsorted[9]
-    elif stat == "fst":
-        if fst_type == "wc":
-            outsorted[stat] = outsorted[8] / (outsorted[8] + outsorted[9] + outsorted[10])
-        elif fst_type == "hudson":
-            # 'a' is the numerator of hudson and 'b' is the denominator
-            # (there is no 'c')
-            outsorted[stat] = outsorted[8] / (outsorted[9])
-
-    outsorted[stat].fillna("NA", inplace=True)
-    outsorted["chromosome"] = chromosome
+    outsorted[AGG_STAT_COLUMN].fillna("NA", inplace=True)
+    outsorted[AGG_CHROMOSOME_COLUMN] = chromosome
 
     # reorder columns
-    if (
-        stat == "pi" or stat == "watterson_theta" or stat == "tajima_d"
-    ):  # pi, Watterson's theta and Tajima's D only have one population field
-        outsorted = outsorted[[1, "chromosome", "window_pos_1", "window_pos_2", stat, 7, 8, 9, 10]]
+    if stat == "tajima_d":
+        outsorted = outsorted[
+            [
+                1,
+                AGG_CHROMOSOME_COLUMN,
+                AGG_WINDOW_POS_1_COLUMN,
+                AGG_WINDOW_POS_2_COLUMN,
+                AGG_STAT_COLUMN,
+                7,
+                8,
+                9,
+                10,
+                11,
+            ]
+        ]
+    elif stat == "pi" or stat == "watterson_theta":
+        outsorted = outsorted[
+            [
+                1,
+                AGG_CHROMOSOME_COLUMN,
+                AGG_WINDOW_POS_1_COLUMN,
+                AGG_WINDOW_POS_2_COLUMN,
+                AGG_STAT_COLUMN,
+                7,
+                8,
+                9,
+                10,
+            ]
+        ]
     else:  # dxy and fst have 2 population fields
         outsorted = outsorted[
-            [1, 2, "chromosome", "window_pos_1", "window_pos_2", stat, 7, 8, 9, 10]
+            [
+                1,
+                2,
+                AGG_CHROMOSOME_COLUMN,
+                AGG_WINDOW_POS_1_COLUMN,
+                AGG_WINDOW_POS_2_COLUMN,
+                AGG_STAT_COLUMN,
+                7,
+                8,
+                9,
+                10,
+            ]
         ]
 
-    # make sure sites, comparisons, missing get written as floats
-    if stat == "pi" or stat == "dxy" or stat == "watterson_theta" or stat == "tajima_d":
-        cols = [7, 8, 9, 10]
-    elif stat == "fst":
-        cols = [7]
-    outsorted[cols] = outsorted[cols].astype("int32")
-    return outsorted
+    return _coerce_aggregated_output_types(outsorted, stat)
 
 
 # function for breaking down large windows into chunks
@@ -633,6 +750,9 @@ def compute_summary_stats(  # noqa: C901
                     total_differences=tajima_result.raw_pi,
                     total_comparisons=tajima_result.watterson_theta,
                     total_missing=tajima_result.d_stdev,
+                    tajima_d_variant_counts=serialize_tajima_d_variant_counts(
+                        tajima_result.variant_gt_counts
+                    ),
                 )
                 pixy_output.append(pixy_results)
 

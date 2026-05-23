@@ -225,6 +225,18 @@ def main() -> None:  # noqa: C901
         ),
         required=False,
     )
+    optional.add_argument(
+        "--tajima_components",
+        action="store_true",
+        default=False,
+        help=(
+            "Include Tajima's D aggregation components in the Tajima's D output table. "
+            "This adds tajima_d_s_counts, a comma-separated list of "
+            "observed_alleles:segregating_sites pairs that can be summed across windows. "
+            "Defaults to False."
+        ),
+        required=False,
+    )
     (
         optional.add_argument(
             "--include_multiallelic_snps",
@@ -678,6 +690,7 @@ def main() -> None:  # noqa: C901
                 outpi.drop(
                     [0, 2], axis=1, inplace=True
                 )  # get rid of "pi" and placeholder (NA) columns
+                outpi.drop([11], axis=1, errors="ignore", inplace=True)
                 outsorted = outpi.sort_values([4])  # sort by position
                 # make sure sites, comparisons, missing get written as integers
                 cols = [7, 8, 9, 10]
@@ -738,6 +751,7 @@ def main() -> None:  # noqa: C901
                     drop=True
                 )  # get this statistic, this chrom only
                 outdxy.drop([0], axis=1, inplace=True)  # get rid of "dxy"
+                outdxy.drop([11], axis=1, errors="ignore", inplace=True)
                 outsorted = outdxy.sort_values([4])  # sort by position
                 # make sure sites, comparisons, missing get written as integers
                 cols = [7, 8, 9, 10]
@@ -828,6 +842,7 @@ def main() -> None:  # noqa: C901
 
                 if chromosome_has_data:
                     outfst.drop([0], axis=1, inplace=True)  # get rid of "fst"
+                    outfst.drop([11], axis=1, errors="ignore", inplace=True)
                     outsorted = outfst.sort_values([4])  # sort by position
                     # make sure sites (but not components like pi/dxy)
                     cols = [7]
@@ -907,6 +922,7 @@ def main() -> None:  # noqa: C901
                 outwatterson_theta.drop(
                     [0, 2], axis=1, inplace=True
                 )  # get rid of "watterson_theta" and placeholder (NA) columns
+                outwatterson_theta.drop([11], axis=1, errors="ignore", inplace=True)
                 outsorted = outwatterson_theta.sort_values([4])  # sort by position
                 # make sure sites, comparisons, missing get written as floats
                 cols = [7, 8, 9, 10]
@@ -924,26 +940,20 @@ def main() -> None:  # noqa: C901
             os.remove(tajima_d_file)
 
         outfile = open(tajima_d_file, "a")
-        outfile.write(
-            "pop"
-            + "\t"
-            + "chromosome"
-            + "\t"
-            + "window_pos_1"
-            + "\t"
-            + "window_pos_2"
-            + "\t"
-            + "tajima_d"
-            + "\t"
-            + "no_sites"
-            + "\t"
-            + "raw_pi"
-            + "\t"
-            + "raw_watterson_theta"
-            + "\t"
-            + "tajima_d_stdev"
-            + "\n"
-        )
+        tajima_header_columns = [
+            "pop",
+            "chromosome",
+            "window_pos_1",
+            "window_pos_2",
+            "tajima_d",
+            "no_sites",
+            "raw_pi",
+            "raw_watterson_theta",
+            "tajima_d_stdev",
+        ]
+        if pixy_args.tajima_components:
+            tajima_header_columns.append("tajima_d_s_counts")
+        outfile.write("\t".join(tajima_header_columns) + "\n")
 
         if aggregate:  # put winsizes back together for each population to make final_window_size
             for chromosome in chrom_list:
@@ -956,6 +966,8 @@ def main() -> None:  # noqa: C901
                 outsorted = pixy.core.aggregate_output(
                     outtajima_d, PixyStat.TAJIMA_D.value, chromosome, window_size, args.fst_type
                 )
+                if not pixy_args.tajima_components:
+                    outsorted = outsorted.iloc[:, :-1]
                 outsorted.to_csv(
                     outfile, sep="\t", mode="a", header=False, index=False, na_rep="NA"
                 )  # write
@@ -968,10 +980,11 @@ def main() -> None:  # noqa: C901
                 outtajima_d.drop(
                     [0, 2], axis=1, inplace=True
                 )  # get rid of "theta" and placeholder (NA) columns
+                if not pixy_args.tajima_components:
+                    outtajima_d.drop([11], axis=1, errors="ignore", inplace=True)
                 outsorted = outtajima_d.sort_values([4])  # sort by position
-                # make sure sites, comparisons, missing get written as floats
-                cols = [7, 8, 9, 10]
-                outsorted[cols] = outsorted[cols].astype("float64")
+                outsorted[7] = outsorted[7].astype("Int64")
+                outsorted[[8, 9, 10]] = outsorted[[8, 9, 10]].astype("float64")
                 outsorted.to_csv(
                     outfile, sep="\t", mode="a", header=False, index=False, na_rep="NA"
                 )  # write

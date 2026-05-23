@@ -3,6 +3,7 @@ from itertools import combinations
 from typing import Any
 from typing import Counter as CounterType
 from typing import List
+from typing import Mapping
 from typing import Tuple
 from typing import Union
 
@@ -28,6 +29,7 @@ from pixy.models import WattersonThetaResult
 # adding 2 `TypeAlias`s for additional type safety and defensiveness
 VariantCount: TypeAlias = int
 SiteCount: TypeAlias = int
+ObservedAlleleCount: TypeAlias = int
 
 
 def count_diff_comp_missing(row: NDArray[Any], n_haps: int) -> Tuple[int, int, int]:
@@ -414,8 +416,8 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
             reciprocal_sum: float = np.sum(1 / np.arange(1, num_genotypes))
             watterson_theta += site_count / reciprocal_sum
 
-    # calculate number of sites excluding missing sites (those with no genotypes)
-    # this allows calculation of an averaged Watterson's in the context of missing sites
+    # Calculate an auxiliary effective-site count that reflects within-site missingness.
+    # The Watterson's theta denominator is `num_sites`; this value is emitted as a diagnostic.
 
     weighted_sites: float
     if max(all_sites_counter) == 0:
@@ -444,6 +446,57 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
         raw_theta=watterson_theta,
         num_weighted_sites=weighted_sites,
     )
+
+
+def calc_tajima_d_stdev(
+    variant_gt_counts: Mapping[ObservedAlleleCount, SiteCount],
+) -> float:
+    """
+    Calculates the standard deviation term used as Tajima's D denominator.
+
+    The missing-data correction from Bailey et al. 2025 sums the denominator over variant-site
+    classes with the same number of observed alleles. `variant_gt_counts` maps each observed allele
+    count `n` to the number of segregating sites observed with that count.
+    """
+    d_stdev = 0.0
+    for n, s in variant_gt_counts.items():
+        if n < 2 or s <= 0:
+            continue
+
+        a1 = float(np.sum(1 / np.arange(1, n)))
+        a2 = float(np.sum(1 / (np.arange(1, n) ** 2)))
+        b1 = (n + 1) / (3 * (n - 1))
+        b2 = 2 * (n**2 + n + 3) / (9 * n * (n - 1))
+        c1 = b1 - (1 / a1)
+        c2 = b2 - ((n + 2) / (a1 * n)) + (a2 / (a1**2))
+        e1 = c1 / a1
+        e2 = c2 / (a1**2 + a2)
+        d_stdev += np.sqrt((e1 * s) + (e2 * s * (s - 1)))
+
+    return float(d_stdev)
+
+
+def serialize_tajima_d_variant_counts(
+    variant_gt_counts: Mapping[ObservedAlleleCount, SiteCount],
+) -> str:
+    """Serializes Tajima's D observed-allele-count classes for the temp file."""
+    if not variant_gt_counts:
+        return "NA"
+
+    return ",".join(f"{n}:{s}" for n, s in sorted(variant_gt_counts.items()))
+
+
+def deserialize_tajima_d_variant_counts(value: object) -> CounterType[ObservedAlleleCount]:
+    """Deserializes Tajima's D observed-allele-count classes from the temp file."""
+    if not isinstance(value, str) or value == "NA" or value == "":
+        return Counter()
+
+    counts: CounterType[ObservedAlleleCount] = Counter()
+    for item in value.split(","):
+        n, s = item.split(":")
+        counts[int(n)] += int(s)
+
+    return counts
 
 
 def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
@@ -492,37 +545,7 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
             a1: float = np.sum(1 / np.arange(1, n))
             watterson_theta += s / a1
 
-    # Compute n_mean only over sites with at least one observed allele. Masked or fully-missing
-    # sites have an allele-count sum of 0; including them would pull n_mean toward 0 and break
-    # the denominator (b1, c2) when `--sites_file` masks most of the window — producing either
-    # spurious NAs (#186) or wildly inflated values (#188).
-    per_site_n: NDArray[np.int_] = allele_counts.sum(axis=1)
-    observed_per_site_n: NDArray[np.int_] = per_site_n[per_site_n > 0]
-    n_mean: float = float(np.mean(observed_per_site_n)) if observed_per_site_n.size > 0 else 0.0
-    # `n` was the per-site count above; re-bind it here to the across-sites rounded mean
-    n = int(np.rint(n_mean).astype(int))
-
-    # If no site has even 2 observed alleles, Tajima's D is undefined and the formula below
-    # divides by zero (b1 has `3 * (n - 1)`). Return NA without attempting the calculation.
-    if n < 2:
-        return TajimaDResult(
-            tajima_d="NA",
-            num_sites=int(num_sites),
-            raw_pi=raw_pi,
-            watterson_theta=watterson_theta,
-            d_stdev=float("nan"),
-        )
-
-    s_total: int = sum(variant_gt_counts.values())
-    a1 = float(np.sum(1 / np.arange(1, n)))
-    a2: float = float(np.sum(1 / (np.arange(1, n) ** 2)))
-    b1: float = (n + 1) / (3 * (n - 1))
-    b2: float = 2 * (n**2 + n + 3) / (9 * n * (n - 1))
-    c1: float = b1 - (1 / a1)
-    c2: float = b2 - ((n + 2) / (a1 * n)) + (a2 / (a1**2))
-    e1: float = c1 / a1
-    e2: float = c2 / (a1**2 + a2)
-    d_stdev: float = np.sqrt((e1 * s_total) + (e2 * s_total * (s_total - 1)))
+    d_stdev = calc_tajima_d_stdev(variant_gt_counts)
 
     tajima_d: Union[float, NA]
     if d_stdev > 0 and not any(np.isnan(x) for x in [raw_pi, watterson_theta, d_stdev]):
@@ -541,4 +564,5 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
         raw_pi=raw_pi,
         watterson_theta=watterson_theta,
         d_stdev=d_stdev,
+        variant_gt_counts=dict(variant_gt_counts),
     )

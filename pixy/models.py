@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from dataclasses import fields
+from typing import Dict
 from typing import Literal
 from typing import Union
 
@@ -48,6 +49,8 @@ class PixyTempResult:
     `raw_pi` is stored in the `total_differences` field.
     `watterson_theta` is stored in the `total_comparisons` field.
     `d_stdev` is stored in the `total_missing` field.
+    `tajima_d_variant_counts` stores the internal observed-allele-count classes used to recompute
+    `d_stdev` when aggregating chunked Tajima's D output.
 
     This object is overloaded so that all `pixy` stats can leverage one dataclass to hold temporary
     results.
@@ -70,6 +73,7 @@ class PixyTempResult:
     total_differences: Union[int, float, NA]
     total_comparisons: Union[int, float, NA]
     total_missing: Union[int, float, NA]
+    tajima_d_variant_counts: Union[str, NA] = "NA"
 
     def __str__(self) -> str:
         """Returns a tab-delimited string representation for writing out to the temp file."""
@@ -166,6 +170,7 @@ class TajimaDResult:
         watterson_theta: the calculation of Watterson's theta that includes missing genotypes
         d_stdev: the denominator of Tajima's D (standard deviation of the covariance between the
             calculated raw pi and watterson_theta)
+        variant_gt_counts: count of segregating sites by number of observed alleles
     """
 
     tajima_d: Union[float, NA]
@@ -173,11 +178,19 @@ class TajimaDResult:
     raw_pi: Union[float, NA]
     watterson_theta: Union[float, NA]
     d_stdev: Union[float, NA]
+    variant_gt_counts: Dict[int, int]
 
     @classmethod
     def empty(cls) -> "TajimaDResult":
         """An empty `TajimaDResult`, with all fields set to NA."""
-        return cls(tajima_d="NA", num_sites=0, raw_pi="NA", watterson_theta="NA", d_stdev="NA")
+        return cls(
+            tajima_d="NA",
+            num_sites=0,
+            raw_pi="NA",
+            watterson_theta="NA",
+            d_stdev="NA",
+            variant_gt_counts={},
+        )
 
 
 @dataclass
@@ -194,7 +207,7 @@ class WattersonThetaResult:
     Attributes:
         num_sites: number of sites with more than zero alleles
         num_var_sites: number of variant sites
-        avg_theta: calculated as `raw_theta`/`weighted_sites`
+        avg_theta: calculated as `raw_theta`/`num_sites`
         raw_theta: per-site (unscaled) Watterson's Theta
         num_weighted_sites: number of sites weighted by how many genotypes are missing in each site
     """
