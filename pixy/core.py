@@ -48,11 +48,11 @@ from pixy.stats.summary import compute_summary_fst
 from pixy.stats.summary import compute_summary_pi
 from pixy.stats.summary import precompute_filtered_variant_array
 
-agg_label_column = -1
-agg_window_pos_1_column = -2
-agg_window_pos_2_column = -3
-agg_chromosome_column = -4
-agg_stat_column = -5
+agg_label_column = 12
+agg_window_pos_1_column = 13
+agg_window_pos_2_column = 14
+agg_chromosome_column = 15
+agg_stat_column = 16
 
 
 def _coerce_aggregated_output_types(outsorted: pandas.DataFrame, stat: str) -> pandas.DataFrame:
@@ -89,11 +89,10 @@ def _group_aggregated_output(outsorted: pandas.DataFrame, stat: str) -> pandas.D
         return (
             outsorted.groupby(
                 [1, agg_window_pos_1_column, agg_window_pos_2_column],
-                as_index=False,
                 dropna=False,
             )
             .agg({7: "sum", 8: "sum", 9: "sum", 10: "sum"})
-            .reset_index(drop=True)
+            .reset_index()
         )
 
     if stat == "tajima_d":
@@ -103,11 +102,10 @@ def _group_aggregated_output(outsorted: pandas.DataFrame, stat: str) -> pandas.D
         grouped = (
             outsorted.groupby(
                 [1, agg_window_pos_1_column, agg_window_pos_2_column],
-                as_index=False,
                 dropna=False,
             )
             .agg({7: "sum", 8: "sum", 9: "sum", 11: _aggregate_tajima_d_variant_counts})
-            .reset_index(drop=True)
+            .reset_index()
         )
         grouped[10] = grouped[11].apply(
             lambda value: calc_tajima_d_stdev(deserialize_tajima_d_variant_counts(value))
@@ -118,11 +116,10 @@ def _group_aggregated_output(outsorted: pandas.DataFrame, stat: str) -> pandas.D
         return (
             outsorted.groupby(
                 [1, 2, agg_window_pos_1_column, agg_window_pos_2_column],
-                as_index=False,
                 dropna=False,
             )
             .agg({7: "sum", 8: "sum", 9: "sum", 10: "sum"})
-            .reset_index(drop=True)
+            .reset_index()
         )
 
     raise ValueError(f"Unsupported statistic for aggregation: {stat}")
@@ -133,23 +130,23 @@ def _calculate_aggregated_stat(
 ) -> pandas.DataFrame:
     """Calculates the final statistic from aggregated temp-row components."""
     if stat == "pi" or stat == "dxy":
-        outsorted.loc[:, agg_stat_column] = outsorted[8] / outsorted[9]
+        outsorted[agg_stat_column] = outsorted[8] / outsorted[9]
     elif stat == "watterson_theta":
-        outsorted.loc[:, agg_stat_column] = outsorted[8] / outsorted[7]
+        outsorted[agg_stat_column] = outsorted[8] / outsorted[7]
     elif stat == "tajima_d":
         d_stdev = outsorted[10]
-        outsorted.loc[:, agg_stat_column] = np.where(
+        outsorted[agg_stat_column] = np.where(
             d_stdev.gt(0) & d_stdev.notna(),
             (outsorted[8] - outsorted[9]) / d_stdev,
             np.nan,
         )
     elif stat == "fst":
         if fst_type == "wc":
-            outsorted.loc[:, agg_stat_column] = outsorted[8] / (
+            outsorted[agg_stat_column] = outsorted[8] / (
                 outsorted[8] + outsorted[9] + outsorted[10]
             )
         elif fst_type == "hudson":
-            outsorted.loc[:, agg_stat_column] = outsorted[8] / outsorted[9]
+            outsorted[agg_stat_column] = outsorted[8] / outsorted[9]
 
     return outsorted
 
@@ -196,26 +193,22 @@ def aggregate_output(
     assignments, edges = pandas.cut(
         outsorted[4], bins=bins, labels=False, retbins=True, include_lowest=True
     )
-    outsorted.loc[:, agg_label_column] = assignments
-    outsorted.loc[:, agg_window_pos_1_column] = edges[assignments] + 1
-    outsorted.loc[:, agg_window_pos_2_column] = edges[assignments + 1]
+    outsorted[agg_label_column] = assignments
+    outsorted[agg_window_pos_1_column] = edges[assignments] + 1
+    outsorted[agg_window_pos_2_column] = edges[assignments + 1]
 
     outsorted = _group_aggregated_output(outsorted, stat)
-    outsorted.loc[:, agg_window_pos_1_column] = outsorted.loc[:, agg_window_pos_1_column].astype(
-        "int64"
-    )
-    outsorted.loc[:, agg_window_pos_2_column] = outsorted.loc[:, agg_window_pos_2_column].astype(
-        "int64"
-    )
+    outsorted[[agg_window_pos_1_column, agg_window_pos_2_column]] = outsorted[
+        [agg_window_pos_1_column, agg_window_pos_2_column]
+    ].astype("int64")
     outsorted = _calculate_aggregated_stat(outsorted, stat, fst_type)
 
-    outsorted.loc[:, agg_stat_column] = outsorted.loc[:, agg_stat_column].fillna("NA")
-    outsorted.loc[:, agg_chromosome_column] = chromosome
+    outsorted[agg_stat_column] = outsorted[agg_stat_column].fillna("NA")
+    outsorted[agg_chromosome_column] = chromosome
 
     # reorder columns
     if stat == "tajima_d":
-        outsorted = outsorted.loc[
-            :,
+        outsorted = outsorted[
             [
                 1,
                 agg_chromosome_column,
@@ -227,11 +220,10 @@ def aggregate_output(
                 9,
                 10,
                 11,
-            ],
+            ]
         ]
     elif stat == "pi" or stat == "watterson_theta":
-        outsorted = outsorted.loc[
-            :,
+        outsorted = outsorted[
             [
                 1,
                 agg_chromosome_column,
@@ -242,11 +234,10 @@ def aggregate_output(
                 8,
                 9,
                 10,
-            ],
+            ]
         ]
     else:  # dxy and fst have 2 population fields
-        outsorted = outsorted.loc[
-            :,
+        outsorted = outsorted[
             [
                 1,
                 2,
@@ -258,7 +249,7 @@ def aggregate_output(
                 8,
                 9,
                 10,
-            ],
+            ]
         ]
 
     return _coerce_aggregated_output_types(outsorted, stat)
