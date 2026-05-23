@@ -18,9 +18,9 @@ conda-forge pre-configured, ships with the fast ``mamba`` solver) or
 distribution also works but has more restrictive licensing for commercial
 or large-organization use.
 
-``pixy`` supports Python 3.9–3.11 (3.12 is not yet supported)::
+``pixy`` supports Python 3.10–3.14::
 
-    conda create -n "pixy" python=3.11
+    conda create -n "pixy" python=3.12
     conda activate pixy
     conda install -c conda-forge pixy
     conda install -c bioconda samtools
