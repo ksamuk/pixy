@@ -23,8 +23,8 @@ from pixy.models import PixyTempResult
             10,
             20,
             5,
-            "dxy\tpop1\tpop2\tchr1\t100\t200\t0.5\t50\t10\t20\t5",
-        ),  # no `None` -> no NA expected
+            "dxy\tpop1\tpop2\tchr1\t100\t200\t0.5\t50\t10\t20\t5\tNA",
+        ),  # no `None` -> only the Tajima's D temp metadata placeholder is NA
         (
             PixyStat.FST.value,
             "pop1",
@@ -37,7 +37,7 @@ from pixy.models import PixyTempResult
             "NA",
             20,
             5,
-            "fst\tpop1\tpop2\tchr1\t100\t200\t0.5\t50\tNA\t20\t5",
+            "fst\tpop1\tpop2\tchr1\t100\t200\t0.5\t50\tNA\t20\t5\tNA",
         ),  # `total_differences` is `None`
         (
             PixyStat.FST,
@@ -51,7 +51,7 @@ from pixy.models import PixyTempResult
             10,
             "NA",
             5,
-            "fst\tpop1\tpop2\tchr1\t100\t200\t0.5\t50\t10\tNA\t5",
+            "fst\tpop1\tpop2\tchr1\t100\t200\t0.5\t50\t10\tNA\t5\tNA",
         ),  # `total_comparisons` is `None`
         (
             PixyStat.FST,
@@ -65,7 +65,7 @@ from pixy.models import PixyTempResult
             10,
             20,
             "NA",
-            "fst\tpop1\tpop2\tchr1\t100\t200\t0.5\t50\t10\t20\tNA",
+            "fst\tpop1\tpop2\tchr1\t100\t200\t0.5\t50\t10\t20\tNA\tNA",
         ),  # `total_missing` is `None`
         (
             PixyStat.PI,
@@ -79,7 +79,7 @@ from pixy.models import PixyTempResult
             10,
             20,
             5,
-            "pi\tpop1\tNA\tchr1\t100\t200\t0.5\t50\t10\t20\t5",
+            "pi\tpop1\tNA\tchr1\t100\t200\t0.5\t50\t10\t20\t5\tNA",
         ),  # `population_2` is `None`
     ],
 )

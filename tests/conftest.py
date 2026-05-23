@@ -183,8 +183,10 @@ def run_pixy_helper(  # noqa: C901
     output_prefix: Optional[str] = None,
     debug: bool = False,
     cores: Optional[int] = None,
+    chunk_size: Optional[int] = None,
     fst_type: Optional[str] = None,
     fst_components: bool = False,
+    tajima_components: bool = False,
 ) -> None:
     """
     Run `pixy` with the specified arguments.
@@ -242,11 +244,17 @@ def run_pixy_helper(  # noqa: C901
     if cores is not None:
         test_args.extend((["--n_cores", f"{cores}"]))
 
+    if chunk_size is not None:
+        test_args.extend((["--chunk_size", f"{chunk_size}"]))
+
     if fst_type is not None:
         test_args.extend((["--fst_type", f"{fst_type}"]))
 
     if fst_components:
         test_args.extend(["--fst_components"])
+
+    if tajima_components:
+        test_args.extend(["--tajima_components"])
 
     if bypass_invariant_check:
         test_args.extend(["--bypass_invariant_check"])

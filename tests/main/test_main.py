@@ -2,12 +2,18 @@ import logging
 import os
 import shutil
 from pathlib import Path
+from typing import Any
+from typing import Dict
 from typing import List
 from typing import Optional
 from unittest.mock import patch
 
+import numpy as np
+import pandas as pd
 import pytest
 
+from pixy.calc import calc_tajima_d_stdev
+from pixy.calc import deserialize_tajima_d_variant_counts
 from tests.conftest import assert_files_are_consistent
 from tests.conftest import run_pixy_helper
 
@@ -492,6 +498,184 @@ def test_pixy_output_creation(
     for file in unexpected_files:
         full_path = pixy_out_dir / Path(f"{output_prefix}_{file}.txt")
         assert not os.path.exists(full_path)
+
+
+@pytest.mark.regression
+def test_pixy_watterson_theta_aggregation_matches_direct_calculation(
+    pixy_out_dir: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+) -> None:
+    """Chunk-aggregated Watterson's theta should match direct window calculation."""
+    shared_args: Dict[str, Any] = {
+        "pixy_out_dir": pixy_out_dir,
+        "stats": ["watterson_theta"],
+        "window_size": 10000,
+        "vcf_path": ag1000_vcf_path,
+        "populations_path": ag1000_pop_path,
+        "chromosomes": "X",
+        "cores": 1,
+    }
+    run_pixy_helper(
+        **shared_args,
+        output_prefix="watterson_direct",
+        chunk_size=100000,
+    )
+    run_pixy_helper(
+        **shared_args,
+        output_prefix="watterson_aggregated",
+        chunk_size=5000,
+    )
+
+    direct = pd.read_csv(pixy_out_dir / "watterson_direct_watterson_theta.txt", sep="\t")
+    aggregated = pd.read_csv(pixy_out_dir / "watterson_aggregated_watterson_theta.txt", sep="\t")
+    sort_columns = ["pop", "chromosome", "window_pos_1", "window_pos_2"]
+    direct = direct.sort_values(sort_columns).reset_index(drop=True)
+    aggregated = aggregated.sort_values(sort_columns).reset_index(drop=True)
+
+    exact_columns = sort_columns + ["no_sites", "no_var_sites"]
+    pd.testing.assert_frame_equal(direct[exact_columns], aggregated[exact_columns])
+
+    float_columns = ["avg_watterson_theta", "raw_watterson_theta", "weighted_no_sites"]
+    assert np.allclose(direct[float_columns].to_numpy(), aggregated[float_columns].to_numpy())
+    assert np.allclose(
+        aggregated["avg_watterson_theta"].to_numpy(),
+        (aggregated["raw_watterson_theta"] / aggregated["no_sites"]).to_numpy(),
+    )
+
+
+@pytest.mark.regression
+def test_pixy_tajima_d_aggregation_matches_direct_calculation(
+    pixy_out_dir: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+) -> None:
+    """Chunk-aggregated Tajima's D should match direct window calculation."""
+    shared_args: Dict[str, Any] = {
+        "pixy_out_dir": pixy_out_dir,
+        "stats": ["tajima_d"],
+        "window_size": 10000,
+        "vcf_path": ag1000_vcf_path,
+        "populations_path": ag1000_pop_path,
+        "chromosomes": "X",
+        "cores": 1,
+    }
+    run_pixy_helper(
+        **shared_args,
+        output_prefix="tajima_direct",
+        chunk_size=100000,
+    )
+    run_pixy_helper(
+        **shared_args,
+        output_prefix="tajima_aggregated",
+        chunk_size=5000,
+    )
+
+    direct = pd.read_csv(pixy_out_dir / "tajima_direct_tajima_d.txt", sep="\t")
+    aggregated = pd.read_csv(pixy_out_dir / "tajima_aggregated_tajima_d.txt", sep="\t")
+    assert "tajima_d_s_counts" not in direct.columns
+    assert "tajima_d_s_counts" not in aggregated.columns
+    sort_columns = ["pop", "chromosome", "window_pos_1", "window_pos_2"]
+    direct = direct.sort_values(sort_columns).reset_index(drop=True)
+    aggregated = aggregated.sort_values(sort_columns).reset_index(drop=True)
+
+    exact_columns = sort_columns + ["no_sites"]
+    pd.testing.assert_frame_equal(direct[exact_columns], aggregated[exact_columns])
+
+    float_columns = ["tajima_d", "raw_pi", "raw_watterson_theta", "tajima_d_stdev"]
+    assert np.allclose(
+        direct[float_columns].to_numpy(),
+        aggregated[float_columns].to_numpy(),
+        equal_nan=True,
+    )
+
+    valid_denominators = aggregated["tajima_d_stdev"] > 0
+    assert np.allclose(
+        aggregated.loc[valid_denominators, "tajima_d"].to_numpy(),
+        (
+            (
+                aggregated.loc[valid_denominators, "raw_pi"]
+                - aggregated.loc[valid_denominators, "raw_watterson_theta"]
+            )
+            / aggregated.loc[valid_denominators, "tajima_d_stdev"]
+        ).to_numpy(),
+    )
+
+
+@pytest.mark.regression
+def test_pixy_tajima_d_components_enable_posthoc_aggregation(
+    pixy_out_dir: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+) -> None:
+    """The --tajima_components flag should emit enough data to aggregate Tajima's D."""
+    shared_args: Dict[str, Any] = {
+        "pixy_out_dir": pixy_out_dir,
+        "stats": ["tajima_d"],
+        "vcf_path": ag1000_vcf_path,
+        "populations_path": ag1000_pop_path,
+        "chromosomes": "X",
+        "cores": 1,
+        "chunk_size": 100000,
+    }
+    run_pixy_helper(
+        **shared_args,
+        window_size=10000,
+        output_prefix="tajima_components_10kb",
+        tajima_components=True,
+    )
+    run_pixy_helper(
+        **shared_args,
+        window_size=20000,
+        output_prefix="tajima_direct_20kb",
+    )
+
+    components = pd.read_csv(pixy_out_dir / "tajima_components_10kb_tajima_d.txt", sep="\t")
+    direct = pd.read_csv(pixy_out_dir / "tajima_direct_20kb_tajima_d.txt", sep="\t")
+    assert "tajima_d_s_counts" in components.columns
+    assert "tajima_d_s_counts" not in direct.columns
+
+    components["posthoc_window_pos_1"] = ((components["window_pos_1"] - 1) // 20000) * 20000 + 1
+    components["posthoc_window_pos_2"] = components["posthoc_window_pos_1"] + 19999
+    group_columns = ["pop", "chromosome", "posthoc_window_pos_1", "posthoc_window_pos_2"]
+
+    posthoc_rows = []
+    for group_key, group in components.groupby(group_columns, sort=False):
+        variant_counts: Dict[int, int] = {}
+        for value in group["tajima_d_s_counts"]:
+            for n, s in deserialize_tajima_d_variant_counts(value).items():
+                variant_counts[n] = variant_counts.get(n, 0) + s
+
+        raw_pi = group["raw_pi"].sum()
+        raw_watterson_theta = group["raw_watterson_theta"].sum()
+        tajima_d_stdev = calc_tajima_d_stdev(variant_counts)
+        tajima_d = (raw_pi - raw_watterson_theta) / tajima_d_stdev if tajima_d_stdev > 0 else np.nan
+        pop, chromosome, window_pos_1, window_pos_2 = group_key
+        posthoc_rows.append({
+            "pop": pop,
+            "chromosome": chromosome,
+            "window_pos_1": window_pos_1,
+            "window_pos_2": window_pos_2,
+            "tajima_d": tajima_d,
+            "no_sites": group["no_sites"].sum(),
+            "raw_pi": raw_pi,
+            "raw_watterson_theta": raw_watterson_theta,
+            "tajima_d_stdev": tajima_d_stdev,
+        })
+
+    posthoc = pd.DataFrame(posthoc_rows)
+    sort_columns = ["pop", "chromosome", "window_pos_1", "window_pos_2"]
+    posthoc = posthoc.sort_values(sort_columns).reset_index(drop=True)
+    direct = direct.sort_values(sort_columns).reset_index(drop=True)
+
+    exact_columns = sort_columns + ["no_sites"]
+    pd.testing.assert_frame_equal(direct[exact_columns], posthoc[exact_columns])
+    float_columns = ["tajima_d", "raw_pi", "raw_watterson_theta", "tajima_d_stdev"]
+    assert np.allclose(
+        direct[float_columns].to_numpy(),
+        posthoc[float_columns].to_numpy(),
+        equal_nan=True,
+    )
 
 
 ################################################################################

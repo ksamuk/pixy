@@ -80,6 +80,12 @@ Optional
     ``wc_fst_b``, and ``wc_fst_c``. For ``--fst_type hudson``, this
     adds ``hudson_fst_num`` and ``hudson_fst_den``.
 
+**--tajima_components**
+    Include the Tajima's *D* aggregation components in the Tajima's *D*
+    output table. This adds ``tajima_d_s_counts``, a comma-separated list
+    of ``observed_alleles:segregating_sites`` pairs that can be summed
+    across windows to recompute the Tajima's *D* denominator.
+
 **--include_multiallelic_snps**
     Include sites with more than two alleles in the calculation. Disabled by
     default because biallelic-only mode is slightly faster. Added in
