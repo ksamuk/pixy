@@ -27,9 +27,7 @@ dependencies:
   # conda-forge here, then runs `pip install --no-deps -e .` to install pixy itself
   # without re-resolving these. Keep these in sync with the pyproject ranges.
   - conda-forge::numpy>=1.24,<3
-  - conda-forge::pandas>=1.5,<4
   - conda-forge::scikit-allel>=1.3.13
   - conda-forge::dask>=2024.1
   - conda-forge::numcodecs>=0.13
-  - conda-forge::multiprocess>=0.70.17
   - conda-forge::typing_extensions

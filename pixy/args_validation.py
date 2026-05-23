@@ -1,11 +1,13 @@
 # `from __future__ import annotations` lazies all annotations into strings so referencing
-# `pandas.DataFrame` / `allel.*` in type hints doesn't force those modules to be imported at
-# module load. The actual `import pandas` / `import allel` calls are deferred to inside the
-# helper functions that need them — this keeps `pixy --help`, `--version`, and arg-parse
-# error paths from paying the ~500 ms / ~130 MB cost of those imports.
+# `allel.*` in type hints doesn't force that module to be imported at module load. The actual
+# `import allel` is no longer needed here (we now use a tiny gzip-based VCF header reader),
+# and pandas has been replaced wholesale with stdlib-based tables — see the dataclasses
+# below. This keeps `pixy --help`, `--version`, and arg-parse error paths from paying the
+# ~500 ms / ~130 MB cost of pandas import.
 from __future__ import annotations
 
 import argparse
+import csv
 import gzip
 import logging
 import os
@@ -13,9 +15,9 @@ import shutil
 import subprocess
 import uuid
 from dataclasses import dataclass
+from dataclasses import field
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -27,8 +29,106 @@ from numpy.typing import NDArray
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
 
-if TYPE_CHECKING:
-    import pandas
+
+# ---------------------------------------------------------------------------
+# Pandas-free table types that replace the previous pandas.DataFrame fields on
+# PixyArgs (populations_df / bed_df / sites_df). Each holds the same per-row
+# information as the corresponding DataFrame did, with the access patterns used
+# by downstream code exposed as small methods.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PopulationsTable:
+    """Sample-id / population mapping derived from the --populations file.
+
+    Replaces the previous `populations_df` DataFrame, whose columns were
+    `ID`, `Population`, and (added after VCF lookup) `callset_index`.
+    """
+
+    ids: Tuple[str, ...]
+    populations: Tuple[str, ...]
+    # Per-sample index into the VCF's sample list. Populated after `_read_vcf_samples` runs.
+    callset_index: Tuple[int, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if len(self.ids) != len(self.populations):
+            raise ValueError("ids and populations must be the same length")
+        if self.callset_index and len(self.callset_index) != len(self.ids):
+            raise ValueError("callset_index, when set, must be the same length as ids")
+
+    @cached_property
+    def unique_populations(self) -> Tuple[str, ...]:
+        """Distinct population names in first-appearance order."""
+        return tuple(dict.fromkeys(self.populations))
+
+    @property
+    def num_populations(self) -> int:
+        return len(self.unique_populations)
+
+    def indices_for(self, population: str) -> NDArray[np.intp]:
+        """Callset indices of all samples in `population`. Order is preserved."""
+        return np.array(
+            [ci for pop, ci in zip(self.populations, self.callset_index) if pop == population],
+            dtype=np.intp,
+        )
+
+    def with_callset_index(self, callset_index: Tuple[int, ...]) -> PopulationsTable:
+        """Return a new table with the supplied per-sample callset indices."""
+        return PopulationsTable(
+            ids=self.ids, populations=self.populations, callset_index=tuple(callset_index)
+        )
+
+
+@dataclass(frozen=True)
+class BedTable:
+    """List of windowing intervals from a BED file (`chrom`, `chromStart`, `chromEnd`).
+
+    Replaces the previous `bed_df` DataFrame whose columns were
+    `chrom`, `chromStart`, `chromEnd`.
+    """
+
+    chroms: Tuple[str, ...]
+    chrom_starts: Tuple[int, ...]
+    chrom_ends: Tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        n = len(self.chroms)
+        if len(self.chrom_starts) != n or len(self.chrom_ends) != n:
+            raise ValueError("chroms, chrom_starts, chrom_ends must be the same length")
+
+    def intervals_for(self, chromosome: str) -> List[List[int]]:
+        """Return `[[start, end], ...]` for the given chromosome (parallel to the previous
+        zip-of-dataframe-columns pattern used in `__main__.py`)."""
+        return [
+            [s, e]
+            for c, s, e in zip(self.chroms, self.chrom_starts, self.chrom_ends)
+            if c == chromosome
+        ]
+
+    def unique_chroms(self) -> List[str]:
+        """Distinct chromosomes in input order."""
+        return list(dict.fromkeys(self.chroms))
+
+
+@dataclass(frozen=True)
+class SitesTable:
+    """Per-chromosome sorted position lists from the --sites_file.
+
+    Replaces the previous `sites_df` DataFrame whose columns were `CHROM` and `POS`.
+    The previous code repeatedly filtered the DataFrame by chromosome and sorted the
+    positions; we pre-compute and cache that here.
+    """
+
+    by_chrom: Dict[str, Tuple[int, ...]]
+
+    @cached_property
+    def chromosomes(self) -> Tuple[str, ...]:
+        return tuple(self.by_chrom.keys())
+
+    def positions_for(self, chromosome: str) -> List[int]:
+        """Sorted list of positions for `chromosome`, or `[]` if absent."""
+        return list(self.by_chrom.get(chromosome, ()))
 
 
 @dataclass(frozen=True)
@@ -49,14 +149,13 @@ class PixyArgs:
     Attributes:
         stats: list of statistics for `pixy` to calculate from the input VCF
         vcf_path: path to the input VCF (bgzipped and indexed)
-        populations_df: a pandas DataFrame derived from a user-specified path to a headerless
-            tab-separated populations file
+        populations: a PopulationsTable derived from the user-specified populations file
         num_cores: number of CPUs to utilize for parallel processing (default = 1)
         include_multiallelic_snps: If True, include multiallelic sites in the analysis
         bypass_invariant_check: whether to allow computation of stats without invariant sites
             (this option is never recommended and defaults to False)
-        bed_df: a pandas DataFrame derived from a user-specified path to a headerless BED file.
-            Empty DataFrame if a path is not given.
+        bed: a BedTable derived from a user-specified BED file, or `None` if no BED file was
+            given.
         output_dir: an optional path to which outputs will be written; default is current directory
         output_prefix: an optional prefix with which to prepend to `pixy` output (default is `pixy`)
         chromosomes: an optional comma-separated list of chroms over which stats will be calculated
@@ -66,9 +165,8 @@ class PixyArgs:
             to calculate stats (only valid when calculating over a single chromosome)
         interval_end: an optional 1-based position demarcating the end of an interval over which
             to calculate stats (only valid when calculating over a single chromosome)
-        sites_df: a pandas DataFrame derived from a user-specified path to a headerless
-            tab-separated file that defines specific sites for which summary stats should be
-            calculated. Empty DataFrame if a path is not given.
+        sites: a SitesTable derived from a user-specified sites file, or `None` if no sites
+            file was given.
         chunk_size: the approximate number of sites to read from VCF at any given time
         fst_type: the FST estimator to use, one of either 'WC' (Weir and Cockerham 1984) or
             'HUDSON' (Hudson 1992, Bhatia et al. 2013). Defaults to 'WC'.
@@ -89,7 +187,7 @@ class PixyArgs:
 
     stats: List[PixyStat]
     vcf_path: Path
-    populations_df: pandas.DataFrame
+    populations: PopulationsTable
     output_dir: Path
     temp_file: Path
     chromosomes: List[str]
@@ -101,11 +199,11 @@ class PixyArgs:
     tajima_components: bool = False
     output_prefix: str = "pixy"
     chunk_size: int = 100000
-    bed_df: Union[pandas.DataFrame, None] = None
+    bed: Union[BedTable, None] = None
     window_size: Union[int, None] = None
     interval_start: Union[int, None] = None
     interval_end: Union[int, None] = None
-    sites_df: Union[pandas.DataFrame, None] = None
+    sites: Union[SitesTable, None] = None
     ploidy_map: Union[Dict[str, int], None] = None
 
     def __post_init__(self) -> None:
@@ -115,10 +213,10 @@ class PixyArgs:
                 "interval_start and interval_end must be specified together or not at all"
             )
 
-        if self.bed_df is None == self.window_size is None:
+        if self.bed is None == self.window_size is None:
             raise ValueError("One but not both of a BED file or a window size must be specified")
 
-        if self.bed_df is not None and self.interval_start is not None:
+        if self.bed is not None and self.interval_start is not None:
             raise ValueError("An interval cannot be specified with a BED file")
 
         if self.interval_start is not None and self.interval_end is not None:
@@ -135,160 +233,157 @@ class PixyArgs:
         return self.interval_start is not None
 
     @cached_property
-    def pop_names(self) -> NDArray[np.bytes_]:
-        """
-        Returns the list of unique population names from the provided `populations_df`.
+    def pop_names(self) -> NDArray[np.str_]:
+        """Unique population names in first-appearance order, as a numpy `str_` array.
 
-        NB, we cast to a datatype of np.str_ for `mypy`, which cannot infer the specific datatypes
-        within the array.
+        Kept as numpy (rather than a Python tuple) for compatibility with downstream code that
+        iterates the result with numpy semantics. The underlying ordering comes from
+        `PopulationsTable.unique_populations`.
         """
-        return np.array(self.populations_df["Population"].unique(), dtype=np.str_)
+        return np.array(self.populations.unique_populations, dtype=np.str_)
 
     @cached_property
-    def pop_ids(self) -> NDArray[np.bytes_]:
-        """
-        Returns the list of unique population identifiers from the provided `populations_df`.
-
-        NB, we cast to a datatype of np.str_ for `mypy`, which cannot infer the specific datatypes
-        within the array.
-        """
-        return np.array(self.populations_df["ID"].unique(), dtype=np.str_)
+    def pop_ids(self) -> NDArray[np.str_]:
+        """Sample IDs in the populations table, as a numpy `str_` array."""
+        return np.array(self.populations.ids, dtype=np.str_)
 
 
-def validate_populations_path(populations_path: Path) -> pandas.DataFrame:
+def _read_tsv_rows(
+    path: Path,
+    expected_cols: int,
+    missing_data_msg: str,
+    too_few_columns_msg: str,
+) -> List[List[str]]:
+    """Read a tab-delimited file into a list of stripped, validated rows.
+
+    Each row must contain exactly `expected_cols` non-empty fields after stripping. Empty
+    lines are skipped. The two message arguments mirror the wording the previous
+    pandas-based validators emitted, so the regression tests' regex matches still work.
     """
-    Validates user-specified path to a populations file and its contents.
+    rows: List[List[str]] = []
+    with open(path, "r", newline="") as fh:
+        reader = csv.reader(fh, delimiter="\t")
+        for raw in reader:
+            # `csv.reader` will give us a one-element list for blank lines; treat as skip.
+            if not raw or (len(raw) == 1 and not raw[0].strip()):
+                continue
+            cells = [c.strip() for c in raw]
+            if len(cells) < expected_cols:
+                # Distinguish "row too narrow" (entire columns missing) from "row has empty cells"
+                if len(cells) == 1:
+                    raise ValueError(too_few_columns_msg)
+                raise ValueError(missing_data_msg)
+            if any(not c for c in cells[:expected_cols]):
+                raise ValueError(missing_data_msg)
+            rows.append(cells[:expected_cols])
+    return rows
 
-    A valid populations file has at least 2 columns in it, the first of which must be a sample
-    identifier. The second column must be the corresponding population to which that sample id
-    belongs. The sample identifier is assumed to be alphanumeric.
+
+def validate_populations_path(populations_path: Path) -> PopulationsTable:
+    """Read and validate the --populations file.
+
+    A valid populations file has 2 tab-separated columns; column 1 is the sample identifier
+    and column 2 is the population label.
 
     Raises:
-        Exception, if the specific populations_path does not exist
-        Exception, if any of the rows in the populations_path is missing data
+        FileNotFoundError: if the path does not exist
+        ValueError: if any row is missing fields
 
     Returns:
-        A pandas DataFrame containing the populations file contents, with one row for each row
-        in the input populations file.
-        This DataFrame includes two columns ("ID": str, "Population": str).
+        A `PopulationsTable`. `callset_index` is empty here — it gets populated by
+        `check_and_validate_args` after the VCF header has been parsed.
     """
-    # read in the list of samples/populations
     if not os.path.exists(populations_path):
         raise FileNotFoundError(f"The specified populations file {populations_path} does not exist")
 
-    # Local import — see module-level note. pandas is ~80 MB of RSS and ~500 ms to load; we
-    # only pay that when the user actually has a populations file to parse.
-    import pandas
-
-    poppanel: pandas.DataFrame = pandas.read_csv(
-        populations_path, sep="\t", usecols=[0, 1], names=["ID", "Population"]
+    rows = _read_tsv_rows(
+        populations_path,
+        expected_cols=2,
+        missing_data_msg=(
+            "The specified populations file contains missing data, "
+            "confirm all samples have population IDs and are assigned to a population."
+        ),
+        too_few_columns_msg=(
+            "Too many columns specified: expected 2 and found 1 "
+            f"in populations file {populations_path}"
+        ),
+    )
+    return PopulationsTable(
+        ids=tuple(r[0] for r in rows),
+        populations=tuple(r[1] for r in rows),
     )
 
-    # remove trailing whitespace from population names (if any)
-    poppanel = poppanel.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
 
-    poppanel["ID"] = poppanel["ID"].astype(str)
-
-    # check for missing values
-
-    if poppanel.isnull().values.any():
-        raise ValueError(
-            "The specified populations file contains missing data, "
-            "confirm all samples have population IDs are are assigned to a population."
-        )
-
-    return poppanel
-
-
-def validate_bed_path(bed_path: Path) -> pandas.DataFrame:
-    """
-    Validate and load the user-specified path to a BED file.
-
-    The validation checks that the BED file exists and contains three columns. Chromosome names are
-    coerced to string before returning.
-
-    Args:
-        bed_path: A path to a BED file.
-            This file must be in BED3 format (three columns; chrom, start, and end).
-
-    Returns:
-        A pandas DataFrame containing the BED file contents, with one row for each row in the BED
-        file.
-
-        This DataFrame includes three columns ("chrom": str, "pos1": int, "pos2": int).
+def validate_bed_path(bed_path: Path) -> BedTable:
+    """Read and validate a BED3 file (chrom, chromStart, chromEnd).
 
     Raises:
-        Exception: If the provided filepath does not exist.
-        Exception: If the BED file contains any rows with missing fields.
-            Every row must include three fields - chrom, start, and stop.
-        Exception: If the BED file is not in BED3 format; i.e. if the BED does not contain at
-            least three columns.
+        FileNotFoundError: If the path does not exist.
+        ValueError: If any row has fewer than 3 fields or empty values.
     """
     if not os.path.exists(bed_path):
         raise FileNotFoundError(f"The specified BED file {bed_path} does not exist")
 
-    import pandas  # deferred — see module-level note
-
-    # read in the bed file, strip trailing whitespace, and extract the chromosome column
-    bed_df = pandas.read_csv(bed_path, sep="\t", usecols=[0, 1, 2], names=["chrom", "pos1", "pos2"])
-    bed_df = bed_df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
-
-    # force chromosomes to strings
-    bed_df["chrom"] = bed_df["chrom"].astype(str)
-
-    if bed_df.isnull().values.any():
-        raise ValueError(
+    rows = _read_tsv_rows(
+        bed_path,
+        expected_cols=3,
+        missing_data_msg=(
             "The specified BED file contains missing data, confirm all rows have all "
             "three fields (chrom, pos1, pos2)."
-        )
+        ),
+        too_few_columns_msg=(
+            f"Too many columns specified: expected 3 and found 1 in BED file {bed_path}"
+        ),
+    )
+    chroms: List[str] = []
+    starts: List[int] = []
+    ends: List[int] = []
+    for r in rows:
+        chroms.append(r[0])
+        try:
+            starts.append(int(r[1]))
+            ends.append(int(r[2]))
+        except ValueError as e:
+            raise ValueError(
+                f"{bed_path}: BED columns 2 and 3 must be integers; got {r[1]!r}, {r[2]!r}"
+            ) from e
+    return BedTable(chroms=tuple(chroms), chrom_starts=tuple(starts), chrom_ends=tuple(ends))
 
-    if len(bed_df.columns) != 3:
-        raise ValueError(f"The specified BED file has {len(bed_df.columns)} columns; expected 3.")
 
-    else:
-        bed_df.columns = ["chrom", "chromStart", "chromEnd"]
+def validate_sites_path(sites_path: Path) -> SitesTable:
+    """Read and validate the --sites_file (`CHROM\\tPOS`).
 
-    return bed_df
-
-
-def validate_sites_path(sites_path: Path) -> pandas.DataFrame:
-    """
-    Validates user-specified path to a sites file, if provided to `pixy`.
-
-    A valid sites file has no header and at least 2 columns in it. The first column must be a
-    chromosome and the second column must be a position. Position is assumed to be an int.
-    Chromosome names are coerced to a string before returning the dataframe.
+    The previous implementation kept the raw rows in a DataFrame and filtered/sorted them
+    later in each consumer. We pre-group rows by chromosome and pre-sort positions here, so
+    consumers can fetch them in O(1).
 
     Raises:
-        Exception, if the specific sites path does not exist
-        Exception, if any of the rows in the sites_path is missing data
-
-    Returns:
-        A pandas DataFrame containing the sites file contents, with one row for each row
-        in the input sites file. The dataframe has two columns ("CHROM": str, "POS": str).
+        FileNotFoundError: if the path does not exist
+        ValueError: if any row has fewer than 2 fields or empty values, or POS is non-integer.
     """
     if not os.path.exists(sites_path):
         raise FileNotFoundError(f"The specified sites file {sites_path} does not exist")
 
-    import pandas  # deferred — see module-level note
-
-    sites_df = pandas.read_csv(sites_path, sep="\t", usecols=[0, 1], names=["chrom", "pos"])
-    sites_df = sites_df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
-    sites_df["chrom"] = sites_df["chrom"].astype(str)
-
-    if sites_df.isnull().values.any():
-        raise ValueError(
-            "The specified sites file contains missing data, confirm all rows each "
+    rows = _read_tsv_rows(
+        sites_path,
+        expected_cols=2,
+        missing_data_msg=(
+            "The specified sites file contains missing data, confirm all rows "
             "have two fields (chrom, pos)."
-        )
-
-    if len(sites_df.columns) != 2:
-        raise ValueError(f"The specified BED file has {len(sites_df.columns)} columns; expected 2.")
-
-    else:
-        sites_df.columns = ["CHROM", "POS"]
-
-    return sites_df
+        ),
+        too_few_columns_msg="Too many columns specified: expected 2 and found 1",
+    )
+    by_chrom: Dict[str, List[int]] = {}
+    for r in rows:
+        chrom = r[0]
+        try:
+            pos = int(r[1])
+        except ValueError as e:
+            raise ValueError(
+                f"{sites_path}: sites column 2 (POS) must be an integer; got {r[1]!r}"
+            ) from e
+        by_chrom.setdefault(chrom, []).append(pos)
+    return SitesTable(by_chrom={chrom: tuple(sorted(positions)) for chrom, positions in by_chrom.items()})
 
 
 def validate_vcf_path(vcf_path: str) -> None:
@@ -600,7 +695,7 @@ def check_and_validate_args(  # noqa: C901
     # reformat file paths for compatibility
 
     populations_path: Path = Path(os.path.expanduser(args.populations))
-    populations_df: pandas.DataFrame = validate_populations_path(populations_path)
+    populations: PopulationsTable = validate_populations_path(populations_path)
 
     vcf_path: str = os.path.expanduser(args.vcf)  # we don't want a Path object just yet because
     # most of the downstream operations require a string
@@ -642,12 +737,12 @@ def check_and_validate_args(  # noqa: C901
 
     # CHECK FOR EXISTENCE OF INPUT FILES
 
+    bed: Union[BedTable, None]
     if args.bed_file is not None:
         bed_path: Path = Path(os.path.expanduser(args.bed_file))
-        bed_df: pandas.DataFrame = validate_bed_path(bed_path)
-
+        bed = validate_bed_path(bed_path)
     else:
-        bed_df = None
+        bed = None
 
     # VALIDATE THE VCF
 
@@ -728,7 +823,8 @@ def check_and_validate_args(  # noqa: C901
                 "when a BED file of windows is provided."
             )
 
-        bed_chrom: List[str] = list(bed_df["chrom"])
+        assert bed is not None  # narrow type for mypy
+        bed_chrom: List[str] = list(bed.chroms)
         missing = list(set(bed_chrom) - set(chrom_list))
         chrom_list = list(set(chrom_list) & set(bed_chrom))
 
@@ -737,17 +833,17 @@ def check_and_validate_args(  # noqa: C901
                 "The following chromosomes are in the BED file but do not occur in the VCF "
                 f"and will be ignored: {missing}"
             )
+    sites: Union[SitesTable, None]
     if args.sites_file is None:
-        sites_df = None
+        sites = None
         chrom_sites: List[str] = []
         missing_sites: List[str] = []
-
     else:
         sites_path: Path = Path(os.path.expanduser(args.sites_file))
-        sites_df = validate_sites_path(sites_path=sites_path)
+        sites = validate_sites_path(sites_path=sites_path)
 
         # all the chromosomes in the sites file
-        chrom_sites = list(sites_df["CHROM"])
+        chrom_sites = list(sites.chromosomes)
 
         # the difference between the chromosomes in the sites file and the VCF
         missing_sites = list(set(chrom_sites) - set(chrom_list))
@@ -770,32 +866,22 @@ def check_and_validate_args(  # noqa: C901
     # get a list of samples from the callset
     samples_list = vcf_samples
     # make sure every indiv in the pop file is in the VCF callset
-    sample_ids: List[str] = list(populations_df["ID"])
+    sample_ids: List[str] = list(populations.ids)
     missing = list(set(sample_ids) - set(samples_list))
 
     # find the samples in the callset index by matching up the order of samples between the
     # population file and the callset
     # also check if there are invalid samples in the popfile
     try:
-        samples_callset_index = [samples_list.index(s) for s in populations_df["ID"]]
+        samples_callset_index = tuple(samples_list.index(s) for s in populations.ids)
     except ValueError as e:
         raise ValueError(
             f"The following samples are listed in the population file but not in the VCF: {missing}"
         ) from e
-    else:
-        populations_df["callset_index"] = samples_callset_index
+    # Re-build the populations table with the discovered callset indices attached.
+    populations = populations.with_callset_index(samples_callset_index)
 
-        # use the popindices dictionary to keep track of the indices for each population
-        popindices = {}
-        popnames = populations_df.Population.unique()
-        for name in popnames:
-            popindices[name] = populations_df[
-                populations_df.Population == name
-            ].callset_index.values
-
-    if (populations_df["Population"].nunique() == 1) and (
-        "fst" in args.stats or "dxy" in args.stats
-    ):
+    if populations.num_populations == 1 and ("fst" in args.stats or "dxy" in args.stats):
         raise ValueError(
             "Calculation of fst and/or dxy requires at least two populations to be "
             "defined in the population file."
@@ -829,18 +915,18 @@ def check_and_validate_args(  # noqa: C901
     return PixyArgs(
         stats=stats,
         vcf_path=Path(vcf_path),
-        populations_df=populations_df,
+        populations=populations,
         num_cores=args.n_cores,
         bypass_invariant_check=bypass_invariant_check,
         include_multiallelic_snps=include_multiallelic_snps,
-        bed_df=bed_df,
+        bed=bed,
         output_dir=Path(output_folder),
         output_prefix=output_prefix,
         chromosomes=chrom_list,
         window_size=args.window_size,
         interval_start=args.interval_start,
         interval_end=args.interval_end,
-        sites_df=sites_df,
+        sites=sites,
         chunk_size=args.chunk_size,
         fst_type=FSTEstimator[args.fst_type.upper()],
         fst_components=getattr(args, "fst_components", False),
