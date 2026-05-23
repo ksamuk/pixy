@@ -2,6 +2,8 @@ import logging
 import os
 import shutil
 from pathlib import Path
+from typing import Any
+from typing import Dict
 from typing import List
 from typing import Optional
 from unittest.mock import patch
@@ -505,7 +507,7 @@ def test_pixy_watterson_theta_aggregation_matches_direct_calculation(
     ag1000_vcf_path: Path,
 ) -> None:
     """Chunk-aggregated Watterson's theta should match direct window calculation."""
-    shared_args = {
+    shared_args: Dict[str, Any] = {
         "pixy_out_dir": pixy_out_dir,
         "stats": ["watterson_theta"],
         "window_size": 10000,
@@ -549,7 +551,7 @@ def test_pixy_tajima_d_aggregation_matches_direct_calculation(
     ag1000_vcf_path: Path,
 ) -> None:
     """Chunk-aggregated Tajima's D should match direct window calculation."""
-    shared_args = {
+    shared_args: Dict[str, Any] = {
         "pixy_out_dir": pixy_out_dir,
         "stats": ["tajima_d"],
         "window_size": 10000,
@@ -607,7 +609,7 @@ def test_pixy_tajima_d_components_enable_posthoc_aggregation(
     ag1000_vcf_path: Path,
 ) -> None:
     """The --tajima_components flag should emit enough data to aggregate Tajima's D."""
-    shared_args = {
+    shared_args: Dict[str, Any] = {
         "pixy_out_dir": pixy_out_dir,
         "stats": ["tajima_d"],
         "vcf_path": ag1000_vcf_path,
@@ -639,7 +641,7 @@ def test_pixy_tajima_d_components_enable_posthoc_aggregation(
 
     posthoc_rows = []
     for group_key, group in components.groupby(group_columns, sort=False):
-        variant_counts = {}
+        variant_counts: Dict[int, int] = {}
         for value in group["tajima_d_s_counts"]:
             for n, s in deserialize_tajima_d_variant_counts(value).items():
                 variant_counts[n] = variant_counts.get(n, 0) + s
