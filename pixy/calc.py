@@ -1,5 +1,5 @@
 from collections import Counter
-from itertools import combinations
+from functools import lru_cache
 from typing import Any
 from typing import Counter as CounterType
 from typing import List
@@ -12,7 +12,6 @@ import numpy as np
 from allel import AlleleCountsArray
 from allel import GenotypeArray
 from numpy.typing import NDArray
-from scipy import special
 from typing_extensions import TypeAlias
 
 from pixy.enums import FSTEstimator
@@ -30,6 +29,63 @@ from pixy.models import WattersonThetaResult
 VariantCount: TypeAlias = int
 SiteCount: TypeAlias = int
 ObservedAlleleCount: TypeAlias = int
+
+
+@lru_cache(maxsize=1024)
+def _harmonic_sum(n: int) -> np.float64:
+    """Return sum_{k=1}^{n-1} 1/k. Returns np.float64(0.0) when n <= 1.
+
+    Used by Watterson's theta and Tajima's D, which evaluate this for each variant-site class
+    keyed by the per-site observed-allele count. The result depends only on `n`, so caching by
+    `n` removes a quadratic-in-window-size cost when many sites share the same observed count.
+
+    The return dtype is `np.float64` (not Python `float`) so that callers can rely on numpy's
+    `inf` semantics for the n == 1 case under `np.errstate(divide="ignore")` — Python `float`
+    would raise `ZeroDivisionError` instead, which is a behavior change from the previous
+    `np.sum(1 / np.arange(1, n))` formulation.
+    """
+    if n <= 1:
+        return np.float64(0.0)
+    return np.float64(np.sum(1.0 / np.arange(1, n)))
+
+
+@lru_cache(maxsize=1024)
+def _harmonic_sum_sq(n: int) -> np.float64:
+    """Return sum_{k=1}^{n-1} 1/k**2. Returns np.float64(0.0) when n <= 1."""
+    if n <= 1:
+        return np.float64(0.0)
+    return np.float64(np.sum(1.0 / (np.arange(1, n) ** 2)))
+
+
+@lru_cache(maxsize=1024)
+def _tajima_constants(n: int) -> Tuple[float, float]:
+    """Return (e1, e2) — the Tajima 1989 coefficients used in the stdev calculation.
+
+    Returns (0.0, 0.0) for `n < 2` (no variance contribution possible).
+    """
+    if n < 2:
+        return 0.0, 0.0
+    a1 = _harmonic_sum(n)
+    a2 = _harmonic_sum_sq(n)
+    b1 = (n + 1) / (3 * (n - 1))
+    b2 = 2 * (n * n + n + 3) / (9 * n * (n - 1))
+    c1 = b1 - (1 / a1)
+    c2 = b2 - ((n + 2) / (a1 * n)) + (a2 / (a1**2))
+    e1 = c1 / a1
+    e2 = c2 / (a1**2 + a2)
+    return e1, e2
+
+
+def _n_haps(gt_array: GenotypeArray) -> int:
+    """Return the number of haploid samples represented by a (Haplotype|Genotype)Array.
+
+    `HaplotypeArray` exposes this directly as `n_haplotypes`; for the general case the
+    haploid sample count is `n_samples * ploidy`. This branch appeared inline in several
+    callers below; factoring it out removes the duplication.
+    """
+    if isinstance(gt_array, allel.HaplotypeArray):
+        return int(gt_array.n_haplotypes)
+    return int(gt_array.n_samples * gt_array.ploidy)
 
 
 def count_diff_comp_missing(row: NDArray[Any], n_haps: int) -> Tuple[int, int, int]:
@@ -50,22 +106,60 @@ def count_diff_comp_missing(row: NDArray[Any], n_haps: int) -> Tuple[int, int, i
         is the difference between the actual number of comparisons and the total possible (based on
         the number of haploid samples).
     """
-    n_gts: int = np.sum(row)  # number of observed genotypes
-
-    # number of possible pairwise comparisons, if all samples are called
-    n_possible_comps: int = int(special.comb(N=n_haps, k=2))
+    # Algebraic simplification of the previous implementation:
+    #   diffs = sum_{i<j} row[i] * row[j]  = (n_gts**2 - sum(row**2)) / 2
+    #   comps = C(n_gts, 2)                 = n_gts * (n_gts - 1) / 2
+    # Both forms produce identical integer results (n_gts and the row entries are nonneg ints,
+    # and n_gts**2 - sum(row**2) is even by construction). The old form used an O(n_alleles**2)
+    # Python loop plus scipy.special.comb; this version uses pure arithmetic.
+    n_gts = int(np.sum(row))
+    n_possible_comps = n_haps * (n_haps - 1) // 2
 
     if n_gts == 0:
-        # No observed genotypes in the row
         return 0, 0, n_possible_comps
 
-    observed_alleles: NDArray = np.nonzero(row)[0]
-
-    comps = int(special.comb(N=n_gts, k=2))  # calculate combinations, return an integer
+    comps = n_gts * (n_gts - 1) // 2
+    diffs = (n_gts * n_gts - int(np.sum(np.asarray(row, dtype=np.int64) ** 2))) // 2
     missing = n_possible_comps - comps
+    return diffs, comps, missing
 
-    diffs = sum(int(row[i]) * int(row[j]) for i, j in combinations(observed_alleles, 2))
 
+# Largest `n_haps` whose square still fits in a signed int32. Beyond this we must promote
+# `allele_counts` to int64 in the vectorized sum-of-squares; below it we can stay in the
+# native int32 dtype that scikit-allel's `count_alleles()` returns, halving the intermediate
+# memory footprint. Threshold = floor(sqrt(2**31 - 1)).
+_INT32_SAFE_NHAPS_MAX = 46340
+
+
+def _count_diff_comp_missing_vectorized(
+    allele_counts: NDArray[Any], n_haps: int
+) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
+    """Vectorized form of `count_diff_comp_missing` over all sites at once.
+
+    Inputs:
+        allele_counts: (n_sites, n_alleles) int array (typically int32 from scikit-allel).
+        n_haps: number of haploid samples in the population.
+
+    Returns:
+        Three (n_sites,) int64 arrays: (diffs, comps, missing).
+    """
+    # Keep `allele_counts` in its native int32 dtype unless `n_haps` is large enough that
+    # `n_gts**2` could overflow int32 (>= 46341). The bulk of the memory in the intermediate
+    # `ac * ac` lives here — staying in int32 halves it for typical pixy datasets.
+    ac = np.asarray(allele_counts)
+    if n_haps > _INT32_SAFE_NHAPS_MAX or ac.dtype.itemsize < 4:
+        ac = ac.astype(np.int64)
+    # `sum(axis=1)` on int32 returns int64 by default on 64-bit platforms, which gives us the
+    # headroom we need for `n_gts * n_gts` even when `ac` itself is still int32.
+    n_gts = ac.sum(axis=1, dtype=np.int64)
+    n_possible_comps = n_haps * (n_haps - 1) // 2
+    comps = n_gts * (n_gts - 1) // 2
+    # sum_{i<j} a_i*a_j = (n_gts**2 - sum(a_i**2)) / 2 — see the scalar form above. We use
+    # np.einsum so numpy never materializes the full (n_sites, n_alleles) product matrix;
+    # it computes the row sums directly.
+    sq_sum = np.einsum("ij,ij->i", ac, ac, dtype=np.int64)
+    diffs = (n_gts * n_gts - sq_sum) // 2
+    missing = n_possible_comps - comps
     return diffs, comps, missing
 
 
@@ -88,36 +182,17 @@ def calc_pi(gt_array: GenotypeArray) -> PiResult:
     # counts of each of the two alleles at each site
     allele_counts: AlleleCountsArray = gt_array.count_alleles()
 
-    # determine the number of (haploid) samples in the population
-    # include a check if we are working with haploid data
-    if isinstance(gt_array, allel.HaplotypeArray):
-        n_haps = gt_array.n_haplotypes
-    else:
-        n_haps = gt_array.n_samples * gt_array.ploidy
+    n_haps = _n_haps(gt_array)
 
-    def count_diff_comp_missing_wrapper(row: NDArray[Any]) -> Tuple[int, int, int]:
-        return count_diff_comp_missing(row, n_haps)
+    # Vectorized over all sites at once; previously this used np.apply_along_axis with a Python
+    # callback per site, which is the same as a for-loop in numpy clothing.
+    diffs, comps, missing = _count_diff_comp_missing_vectorized(np.asarray(allele_counts), n_haps)
 
-    diff_comp_missing_matrix = np.apply_along_axis(
-        func1d=count_diff_comp_missing_wrapper,
-        axis=1,
-        arr=allele_counts,
-    )
+    total_diffs = int(diffs.sum())
+    total_comps = int(comps.sum())
+    total_missing = int(missing.sum())
 
-    # sum up the above quantities for totals for the region
-    diff_comp_missing_sums = np.sum(diff_comp_missing_matrix, 0)
-
-    # extract the component values
-    total_diffs = diff_comp_missing_sums[0]
-    total_comps = diff_comp_missing_sums[1]
-    total_missing = diff_comp_missing_sums[2]
-
-    # alternative method for calculating total_missing
-    # produces the same result as original method (included as sanity check)
-    # total_possible = ((n_haps * (n_haps-1))/2) * len(allele_counts)
-    # total_missing = total_possible - total_comps
-
-    # if there are valid data (comparisons between genotypes) at the site, compute average dxy
+    # if there are valid data (comparisons between genotypes) at the site, compute average pi
     # otherwise return NA
     avg_pi: Union[float, NA] = total_diffs / total_comps if total_comps > 0 else "NA"
 
@@ -154,34 +229,37 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
     pop1_allele_counts: AlleleCountsArray = pop1_gt_array.count_alleles()
     pop2_allele_counts: AlleleCountsArray = pop2_gt_array.count_alleles()
 
-    # the number of (haploid) samples in each population
-    # haplotype arrays use n_haplotypes instead of n_samples * ploidy
+    pop1_n_haps = _n_haps(pop1_gt_array)
+    pop2_n_haps = _n_haps(pop2_gt_array)
 
-    pop1_n_haps: int
-    if isinstance(pop1_gt_array, allel.HaplotypeArray):
-        pop1_n_haps = pop1_gt_array.n_haplotypes
-    else:
-        pop1_n_haps = pop1_gt_array.n_samples * pop1_gt_array.ploidy
-
-    pop2_n_haps: int
-    if isinstance(pop2_gt_array, allel.HaplotypeArray):
-        pop2_n_haps = pop2_gt_array.n_haplotypes
-    else:
-        pop2_n_haps = pop2_gt_array.n_samples * pop2_gt_array.ploidy
-
-    # the total number of differences between populations summed across all sites
-    persite_diffs: NDArray = np.zeros(n_sites)
-    for i in range(pop1_allele_counts.n_alleles):
-        for j in range(pop2_allele_counts.n_alleles):
-            if i != j:
-                persite_diffs += pop1_allele_counts[:, i] * pop2_allele_counts[:, j]
-
-    total_diffs: int = np.sum(persite_diffs)
-
-    # the total number of actual pairwise comparisons between sites, excluding missing calls
-    persite_comps: NDArray = np.sum(pop1_allele_counts, axis=1) * np.sum(pop2_allele_counts, axis=1)
+    # Per-site differences (= pairwise comparisons between pops that differ in allele).
+    # Identity used:
+    #     sum_{i != j} a_i * b_j  =  (sum a) * (sum b)  -  sum_i a_i * b_i
+    # This replaces an O(n_alleles**2) Python loop with a handful of vectorized numpy ops,
+    # and lets us reuse `persite_comps` (== pop1_sum * pop2_sum) instead of recomputing it.
+    #
+    # Memory: we stay in the native int32 dtype that scikit-allel's `count_alleles()` returns
+    # unless `pop1_n_haps * pop2_n_haps` would overflow int32. Sums and products are computed
+    # into explicit int64 accumulators (numpy promotes during `sum`/`einsum`), so the only
+    # large intermediate that scales with `n_sites * n_alleles` stays in int32.
+    pop1_arr = np.asarray(pop1_allele_counts)
+    pop2_arr = np.asarray(pop2_allele_counts)
+    max_product = pop1_n_haps * pop2_n_haps
+    if max_product > 2**31 - 1 or pop1_arr.dtype.itemsize < 4 or pop2_arr.dtype.itemsize < 4:
+        pop1_arr = pop1_arr.astype(np.int64)
+        pop2_arr = pop2_arr.astype(np.int64)
+    pop1_sum = pop1_arr.sum(axis=1, dtype=np.int64)
+    pop2_sum = pop2_arr.sum(axis=1, dtype=np.int64)
+    persite_comps: NDArray = pop1_sum * pop2_sum
+    # einsum 'ij,ij->i' is the row-wise dot product without materializing the elementwise
+    # product matrix `pop1_arr * pop2_arr` (which would be (n_sites, n_alleles) of int).
+    persite_diffs: NDArray = persite_comps - np.einsum(
+        "ij,ij->i", pop1_arr, pop2_arr, dtype=np.int64
+    )
     assert persite_comps.shape == (n_sites,)
-    total_comps: int = np.sum(persite_comps)
+
+    total_diffs: int = int(persite_diffs.sum())
+    total_comps: int = int(persite_comps.sum())
 
     # the total count of possible pairwise comparisons at all sites
     total_possible: int = (pop1_n_haps * pop2_n_haps) * n_sites
@@ -413,7 +491,9 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
     watterson_theta: float = 0.0
     with np.errstate(divide="ignore"):
         for num_genotypes, site_count in variant_sites_counter.items():
-            reciprocal_sum: float = np.sum(1 / np.arange(1, num_genotypes))
+            # `_harmonic_sum(n)` returns 0.0 for n <= 1, preserving the documented "inf"
+            # sentinel for the singleton-haploid case (see comment above).
+            reciprocal_sum: float = _harmonic_sum(int(num_genotypes))
             watterson_theta += site_count / reciprocal_sum
 
     # Calculate an auxiliary effective-site count that reflects within-site missingness.
@@ -462,16 +542,12 @@ def calc_tajima_d_stdev(
     for n, s in variant_gt_counts.items():
         if n < 2 or s <= 0:
             continue
-
-        a1 = float(np.sum(1 / np.arange(1, n)))
-        a2 = float(np.sum(1 / (np.arange(1, n) ** 2)))
-        b1 = (n + 1) / (3 * (n - 1))
-        b2 = 2 * (n**2 + n + 3) / (9 * n * (n - 1))
-        c1 = b1 - (1 / a1)
-        c2 = b2 - ((n + 2) / (a1 * n)) + (a2 / (a1**2))
-        e1 = c1 / a1
-        e2 = c2 / (a1**2 + a2)
-        d_stdev += np.sqrt((e1 * s) + (e2 * s * (s - 1)))
+        # (e1, e2) depend only on `n` and are cached so that repeated `n` values across many
+        # sites in a window don't re-derive the same a1/a2/b1/b2/c1/c2/e1/e2 chain.
+        e1, e2 = _tajima_constants(int(n))
+        # np.sqrt (not math.sqrt) to preserve the prior behavior of returning nan on negative
+        # variance terms rather than raising ValueError.
+        d_stdev += float(np.sqrt((e1 * s) + (e2 * s * (s - 1))))
 
     return float(d_stdev)
 
@@ -542,7 +618,9 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
     watterson_theta: float = 0.0
     with np.errstate(divide="ignore"):
         for n, s in variant_gt_counts.items():
-            a1: float = np.sum(1 / np.arange(1, n))
+            # See comment in calc_watterson_theta — `_harmonic_sum(1) == 0.0` reproduces the
+            # documented inf sentinel for the singleton case.
+            a1: float = _harmonic_sum(int(n))
             watterson_theta += s / a1
 
     d_stdev = calc_tajima_d_stdev(variant_gt_counts)

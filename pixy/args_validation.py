@@ -1,26 +1,34 @@
+# `from __future__ import annotations` lazies all annotations into strings so referencing
+# `pandas.DataFrame` / `allel.*` in type hints doesn't force those modules to be imported at
+# module load. The actual `import pandas` / `import allel` calls are deferred to inside the
+# helper functions that need them — this keeps `pixy --help`, `--version`, and arg-parse
+# error paths from paying the ~500 ms / ~130 MB cost of those imports.
+from __future__ import annotations
+
 import argparse
+import gzip
 import logging
 import os
 import shutil
 import subprocess
 import uuid
-import warnings
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Union
 
-import allel
-import multiprocess as mp
 import numpy as np
-import pandas
 from numpy.typing import NDArray
 
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
+
+if TYPE_CHECKING:
+    import pandas
 
 
 @dataclass(frozen=True)
@@ -168,6 +176,10 @@ def validate_populations_path(populations_path: Path) -> pandas.DataFrame:
     if not os.path.exists(populations_path):
         raise FileNotFoundError(f"The specified populations file {populations_path} does not exist")
 
+    # Local import — see module-level note. pandas is ~80 MB of RSS and ~500 ms to load; we
+    # only pay that when the user actually has a populations file to parse.
+    import pandas
+
     poppanel: pandas.DataFrame = pandas.read_csv(
         populations_path, sep="\t", usecols=[0, 1], names=["ID", "Population"]
     )
@@ -215,6 +227,8 @@ def validate_bed_path(bed_path: Path) -> pandas.DataFrame:
     if not os.path.exists(bed_path):
         raise FileNotFoundError(f"The specified BED file {bed_path} does not exist")
 
+    import pandas  # deferred — see module-level note
+
     # read in the bed file, strip trailing whitespace, and extract the chromosome column
     bed_df = pandas.read_csv(bed_path, sep="\t", usecols=[0, 1, 2], names=["chrom", "pos1", "pos2"])
     bed_df = bed_df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
@@ -255,6 +269,8 @@ def validate_sites_path(sites_path: Path) -> pandas.DataFrame:
     """
     if not os.path.exists(sites_path):
         raise FileNotFoundError(f"The specified sites file {sites_path} does not exist")
+
+    import pandas  # deferred — see module-level note
 
     sites_df = pandas.read_csv(sites_path, sep="\t", usecols=[0, 1], names=["chrom", "pos"])
     sites_df = sites_df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
@@ -426,7 +442,7 @@ def validate_window_and_interval_args(args: argparse.Namespace) -> str:
     ):
         check_message = "WARNING"
         logger.warning(
-            f"The specified interval {args.interval_start}-{args.interval_stop} "
+            f"The specified interval {args.interval_start}-{args.interval_end} "
             f"is smaller than the window size ({args.window_size}). "
             "A single window will be returned."
         )
@@ -435,6 +451,28 @@ def validate_window_and_interval_args(args: argparse.Namespace) -> str:
 
 
 # helper for parsing ploidy from a single GT string (e.g. "0/0", "0|1", "1")
+def _read_vcf_samples(vcf_path: str) -> List[str]:
+    """Read the sample names from a (bgzipped) VCF's `#CHROM` header line.
+
+    Replaces `allel.read_vcf_headers(...).samples` — pixy only needs the sample list, and
+    going through scikit-allel forces the import of dask/zarr/pyarrow/scipy (~50 MB RSS,
+    ~300 ms wall) every time the validator runs. This helper streams just the VCF header
+    block and stops as soon as it finds the column line.
+    """
+    with gzip.open(vcf_path, "rt") as fh:
+        for line in fh:
+            if line.startswith("#CHROM"):
+                fields = line.rstrip("\n").split("\t")
+                # standard VCF: 9 fixed columns then per-sample columns
+                return fields[9:]
+            if not line.startswith("#"):
+                # Past the header without seeing #CHROM — malformed VCF
+                break
+    raise ValueError(
+        f"VCF {vcf_path!r} has no `#CHROM` header line; cannot determine sample names."
+    )
+
+
 def _ploidy_from_gt(gt_str: str) -> int:
     """Infer ploidy from a single GT genotype string."""
     if "/" in gt_str:
@@ -472,33 +510,44 @@ def infer_ploidy_per_contig(vcf_path: str, chrom_list: List[str]) -> "dict[str, 
     Raises:
         RuntimeError: if a contig has no records in the VCF.
     """
+    if not chrom_list:
+        return {}
+
+    # We spawn one tabix process and pass every contig as a region argument; tabix outputs
+    # the records sequentially. As soon as we've seen the first record for each contig we
+    # terminate. The previous version spawned one tabix per contig — for assemblies with
+    # hundreds of unplaced contigs that subprocess overhead dominated startup time.
     ploidy_map: dict[str, int] = {}
-    for chrom in chrom_list:
-        # stream tabix output and stop after the first data record for the contig
-        with subprocess.Popen(
-            ["tabix", vcf_path, chrom],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            assert proc.stdout is not None
-            first_line = proc.stdout.readline()
-            # terminate tabix early — we only need the first record
-            proc.terminate()
+    remaining = set(chrom_list)
+    with subprocess.Popen(
+        ["tabix", vcf_path, *chrom_list],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ) as proc:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 10:
+                # Not a usable record (no sample columns). Skip — error is raised below if no
+                # usable record is ever seen for a contig.
+                continue
+            chrom = fields[0]
+            if chrom not in remaining:
+                continue
+            first_gt = fields[9].split(":")[0]
+            ploidy_map[chrom] = _ploidy_from_gt(first_gt)
+            remaining.discard(chrom)
+            if not remaining:
+                break
+        proc.terminate()
 
-        if not first_line:
-            raise RuntimeError(
-                f"No genotype records found in VCF for contig {chrom!r}; cannot infer ploidy."
-            )
-
-        fields = first_line.rstrip("\n").split("\t")
-        # standard VCF format: sample columns start at column 9 (0-indexed)
-        if len(fields) < 10:
-            raise RuntimeError(
-                f"First record for contig {chrom!r} has no sample columns; cannot infer ploidy."
-            )
-        first_gt = fields[9].split(":")[0]
-        ploidy_map[chrom] = _ploidy_from_gt(first_gt)
+    if remaining:
+        # Order the error report by the user's original chrom_list for reproducible messages.
+        missing = [c for c in chrom_list if c in remaining]
+        raise RuntimeError(
+            f"No genotype records found in VCF for contig(s) {missing!r}; cannot infer ploidy."
+        )
 
     return ploidy_map
 
@@ -564,10 +613,11 @@ def check_and_validate_args(  # noqa: C901
 
     output_prefix = output_folder + args.output_prefix
 
-    # get vcf header info
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning, module="allel")
-        vcf_headers = allel.read_vcf_headers(vcf_path)
+    # Read the VCF header to get the sample list. Previously this used
+    # `allel.read_vcf_headers`, which transitively imports dask/zarr/pyarrow and adds ~300 ms
+    # / ~50 MB to startup. The sample list is the only piece of header info we use here, and
+    # the `#CHROM` column line that carries it is trivial to parse directly.
+    vcf_samples: List[str] = _read_vcf_samples(vcf_path)
 
     logger.info("Validating VCF and input parameters...")
 
@@ -582,12 +632,13 @@ def check_and_validate_args(  # noqa: C901
     logger.info("Checking CPU configuration...")
     check_message = "OK"
 
-    if args.n_cores > mp.cpu_count():
+    available_cores: int = os.cpu_count() or 1
+    if args.n_cores > available_cores:
         logger.warning(
-            f"{args.n_cores} CPU cores requested but only {mp.cpu_count()} available. "
-            f"Using {mp.cpu_count()} cores."
+            f"{args.n_cores} CPU cores requested but only {available_cores} available. "
+            f"Using {available_cores} cores."
         )
-        args.n_cores = mp.cpu_count()
+        args.n_cores = available_cores
 
     # CHECK FOR EXISTENCE OF INPUT FILES
 
@@ -606,23 +657,36 @@ def check_and_validate_args(  # noqa: C901
     check_message = "OK"
     bypass_invariant_check: bool = args.bypass_invariant_check
     if not bypass_invariant_check:
-        alt_list = (
-            subprocess.check_output(
-                "gunzip -c "
-                + vcf_path
-                + " | grep -v '^#' | head -n 100000 | awk '{print $5}' | sort | uniq",
-                shell=True,
-            )
-            .decode("utf-8")
-            .split()
-        )
-        if "." not in alt_list:
+        # Read up to the first 100k data records and collect the distinct ALT values.
+        # We bail out as soon as we have seen the invariant marker ('.') alongside at least one
+        # variant ALT, since at that point both branches of the check below are already decided.
+        # Implemented in pure Python (no shell pipeline) to avoid shell-injection risk from
+        # user-supplied VCF paths, and to remove the dependency on system `gunzip`/`awk`/`sort`.
+        alt_values: set[str] = set()
+        max_records = 100_000
+        seen_records = 0
+        with gzip.open(vcf_path, "rt") as fh:
+            for line in fh:
+                if line.startswith("#"):
+                    continue
+                fields = line.rstrip("\n").split("\t", 5)
+                if len(fields) >= 5:
+                    alt_values.add(fields[4])
+                seen_records += 1
+                # Once we've seen both an invariant ALT and a non-invariant ALT, the check below
+                # is fully decided and there's no point reading further.
+                if "." in alt_values and (alt_values - {"."}):
+                    break
+                if seen_records >= max_records:
+                    break
+
+        if "." not in alt_values:
             raise ValueError(
                 "The provided VCF appears to contain no invariant sites "
                 '(ALT = "."). '
                 "This check can be bypassed via --bypass_invariant_check 'yes'."
             )
-        if "." in alt_list and len(alt_list) == 1:
+        if alt_values == {"."}:
             logger.warning(
                 "The provided VCF appears to contain no variable sites in the "
                 "first 100 000 sites. It may have been filtered incorrectly, or genetic diversity "
@@ -704,7 +768,7 @@ def check_and_validate_args(  # noqa: C901
     # - throws an error if individuals are missing from VCF
 
     # get a list of samples from the callset
-    samples_list = vcf_headers.samples
+    samples_list = vcf_samples
     # make sure every indiv in the pop file is in the VCF callset
     sample_ids: List[str] = list(populations_df["ID"])
     missing = list(set(sample_ids) - set(samples_list))

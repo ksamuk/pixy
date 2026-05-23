@@ -10,7 +10,6 @@ from typing import Dict
 from typing import List
 from typing import Literal
 from typing import Optional
-from typing import Set
 from typing import Tuple
 from typing import Union
 
@@ -387,17 +386,18 @@ def mask_non_target_sites(
     """
     # get the indexes of sites that are NOT the target sites
     # (these will be masked with missing rows to remove them from the calculations)
-    masked_sites_set: Set[int] = set(pos_array) ^ set(sites_list_chunk)
-    masked_sites: List[int] = sorted(list(set(pos_array).intersection(masked_sites_set)))
+    masked_sites: List[int] = sorted(set(pos_array) - set(sites_list_chunk))
 
-    gt_mask_indexes: List[int] = list(np.flatnonzero(pos_array.locate_keys(masked_sites)))
+    gt_mask_indexes: NDArray[np.intp] = np.flatnonzero(pos_array.locate_keys(masked_sites))
 
-    # missing-row mask: HaplotypeArray rows are 1-D, GenotypeArray rows are 2-D (n_samples x ploidy)
-    missing_row: Union[List[int], List[List[int]]]
+    # Build the missing-row mask as a numpy array (rather than a nested Python list) — the
+    # previous `[[-1] * ploidy] * n_samples` form aliased the inner list across every sample row,
+    # which is a latent bug if downstream code ever mutates row-wise. np.full is also faster.
+    missing_row: NDArray[np.int8]
     if isinstance(gt_array, allel.HaplotypeArray):
-        missing_row = [-1] * gt_array.n_haplotypes
+        missing_row = np.full(gt_array.n_haplotypes, -1, dtype=np.int8)
     else:
-        missing_row = [[-1] * gt_array.ploidy] * gt_array.n_samples
+        missing_row = np.full((gt_array.n_samples, gt_array.ploidy), -1, dtype=np.int8)
 
     # apply the mask to all non-target sites
     for pos in gt_mask_indexes:
@@ -642,18 +642,8 @@ def compute_summary_stats(  # noqa: C901
             assert gt_array is not None, "genotype array is None"
             gt_region = gt_array[loc_region]
 
-            # double check that the region is not empty after subsetting
-            try:
-                loc_region  # noqa: B018
-            except Exception:
-                loc_region = None
-
-            try:
-                gt_region  # noqa: B018
-            except Exception:
-                gt_region = None
-
-            if (gt_region is None) or len(gt_region) == 0 or (loc_region is None):
+            # An empty slice after subsetting means the window has no usable sites.
+            if len(gt_region) == 0:
                 window_is_empty = True
 
         # PI:

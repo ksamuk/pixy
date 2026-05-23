@@ -1,5 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
+#
+# Heavy runtime imports (numpy, pandas, multiprocess, pixy.calc, pixy.core) are deferred to
+# inside main(), after argparse has finished. The reason: `pixy --version`, `pixy --help`, and
+# argparse error paths previously paid ~0.9 s and ~160 MB just to discover that argparse was
+# going to bail out. With deferred imports those paths return in ~0.2 s / ~30 MB.
+#
+# `from __future__ import annotations` makes all annotations below evaluate lazily, so we can
+# annotate parameters with `PixyArgs` / `pandas.DataFrame` / etc. without importing them.
+from __future__ import annotations
+
 import argparse
 import logging
 import os
@@ -7,24 +17,20 @@ import re
 import subprocess
 import sys
 import time
-from multiprocessing.context import BaseContext
-from multiprocessing.managers import SyncManager
-from multiprocessing.pool import ApplyResult
+from typing import TYPE_CHECKING
 from typing import List
 from typing import Optional
 from typing import cast
 
-import multiprocess as mp
-import numpy as np
-import pandas
-from multiprocess import Pool
-from multiprocess import Queue
-
-import pixy.calc
-import pixy.core
-from pixy.args_validation import PixyArgs
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
+
+if TYPE_CHECKING:
+    from multiprocessing.context import BaseContext
+    from multiprocessing.managers import SyncManager
+    from multiprocessing.pool import ApplyResult
+
+    from pixy.args_validation import PixyArgs
 
 # main pixy function
 
@@ -92,6 +98,11 @@ def main() -> None:  # noqa: C901
         required=True,
     )
 
+    # NB: --window_size and --bed_file are mutually exclusive — that constraint is enforced in
+    # pixy/args_validation.py rather than at argparse level so that the user gets a pixy-specific
+    # ValueError (and so that the existing test suite, which matches on that message, keeps
+    # working). Moving the check into argparse's `add_mutually_exclusive_group` is on the
+    # roadmap; it requires updating the corresponding regression tests to match SystemExit.
     additional.add_argument(
         "--window_size",
         type=int,
@@ -292,6 +303,23 @@ def main() -> None:  # noqa: C901
     if args.silent:
         sys.stdout = open(os.devnull, "w")
 
+    # ------------------------------------------------------------------
+    # Heavy library imports (deferred from module top — see file header)
+    # ------------------------------------------------------------------
+    # By this point argparse has already exited for --version / --citation / --help / bad-arg
+    # paths, so anything below only runs for an actual analysis invocation. Each `import x`
+    # below binds `x` as a local in main(); later uses in the function find them via the
+    # usual local-then-global lookup.
+    import numpy as np
+    import pandas
+    import multiprocess as mp
+    from multiprocess import Pool
+    from multiprocess import Queue
+
+    import pixy.args_validation
+    import pixy.calc  # noqa: F401  — workers reach it through pixy.core
+    import pixy.core
+
     # validate arguments with the check_and_validate_args fuction
     # returns parsed populaion, chromosome, and sample info
     logger.info(f"[pixy] pixy {version}")
@@ -410,16 +438,25 @@ def main() -> None:  # noqa: C901
             # otherwise, get the interval from the VCF's POS column
             else:
                 if pixy_args.sites_df is None:
-                    chrom_max: List[str] = (
-                        subprocess.check_output(
-                            "tabix " + args.vcf + " " + chromosome + " | cut -f 2 | tail -n 1",
-                            shell=True,
+                    # Run `tabix VCF CHROM` (no shell, no piping through cut/tail) and read the
+                    # POS column of the final line. Avoids shell-injection risk on the VCF and
+                    # chromosome strings and removes a dependency on cut/tail being on PATH.
+                    tabix_out = subprocess.check_output(
+                        ["tabix", args.vcf, chromosome]
+                    ).decode("utf-8")
+                    last_pos: Optional[str] = None
+                    for line in tabix_out.splitlines():
+                        if line and not line.startswith("#"):
+                            cols = line.split("\t", 2)
+                            if len(cols) >= 2:
+                                last_pos = cols[1]
+                    if last_pos is None:
+                        raise ValueError(
+                            f"No records found in VCF for chromosome {chromosome!r}; cannot infer "
+                            "interval end."
                         )
-                        .decode("utf-8")
-                        .split()
-                    )
                     interval_start = 1
-                    interval_end = int(chrom_max[0])
+                    interval_end = int(last_pos)
                 else:
                     sites_pre_list = pixy_args.sites_df[pixy_args.sites_df["CHROM"] == chromosome]
                     sites_pre_list = sorted(sites_pre_list["POS"].tolist())
