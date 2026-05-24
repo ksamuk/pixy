@@ -1219,3 +1219,76 @@ def test_mixed_ploidy_wc_fst_skips_haploid_contig(
     # a warning about WC FST being skipped on non-diploid contigs should have been emitted
     warning_msgs = " ".join(record.getMessage() for record in caplog.records)
     assert "Weir-Cockerham FST is not supported for non-diploid contigs" in warning_msgs
+
+
+# Tests for pixy.main(): pure-haploid VCFs
+################################################################################
+
+
+@pytest.mark.regression
+def test_haploid_all_stats_run_end_to_end(
+    pixy_out_dir: Path,
+    haploid_vcf_path: Path,
+    haploid_pop_path: Path,
+) -> None:
+    """
+    pixy runs end-to-end on a pure-haploid VCF (all contigs haploid).
+
+    Exercises pi, dxy, Hudson FST, Watterson's theta, and Tajima's D on a simulated VCF with two
+    haploid contigs (``chr1`` and ``chr2``). Confirms that per-contig ploidy inference works when
+    no contig is diploid, and that each stat produces output on both contigs.
+    """
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        stats=["pi", "dxy", "fst", "watterson_theta", "tajima_d"],
+        window_size=500,
+        vcf_path=haploid_vcf_path,
+        populations_path=haploid_pop_path,
+        output_prefix="haploid",
+        fst_type="hudson",
+    )
+
+    for stat in ("pi", "dxy", "fst", "watterson_theta", "tajima_d"):
+        out_path = pixy_out_dir / f"haploid_{stat}.txt"
+        assert out_path.exists(), f"missing output for {stat}"
+        assert _read_chromosomes_from_pixy_output(out_path) == ["chr1", "chr2"], (
+            f"{stat} output should cover both haploid contigs"
+        )
+
+
+@pytest.mark.regression
+def test_haploid_wc_fst_is_skipped_with_warning(
+    pixy_out_dir: Path,
+    haploid_vcf_path: Path,
+    haploid_pop_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Weir-Cockerham FST is diploid-only, so a pure-haploid VCF should produce no FST output.
+
+    pi must still be computed on both haploid contigs, and a warning must be emitted that WC FST
+    was skipped.
+    """
+    with caplog.at_level(logging.WARNING):
+        run_pixy_helper(
+            pixy_out_dir=pixy_out_dir,
+            stats=["pi", "fst"],
+            window_size=500,
+            vcf_path=haploid_vcf_path,
+            populations_path=haploid_pop_path,
+            output_prefix="haploid",
+            fst_type="wc",
+        )
+
+    pi_path = pixy_out_dir / "haploid_pi.txt"
+    assert pi_path.exists()
+    assert _read_chromosomes_from_pixy_output(pi_path) == ["chr1", "chr2"]
+
+    fst_path = pixy_out_dir / "haploid_fst.txt"
+    if fst_path.exists():
+        assert _read_chromosomes_from_pixy_output(fst_path) == [], (
+            "WC FST output should be empty for a pure-haploid VCF"
+        )
+
+    warning_msgs = " ".join(record.getMessage() for record in caplog.records)
+    assert "Weir-Cockerham FST is not supported for non-diploid contigs" in warning_msgs
