@@ -84,11 +84,11 @@ If you haven't already, install Miniforge (https://github.com/conda-forge/minifo
 3. Create a New Environment
 ===========================
 Create and activate a new conda environment for working with pixy.
-``pixy`` supports Python 3.9, 3.10 and 3.11 (3.12 is not yet supported):
+``pixy`` supports Python 3.10 through 3.14:
 
 .. code:: console
 
-    conda create -n "pixy" python=3.11
+    conda create -n "pixy" python=3.12
     conda activate pixy
 
 4. Install pixy
@@ -107,11 +107,6 @@ To see a list of arguments and test the pixy installation, type:
 .. code:: console
 
     pixy --help
-
-.. note::
-    If you have trouble installing in a Python 3.11 environment, try rolling
-    back to Python 3.9.
-
 
 5. Create a populations file
 ============================
@@ -133,7 +128,7 @@ For example:
 6. Compress and Index your VCF
 ==============================
 
-pixy requires its input VCF to be **bgzip-compressed** (not plain gzip) and to have a **tabix index** alongside it. If you have not already done so:
+pixy requires its input VCF to be **bgzip-compressed** (not plain gzip) and to have either a **tabix (``.tbi``) or CSI (``.csi``) index** alongside it (``.csi`` is required when individual contigs exceed ~512 Mb). If you have not already done so:
 
 .. code:: console
 

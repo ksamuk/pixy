@@ -193,8 +193,8 @@ Continuous integration
 
 Every push and pull request runs the ``Code checks`` workflow defined in
 ``.github/workflows/python_package.yml``. CI executes ``ruff format --check``,
-``ruff check``, ``mypy``, and ``pytest`` on Python **3.9**, **3.10**, and
-**3.11**. The fastest way to be confident a PR will pass CI is to run
+``ruff check``, ``mypy``, and ``pytest`` on Python **3.10**, **3.11**,
+**3.12**, **3.13**, and **3.14**. The fastest way to be confident a PR will pass CI is to run
 ``poetry task check-all`` locally — it runs the same set on your machine.
 
 Reporting bugs and requesting features
