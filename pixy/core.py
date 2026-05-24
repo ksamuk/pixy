@@ -1,23 +1,21 @@
 import argparse
-import logging
 import warnings
+from multiprocessing import Queue
+from multiprocessing import queues
+from multiprocessing.managers import BaseProxy
 from pathlib import Path
+from typing import Any
 from typing import Dict
 from typing import List
-from typing import Literal
 from typing import Optional
 from typing import Tuple
 from typing import Union
 
 import allel
-import multiprocessing as mp
 import numpy as np
 from allel import GenotypeArray
 from allel import GenotypeVector
 from allel import SortedIndex
-from multiprocessing import Queue
-from multiprocessing import queues
-from multiprocessing.managers import BaseProxy
 from numpy.typing import NDArray
 
 from pixy.calc import calc_tajima_d
@@ -43,7 +41,8 @@ from pixy.stats.summary import precompute_filtered_variant_array
 
 
 def temp_file_listener(q: "Queue", temp_file: str) -> None:
-    """Drain worker-produced rows from a queue and append them to the temp file.
+    """
+    Drain worker-produced rows from a queue and append them to the temp file.
 
     Lives in `pixy.core` rather than `pixy.__main__` because workers launched under
     `forkserver` or `spawn` start a fresh interpreter where `__main__` is the worker
@@ -356,7 +355,12 @@ def compute_summary_stats(  # noqa: C901
     chunk_pos_1: int,
     chunk_pos_2: int,
     window_list_chunk: List[List[int]],
-    q: Union[Queue, Literal["NULL"]],
+    # `q` is the manager-provided proxy (`multiprocessing.managers.SyncManager.Queue()`) in
+    # multicore mode, or the literal string "NULL" in single-core mode. The proxy's type is
+    # `queue.Queue` (NOT `multiprocessing.queues.Queue`), and the two type stubs are
+    # incompatible — typing this as `Any` accepts both forms; the function does an explicit
+    # `isinstance` check on use.
+    q: Any,
     sites_list_chunk: Optional[List[int]],
     aggregate: bool,
     window_size: int,
@@ -447,6 +451,7 @@ def compute_summary_stats(  # noqa: C901
             # the assertion here is required to narrow the type on `gt_array` from `Optional`
             assert gt_array is not None, "genotype array is None"
             gt_region = gt_array[loc_region]
+            assert gt_region is not None  # narrow for the len() call below
 
             # An empty slice after subsetting means the window has no usable sites.
             if len(gt_region) == 0:
@@ -598,9 +603,10 @@ def compute_summary_stats(  # noqa: C901
         temp_pixy_content: str = "\n".join(f"{result}" for result in pixy_output)
         if args.n_cores > 1:
             assert isinstance(q, (queues.Queue, BaseProxy)), "q should be a Queue BaseProxy"
-            q.put(temp_pixy_content)
+            # `put` exists on both Queue and the AutoProxy returned by manager.Queue(); the
+            # BaseProxy stub doesn't advertise it, so narrow for mypy.
+            q.put(temp_pixy_content)  # type: ignore[union-attr]
         elif args.n_cores == 1:
             outfile = open(temp_file, "a")
             outfile.write(temp_pixy_content + "\n")
             outfile.close()
-

@@ -28,8 +28,6 @@ from pixy.enums import PixyStat
 
 if TYPE_CHECKING:
     from multiprocessing.context import BaseContext
-    from multiprocessing.managers import SyncManager
-    from multiprocessing.pool import ApplyResult
 
     from pixy.args_validation import PixyArgs
 
@@ -311,16 +309,12 @@ def main() -> None:  # noqa: C901
     # paths, so anything below only runs for an actual analysis invocation. Each `import x`
     # below binds `x` as a local in main(); later uses in the function find them via the
     # usual local-then-global lookup.
-    import numpy as np
     import multiprocessing as mp
-    from multiprocessing import Pool
-    from multiprocessing import Queue
 
     # `BaseContext` is referenced at runtime by `cast(BaseContext, ...)` further down (not just
     # in annotations), so it has to be imported eagerly here — the TYPE_CHECKING-only import
     # at the top of the module covers static analysis but not the runtime cast.
     from multiprocessing.context import BaseContext
-    from multiprocessing.managers import SyncManager  # noqa: F401 — runtime annotation target
 
     import pixy.args_validation
     import pixy.calc  # noqa: F401  — workers reach it through pixy.core
@@ -336,8 +330,7 @@ def main() -> None:  # noqa: C901
     # worker functions (which currently receive `args`, not `pixy_args`).
     args.ploidy_map = pixy_args.ploidy_map
     popindices = {
-        name: pixy_args.populations.indices_for(str(name))
-        for name in pixy_args.pop_names
+        name: pixy_args.populations.indices_for(str(name)) for name in pixy_args.pop_names
     }
     chrom_list = pixy_args.chromosomes
 
@@ -392,17 +385,21 @@ def main() -> None:  # noqa: C901
         else:
             ctx = cast(BaseContext, mp.get_context("spawn"))
 
-        # set up the multiprocessing manager, queue, and process pool
-        manager: SyncManager = ctx.Manager()
-        q: Queue = manager.Queue()
-        pool: Pool = ctx.Pool(int(args.n_cores))
+        # set up the multiprocessing manager, queue, and process pool. Types intentionally
+        # left to inference — stdlib `multiprocessing` exposes `Pool`/`Queue` as factory
+        # functions (not classes), and `manager.Queue()` returns a proxy whose stub type
+        # doesn't match `multiprocessing.queues.Queue`. Annotating any of them invites mypy
+        # noise without buying real safety; the call sites are short and locally obvious.
+        manager = ctx.Manager()
+        q = manager.Queue()
+        pool = ctx.Pool(int(args.n_cores))
 
         # launch the listener for collecting output asynchronously. The listener lives in
         # `pixy.core` (not here) because worker processes started under forkserver/spawn
         # cannot resolve attributes of the `__main__` module — pickling a function from
         # `__main__` only works if the workers inherit the parent's `__main__` namespace,
         # which `fork` does but `forkserver`/`spawn` do not.
-        watcher: ApplyResult = pool.apply_async(  # noqa: F841
+        watcher = pool.apply_async(  # noqa: F841
             pixy.core.temp_file_listener,
             args=(
                 q,
@@ -432,9 +429,9 @@ def main() -> None:  # noqa: C901
                     # Run `tabix VCF CHROM` (no shell, no piping through cut/tail) and read the
                     # POS column of the final line. Avoids shell-injection risk on the VCF and
                     # chromosome strings and removes a dependency on cut/tail being on PATH.
-                    tabix_out = subprocess.check_output(
-                        ["tabix", args.vcf, chromosome]
-                    ).decode("utf-8")
+                    tabix_out = subprocess.check_output(["tabix", args.vcf, chromosome]).decode(
+                        "utf-8"
+                    )
                     last_pos: Optional[str] = None
                     for line in tabix_out.splitlines():
                         if line and not line.startswith("#"):
@@ -602,8 +599,10 @@ def main() -> None:  # noqa: C901
                 chunk_pos_1 = min(window_list_chunk, key=lambda x: x[1])[0]
                 chunk_pos_2 = max(window_list_chunk, key=lambda x: x[1])[1]
 
-                # don't use the queue (q) when running in single core mode
-                q = "NULL"
+                # don't use the queue (q) when running in single core mode; rebind to the
+                # sentinel string `compute_summary_stats` checks for. The type changes here
+                # (Queue proxy -> str) so the local is intentionally untyped.
+                q = "NULL"  # type: ignore[assignment]
 
                 # compute summary stats for all windows in the chunk window list
                 pixy.core.compute_summary_stats(
@@ -665,9 +664,7 @@ def main() -> None:  # noqa: C901
     # `window_size` is only bound when the per-chromosome loop above ran with no BED file
     # (BED mode never set it). For BED runs `aggregate` is always False, so the value is
     # never used by the writer — but it still has to be passed, so resolve it now.
-    output_window_size: int = (
-        int(pixy_args.window_size) if pixy_args.window_size is not None else 0
-    )
+    output_window_size: int = int(pixy_args.window_size) if pixy_args.window_size is not None else 0
 
     def _rows_for(stat_name: str) -> dict:
         """Return dict[chromosome] -> List[TempRow] for one statistic."""
@@ -714,9 +711,7 @@ def main() -> None:  # noqa: C901
 
     if PixyStat.WATTERSON_THETA in successful_stats:
         pixy.agg.write_stat_file(
-            out_path=Path(
-                f"{pixy_args.output_prefix}_{PixyStat.WATTERSON_THETA.value}.txt"
-            ),
+            out_path=Path(f"{pixy_args.output_prefix}_{PixyStat.WATTERSON_THETA.value}.txt"),
             stat="watterson_theta",
             rows_by_chrom=_rows_for("watterson_theta"),
             chrom_list=chrom_list,

@@ -1,21 +1,80 @@
+import csv
 import logging
+import math
 import os
 import shutil
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
+from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Tuple
 from unittest.mock import patch
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from pixy.calc import calc_tajima_d_stdev
 from pixy.calc import deserialize_tajima_d_variant_counts
 from tests.conftest import assert_files_are_consistent
 from tests.conftest import run_pixy_helper
+
+# ---------------------------------------------------------------------------
+# Tiny stdlib-only TSV helpers used by the aggregation-consistency tests.
+# Replace the small pandas surface area (`read_csv` + `sort_values` + columnar
+# access + `assert_frame_equal`) that those tests originally used.
+# ---------------------------------------------------------------------------
+
+
+def _read_pixy_tsv(path: Path) -> List[Dict[str, str]]:
+    """Read a pixy output TSV (header line + tab-separated rows) into a list of dicts."""
+    with open(path, "r") as f:
+        return list(csv.DictReader(f, delimiter="\t"))
+
+
+def _sort_rows(
+    rows: List[Dict[str, str]], by: List[str], key_cast: Optional[Dict[str, Callable]] = None
+) -> List[Dict[str, str]]:
+    """Sort rows by `by` columns. Columns in `key_cast` are cast (e.g. int) before sorting."""
+    key_cast = key_cast or {}
+
+    def keyfn(r: Dict[str, str]) -> Tuple:
+        return tuple(key_cast.get(c, str)(r[c]) for c in by)
+
+    return sorted(rows, key=keyfn)
+
+
+def _col(rows: List[Dict[str, str]], name: str, cast: Callable = float) -> List:
+    """Extract one column from rows. `"NA"` becomes `float('nan')` when `cast is float`."""
+    out = []
+    for r in rows:
+        v = r[name]
+        if v == "NA" and cast is float:
+            out.append(float("nan"))
+        else:
+            out.append(cast(v))
+    return out
+
+
+def _assert_columns_equal(
+    a: List[Dict[str, str]], b: List[Dict[str, str]], columns: List[str]
+) -> None:
+    """Assert two row lists have identical string values in `columns` (row-wise)."""
+    assert len(a) == len(b), f"row count differs: {len(a)} vs {len(b)}"
+    for i, (ra, rb) in enumerate(zip(a, b, strict=True)):
+        for c in columns:
+            assert ra[c] == rb[c], f"row {i} column {c!r}: {ra[c]!r} vs {rb[c]!r}"
+
+
+# Default sort-key casts for pixy output (positions are numeric, pop/chrom are strings).
+_POS_INT_CAST: Dict[str, Callable] = {
+    "window_pos_1": int,
+    "window_pos_2": int,
+    "posthoc_window_pos_1": int,
+    "posthoc_window_pos_2": int,
+}
 
 ################################################################################
 # Tests for pixy.main(): missing, invalid, or conflicting arguments
@@ -527,20 +586,22 @@ def test_pixy_watterson_theta_aggregation_matches_direct_calculation(
         chunk_size=5000,
     )
 
-    direct = pd.read_csv(pixy_out_dir / "watterson_direct_watterson_theta.txt", sep="\t")
-    aggregated = pd.read_csv(pixy_out_dir / "watterson_aggregated_watterson_theta.txt", sep="\t")
+    direct = _read_pixy_tsv(pixy_out_dir / "watterson_direct_watterson_theta.txt")
+    aggregated = _read_pixy_tsv(pixy_out_dir / "watterson_aggregated_watterson_theta.txt")
     sort_columns = ["pop", "chromosome", "window_pos_1", "window_pos_2"]
-    direct = direct.sort_values(sort_columns).reset_index(drop=True)
-    aggregated = aggregated.sort_values(sort_columns).reset_index(drop=True)
+    direct = _sort_rows(direct, sort_columns, _POS_INT_CAST)
+    aggregated = _sort_rows(aggregated, sort_columns, _POS_INT_CAST)
 
     exact_columns = sort_columns + ["no_sites", "no_var_sites"]
-    pd.testing.assert_frame_equal(direct[exact_columns], aggregated[exact_columns])
+    _assert_columns_equal(direct, aggregated, exact_columns)
 
-    float_columns = ["avg_watterson_theta", "raw_watterson_theta", "weighted_no_sites"]
-    assert np.allclose(direct[float_columns].to_numpy(), aggregated[float_columns].to_numpy())
+    for c in ("avg_watterson_theta", "raw_watterson_theta", "weighted_no_sites"):
+        assert np.allclose(_col(direct, c), _col(aggregated, c), equal_nan=True)
+    # avg = raw_theta / no_sites
     assert np.allclose(
-        aggregated["avg_watterson_theta"].to_numpy(),
-        (aggregated["raw_watterson_theta"] / aggregated["no_sites"]).to_numpy(),
+        _col(aggregated, "avg_watterson_theta"),
+        [float(r["raw_watterson_theta"]) / float(r["no_sites"]) for r in aggregated],
+        equal_nan=True,
     )
 
 
@@ -571,34 +632,28 @@ def test_pixy_tajima_d_aggregation_matches_direct_calculation(
         chunk_size=5000,
     )
 
-    direct = pd.read_csv(pixy_out_dir / "tajima_direct_tajima_d.txt", sep="\t")
-    aggregated = pd.read_csv(pixy_out_dir / "tajima_aggregated_tajima_d.txt", sep="\t")
-    assert "tajima_d_s_counts" not in direct.columns
-    assert "tajima_d_s_counts" not in aggregated.columns
+    direct = _read_pixy_tsv(pixy_out_dir / "tajima_direct_tajima_d.txt")
+    aggregated = _read_pixy_tsv(pixy_out_dir / "tajima_aggregated_tajima_d.txt")
+    assert direct and "tajima_d_s_counts" not in direct[0]
+    assert aggregated and "tajima_d_s_counts" not in aggregated[0]
     sort_columns = ["pop", "chromosome", "window_pos_1", "window_pos_2"]
-    direct = direct.sort_values(sort_columns).reset_index(drop=True)
-    aggregated = aggregated.sort_values(sort_columns).reset_index(drop=True)
+    direct = _sort_rows(direct, sort_columns, _POS_INT_CAST)
+    aggregated = _sort_rows(aggregated, sort_columns, _POS_INT_CAST)
 
     exact_columns = sort_columns + ["no_sites"]
-    pd.testing.assert_frame_equal(direct[exact_columns], aggregated[exact_columns])
+    _assert_columns_equal(direct, aggregated, exact_columns)
 
-    float_columns = ["tajima_d", "raw_pi", "raw_watterson_theta", "tajima_d_stdev"]
-    assert np.allclose(
-        direct[float_columns].to_numpy(),
-        aggregated[float_columns].to_numpy(),
-        equal_nan=True,
-    )
+    for c in ("tajima_d", "raw_pi", "raw_watterson_theta", "tajima_d_stdev"):
+        assert np.allclose(_col(direct, c), _col(aggregated, c), equal_nan=True)
 
-    valid_denominators = aggregated["tajima_d_stdev"] > 0
+    # tajima_d = (raw_pi - raw_watterson_theta) / tajima_d_stdev  where stdev > 0
+    valid = [r for r in aggregated if float(r["tajima_d_stdev"]) > 0]
     assert np.allclose(
-        aggregated.loc[valid_denominators, "tajima_d"].to_numpy(),
-        (
-            (
-                aggregated.loc[valid_denominators, "raw_pi"]
-                - aggregated.loc[valid_denominators, "raw_watterson_theta"]
-            )
-            / aggregated.loc[valid_denominators, "tajima_d_stdev"]
-        ).to_numpy(),
+        _col(valid, "tajima_d"),
+        [
+            (float(r["raw_pi"]) - float(r["raw_watterson_theta"])) / float(r["tajima_d_stdev"])
+            for r in valid
+        ],
     )
 
 
@@ -630,52 +685,51 @@ def test_pixy_tajima_d_components_enable_posthoc_aggregation(
         output_prefix="tajima_direct_20kb",
     )
 
-    components = pd.read_csv(pixy_out_dir / "tajima_components_10kb_tajima_d.txt", sep="\t")
-    direct = pd.read_csv(pixy_out_dir / "tajima_direct_20kb_tajima_d.txt", sep="\t")
-    assert "tajima_d_s_counts" in components.columns
-    assert "tajima_d_s_counts" not in direct.columns
+    components = _read_pixy_tsv(pixy_out_dir / "tajima_components_10kb_tajima_d.txt")
+    direct = _read_pixy_tsv(pixy_out_dir / "tajima_direct_20kb_tajima_d.txt")
+    assert components and "tajima_d_s_counts" in components[0]
+    assert direct and "tajima_d_s_counts" not in direct[0]
 
-    components["posthoc_window_pos_1"] = ((components["window_pos_1"] - 1) // 20000) * 20000 + 1
-    components["posthoc_window_pos_2"] = components["posthoc_window_pos_1"] + 19999
-    group_columns = ["pop", "chromosome", "posthoc_window_pos_1", "posthoc_window_pos_2"]
+    # Group `components` rows by (pop, chromosome, posthoc_w1, posthoc_w2). Posthoc windows
+    # bin the 10kb component rows into the 20kb windows we want to compare against.
+    groups: Dict[Tuple[str, str, int, int], List[Dict[str, str]]] = defaultdict(list)
+    for row in components:
+        w1 = int(row["window_pos_1"])
+        posthoc_w1 = ((w1 - 1) // 20000) * 20000 + 1
+        posthoc_w2 = posthoc_w1 + 19999
+        groups[(row["pop"], row["chromosome"], posthoc_w1, posthoc_w2)].append(row)
 
-    posthoc_rows = []
-    for group_key, group in components.groupby(group_columns, sort=False):
+    posthoc: List[Dict[str, str]] = []
+    for (pop, chrom, w1, w2), group_rows in groups.items():
         variant_counts: Dict[int, int] = {}
-        for value in group["tajima_d_s_counts"]:
-            for n, s in deserialize_tajima_d_variant_counts(value).items():
+        for row in group_rows:
+            for n, s in deserialize_tajima_d_variant_counts(row["tajima_d_s_counts"]).items():
                 variant_counts[n] = variant_counts.get(n, 0) + s
-
-        raw_pi = group["raw_pi"].sum()
-        raw_watterson_theta = group["raw_watterson_theta"].sum()
-        tajima_d_stdev = calc_tajima_d_stdev(variant_counts)
-        tajima_d = (raw_pi - raw_watterson_theta) / tajima_d_stdev if tajima_d_stdev > 0 else np.nan
-        pop, chromosome, window_pos_1, window_pos_2 = group_key
-        posthoc_rows.append({
+        raw_pi = sum(float(r["raw_pi"]) for r in group_rows)
+        raw_wtheta = sum(float(r["raw_watterson_theta"]) for r in group_rows)
+        d_stdev = calc_tajima_d_stdev(variant_counts)
+        tajima_d = (raw_pi - raw_wtheta) / d_stdev if d_stdev > 0 else math.nan
+        # Round-trip everything through str so we can run the same exact-column comparison
+        # the other two tests use (which compares string-formatted cells).
+        posthoc.append({
             "pop": pop,
-            "chromosome": chromosome,
-            "window_pos_1": window_pos_1,
-            "window_pos_2": window_pos_2,
-            "tajima_d": tajima_d,
-            "no_sites": group["no_sites"].sum(),
-            "raw_pi": raw_pi,
-            "raw_watterson_theta": raw_watterson_theta,
-            "tajima_d_stdev": tajima_d_stdev,
+            "chromosome": chrom,
+            "window_pos_1": str(w1),
+            "window_pos_2": str(w2),
+            "tajima_d": str(tajima_d),
+            "no_sites": str(sum(int(r["no_sites"]) for r in group_rows)),
+            "raw_pi": str(raw_pi),
+            "raw_watterson_theta": str(raw_wtheta),
+            "tajima_d_stdev": str(d_stdev),
         })
 
-    posthoc = pd.DataFrame(posthoc_rows)
     sort_columns = ["pop", "chromosome", "window_pos_1", "window_pos_2"]
-    posthoc = posthoc.sort_values(sort_columns).reset_index(drop=True)
-    direct = direct.sort_values(sort_columns).reset_index(drop=True)
+    posthoc = _sort_rows(posthoc, sort_columns, _POS_INT_CAST)
+    direct = _sort_rows(direct, sort_columns, _POS_INT_CAST)
 
-    exact_columns = sort_columns + ["no_sites"]
-    pd.testing.assert_frame_equal(direct[exact_columns], posthoc[exact_columns])
-    float_columns = ["tajima_d", "raw_pi", "raw_watterson_theta", "tajima_d_stdev"]
-    assert np.allclose(
-        direct[float_columns].to_numpy(),
-        posthoc[float_columns].to_numpy(),
-        equal_nan=True,
-    )
+    _assert_columns_equal(direct, posthoc, sort_columns + ["no_sites"])
+    for c in ("tajima_d", "raw_pi", "raw_watterson_theta", "tajima_d_stdev"):
+        assert np.allclose(_col(direct, c), _col(posthoc, c), equal_nan=True)
 
 
 ################################################################################
@@ -725,12 +779,12 @@ def test_pixy_main_valid_inputs(
 
 @pytest.mark.regression
 def test_pixy_multicore_matches_single_core(
-    pixy_out_dir: Path,
     tmp_path: Path,
     ag1000_pop_path: Path,
     ag1000_vcf_path: Path,
 ) -> None:
-    """Smoke test for ``--n_cores > 1``: 2-core output must equal 1-core output byte-for-byte.
+    """
+    Smoke test for ``--n_cores > 1``: 2-core output must equal 1-core output byte-for-byte.
 
     Exercises the parts of ``pixy.__main__.main`` that are only reachable when
     ``--n_cores >= 2`` — the multiprocessing manager, the worker pool, the
@@ -748,13 +802,15 @@ def test_pixy_multicore_matches_single_core(
     sc_out.mkdir()
     mc_out.mkdir()
 
-    common = dict(
+    # Annotate as Dict[str, Any] so mypy doesn't infer Dict[str, object] (which can't be
+    # splatted into run_pixy_helper's typed kwargs). chunk_size must be >= window_size;
+    # this value yields ~5 chunks per chromosome for the ag1000 fixture, enough for a
+    # 2-core pool to see real parallelism.
+    common: Dict[str, Any] = dict(
         stats=["pi", "fst", "dxy"],
         window_size=10000,
         vcf_path=ag1000_vcf_path,
         populations_path=ag1000_pop_path,
-        # chunk_size must be >= window_size; this value yields ~5 chunks per chromosome
-        # for the ag1000 test fixture, enough for a 2-core pool to see real parallelism.
         chunk_size=20000,
     )
     run_pixy_helper(pixy_out_dir=sc_out, cores=1, **common)

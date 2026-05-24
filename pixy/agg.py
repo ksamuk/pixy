@@ -1,4 +1,5 @@
-"""Pandas-free aggregation and output-writing for pixy's temp file.
+"""
+Pandas-free aggregation and output-writing for pixy's temp file.
 
 The temp file is a tab-delimited stream of `PixyTempResult` rows (one per chunk/window/pop
 tuple). This module replaces the previous pandas-based aggregation path (which loaded the
@@ -34,7 +35,6 @@ from typing import Union
 from pixy.calc import calc_tajima_d_stdev
 from pixy.calc import deserialize_tajima_d_variant_counts
 
-
 # ---------------------------------------------------------------------------
 # Temp row shape
 # ---------------------------------------------------------------------------
@@ -46,7 +46,8 @@ _TEMP_COL_COUNT = 12
 
 
 class TempRow(NamedTuple):
-    """One parsed line from the temp file.
+    """
+    One parsed line from the temp file.
 
     All numeric fields are kept as raw strings here; conversion to int/float happens lazily
     in the aggregator and the formatters. That keeps the streaming reader allocation-free
@@ -103,7 +104,8 @@ def _is_na(x: Any) -> bool:
 
 
 def _fmt_float(x: Any) -> str:
-    """Format a value for the output file.
+    """
+    Format a value for the output file.
 
     Uses `%.14g` — 14 significant digits, scientific notation for very small/large values.
     This matches the precision cap that `PixyTempResult.__str__` writes into the temp file,
@@ -116,7 +118,8 @@ def _fmt_float(x: Any) -> str:
 
 
 def _fmt_int(x: Any) -> str:
-    """Format a value as pandas would format an Int64 (nullable int) column.
+    """
+    Format a value as pandas would format an Int64 (nullable int) column.
 
     Plain decimal, no thousands separator. Missing/NA becomes `"NA"`.
     """
@@ -138,15 +141,19 @@ def _to_num(x: str) -> Numeric:
 
 
 def _add(acc: Numeric, val: Numeric) -> Numeric:
-    """Accumulate `val` into `acc`, treating NA as zero (matching pandas `sum(skipna=True)`).
+    """
+    Accumulate `val` into `acc`, treating NA as zero (matching pandas `sum(skipna=True)`).
 
     If both `acc` and `val` are NA, the result remains NA.
     """
     if _is_na(val):
         return acc
     if _is_na(acc):
-        return val  # type: ignore[return-value]
-    return acc + val  # type: ignore[operator]
+        return val
+    # `_is_na` rules out the "NA" sentinel string above, so both operands are int|float here.
+    # mypy can't infer that through the helper, so we narrow with `assert`.
+    assert not isinstance(acc, str) and not isinstance(val, str)
+    return acc + val
 
 
 # ---------------------------------------------------------------------------
@@ -158,9 +165,7 @@ def _add(acc: Numeric, val: Numeric) -> Numeric:
 _AGG_TWO_POP = {"dxy", "fst"}
 
 
-def _agg_key(
-    row: TempRow, stat: str, bin_idx: int
-) -> Tuple[str, Optional[str], int]:
+def _agg_key(row: TempRow, stat: str, bin_idx: int) -> Tuple[str, Optional[str], int]:
     """Build the grouping key for one row, matching pandas' groupby(...) keys."""
     if stat in _AGG_TWO_POP:
         return (row.pop1, row.pop2, bin_idx)
@@ -168,7 +173,8 @@ def _agg_key(
 
 
 def _bin_idx(window_pos_1: int, interval_start: int, window_size: int) -> int:
-    """Map a chunk's window_pos_1 to an output-window bin index.
+    """
+    Map a chunk's window_pos_1 to an output-window bin index.
 
     Mirrors the result of `pandas.cut(pos, bins=arange(start-1, end+w, w), include_lowest=True)`
     used by the previous implementation, but without materializing the bins array.
@@ -176,7 +182,7 @@ def _bin_idx(window_pos_1: int, interval_start: int, window_size: int) -> int:
     return (window_pos_1 - interval_start) // window_size
 
 
-def _final_stat(
+def _final_stat(  # noqa: C901
     stat: str,
     fst_type: str,
     n_sites: Numeric,
@@ -189,12 +195,12 @@ def _final_stat(
     if stat == "pi" or stat == "dxy":
         if _is_na(comps) or comps == 0:
             return "NA"
-        return float(diffs) / float(comps)  # type: ignore[arg-type]
+        return float(diffs) / float(comps)
     if stat == "watterson_theta":
         # avg_theta = raw_theta / num_sites  (col 8 / col 7 in the aggregator).
         if _is_na(n_sites) or n_sites == 0:
             return "NA"
-        return float(diffs) / float(n_sites)  # type: ignore[arg-type]
+        return float(diffs) / float(n_sites)
     if stat == "tajima_d":
         # (raw_pi - watterson_theta) / d_stdev  -- d_stdev recomputed from the merged
         # variant-count classes by the caller.
@@ -202,17 +208,17 @@ def _final_stat(
             return "NA"
         if _is_na(diffs) or _is_na(comps):
             return "NA"
-        return (float(diffs) - float(comps)) / d_stdev  # type: ignore[arg-type]
+        return (float(diffs) - float(comps)) / d_stdev
     if stat == "fst":
         if fst_type == "wc":
             denom: Numeric = _add(_add(diffs, comps), missing)
             if _is_na(denom) or denom == 0:
                 return "NA"
-            return float(diffs) / float(denom)  # type: ignore[arg-type]
+            return float(diffs) / float(denom)
         if fst_type == "hudson":
             if _is_na(comps) or comps == 0:
                 return "NA"
-            return float(diffs) / float(comps)  # type: ignore[arg-type]
+            return float(diffs) / float(comps)
     raise ValueError(f"Unsupported statistic for aggregation: {stat}")
 
 
@@ -239,7 +245,8 @@ def aggregate_rows(
     window_size: int,
     fst_type: str,
 ) -> List[AggRow]:
-    """Aggregate temp rows for a single (stat, chromosome) into output-window-sized rows.
+    """
+    Aggregate temp rows for a single (stat, chromosome) into output-window-sized rows.
 
     Replaces `pixy.core.aggregate_output()` (the previous pandas implementation). The
     binning is identical to what `pandas.cut` produced for the same `interval_start` /
@@ -258,7 +265,7 @@ def aggregate_rows(
     )
     tajima_counts: Dict[Tuple[str, Optional[str], int], Counter[int]] = defaultdict(Counter)
 
-    for r, pos in zip(rows, positions):
+    for r, pos in zip(rows, positions, strict=True):
         bin_idx = _bin_idx(pos, interval_start, window_size)
         key = _agg_key(r, stat, bin_idx)
         a = accum[key]
@@ -287,9 +294,7 @@ def aggregate_rows(
         from pixy.calc import serialize_tajima_d_variant_counts  # local to avoid cycle
 
         tcounts = (
-            serialize_tajima_d_variant_counts(tajima_counts[key])
-            if stat == "tajima_d"
-            else "NA"
+            serialize_tajima_d_variant_counts(tajima_counts[key]) if stat == "tajima_d" else "NA"
         )
         out.append(
             AggRow(
@@ -319,27 +324,62 @@ def aggregate_rows(
 # Headers per stat. Built dynamically for fst because the components columns depend on
 # --fst_type and --fst_components.
 HEADER_PI = (
-    "pop", "chromosome", "window_pos_1", "window_pos_2",
-    "avg_pi", "no_sites", "count_diffs", "count_comparisons", "count_missing",
+    "pop",
+    "chromosome",
+    "window_pos_1",
+    "window_pos_2",
+    "avg_pi",
+    "no_sites",
+    "count_diffs",
+    "count_comparisons",
+    "count_missing",
 )
 HEADER_DXY = (
-    "pop1", "pop2", "chromosome", "window_pos_1", "window_pos_2",
-    "avg_dxy", "no_sites", "count_diffs", "count_comparisons", "count_missing",
+    "pop1",
+    "pop2",
+    "chromosome",
+    "window_pos_1",
+    "window_pos_2",
+    "avg_dxy",
+    "no_sites",
+    "count_diffs",
+    "count_comparisons",
+    "count_missing",
 )
 HEADER_WATTERSON = (
-    "pop", "chromosome", "window_pos_1", "window_pos_2",
-    "avg_watterson_theta", "no_sites", "raw_watterson_theta",
-    "no_var_sites", "weighted_no_sites",
+    "pop",
+    "chromosome",
+    "window_pos_1",
+    "window_pos_2",
+    "avg_watterson_theta",
+    "no_sites",
+    "raw_watterson_theta",
+    "no_var_sites",
+    "weighted_no_sites",
 )
 HEADER_TAJIMA_BASE = (
-    "pop", "chromosome", "window_pos_1", "window_pos_2",
-    "tajima_d", "no_sites", "raw_pi", "raw_watterson_theta", "tajima_d_stdev",
+    "pop",
+    "chromosome",
+    "window_pos_1",
+    "window_pos_2",
+    "tajima_d",
+    "no_sites",
+    "raw_pi",
+    "raw_watterson_theta",
+    "tajima_d_stdev",
 )
 
 
 def _fst_header(fst_type: str, fst_components: bool) -> Tuple[str, ...]:
-    base = ("pop1", "pop2", "chromosome", "window_pos_1", "window_pos_2",
-            f"avg_{fst_type}_fst", "no_snps")
+    base = (
+        "pop1",
+        "pop2",
+        "chromosome",
+        "window_pos_1",
+        "window_pos_2",
+        f"avg_{fst_type}_fst",
+        "no_snps",
+    )
     if not fst_components:
         return base
     if fst_type == "wc":
@@ -347,51 +387,79 @@ def _fst_header(fst_type: str, fst_components: bool) -> Tuple[str, ...]:
     return base + ("hudson_fst_num", "hudson_fst_den")
 
 
-def _format_temp_row_for_stat(
-    row: TempRow, stat: str, fst_type: str, fst_components: bool
-) -> str:
-    """Format a non-aggregated temp row as one output line for `stat`.
+def _format_temp_row_for_stat(row: TempRow, stat: str, fst_type: str, fst_components: bool) -> str:
+    """
+    Format a non-aggregated temp row as one output line for `stat`.
 
     Column ordering & dtypes match the previous pandas paths:
-      pi/dxy:         pop[,pop2], chrom, window_pos_1, window_pos_2, avg, n_sites, diffs, comps, missing
-      watterson_theta: pop, chrom, w1, w2, avg, n_sites, raw_theta(float), var_sites(int), weighted(float)
-      tajima_d:        pop, chrom, w1, w2, tajima_d, n_sites, raw_pi(float), watterson(float), stdev(float)
-      fst:             pop1, pop2, chrom, w1, w2, avg_fst, n_snps, [components...]
+      pi/dxy:           pop[,pop2], chrom, w1, w2, avg, n_sites, diffs, comps, missing
+      watterson_theta:  pop, chrom, w1, w2, avg, n_sites, raw_theta(float),
+                        var_sites(int), weighted(float)
+      tajima_d:         pop, chrom, w1, w2, tajima_d, n_sites, raw_pi(float),
+                        watterson(float), stdev(float)
+      fst:              pop1, pop2, chrom, w1, w2, avg_fst, n_snps, [components...]
     """
     if stat == "pi":
-        cells = [row.pop1, row.chrom, row.window_pos_1_str, row.window_pos_2_str,
-                 _fmt_float(_to_num(row.calculated_stat)),
-                 _fmt_int(_to_num(row.n_sites)),
-                 _fmt_int(_to_num(row.diffs)),
-                 _fmt_int(_to_num(row.comps)),
-                 _fmt_int(_to_num(row.missing))]
+        cells = [
+            row.pop1,
+            row.chrom,
+            row.window_pos_1_str,
+            row.window_pos_2_str,
+            _fmt_float(_to_num(row.calculated_stat)),
+            _fmt_int(_to_num(row.n_sites)),
+            _fmt_int(_to_num(row.diffs)),
+            _fmt_int(_to_num(row.comps)),
+            _fmt_int(_to_num(row.missing)),
+        ]
     elif stat == "dxy":
-        cells = [row.pop1, row.pop2, row.chrom, row.window_pos_1_str, row.window_pos_2_str,
-                 _fmt_float(_to_num(row.calculated_stat)),
-                 _fmt_int(_to_num(row.n_sites)),
-                 _fmt_int(_to_num(row.diffs)),
-                 _fmt_int(_to_num(row.comps)),
-                 _fmt_int(_to_num(row.missing))]
+        cells = [
+            row.pop1,
+            row.pop2,
+            row.chrom,
+            row.window_pos_1_str,
+            row.window_pos_2_str,
+            _fmt_float(_to_num(row.calculated_stat)),
+            _fmt_int(_to_num(row.n_sites)),
+            _fmt_int(_to_num(row.diffs)),
+            _fmt_int(_to_num(row.comps)),
+            _fmt_int(_to_num(row.missing)),
+        ]
     elif stat == "watterson_theta":
-        cells = [row.pop1, row.chrom, row.window_pos_1_str, row.window_pos_2_str,
-                 _fmt_float(_to_num(row.calculated_stat)),
-                 _fmt_int(_to_num(row.n_sites)),
-                 _fmt_float(_to_num(row.diffs)),       # raw_theta
-                 _fmt_int(_to_num(row.comps)),         # num_var_sites
-                 _fmt_float(_to_num(row.missing))]     # weighted_sites
+        cells = [
+            row.pop1,
+            row.chrom,
+            row.window_pos_1_str,
+            row.window_pos_2_str,
+            _fmt_float(_to_num(row.calculated_stat)),
+            _fmt_int(_to_num(row.n_sites)),
+            _fmt_float(_to_num(row.diffs)),  # raw_theta
+            _fmt_int(_to_num(row.comps)),  # num_var_sites
+            _fmt_float(_to_num(row.missing)),
+        ]  # weighted_sites
     elif stat == "tajima_d":
-        cells = [row.pop1, row.chrom, row.window_pos_1_str, row.window_pos_2_str,
-                 _fmt_float(_to_num(row.calculated_stat)),
-                 _fmt_int(_to_num(row.n_sites)),
-                 _fmt_float(_to_num(row.diffs)),
-                 _fmt_float(_to_num(row.comps)),
-                 _fmt_float(_to_num(row.missing))]
+        cells = [
+            row.pop1,
+            row.chrom,
+            row.window_pos_1_str,
+            row.window_pos_2_str,
+            _fmt_float(_to_num(row.calculated_stat)),
+            _fmt_int(_to_num(row.n_sites)),
+            _fmt_float(_to_num(row.diffs)),
+            _fmt_float(_to_num(row.comps)),
+            _fmt_float(_to_num(row.missing)),
+        ]
         if fst_components:  # fst_components flag is overloaded; tajima_components is what matters
             pass  # handled by caller
     elif stat == "fst":
-        cells = [row.pop1, row.pop2, row.chrom, row.window_pos_1_str, row.window_pos_2_str,
-                 _fmt_float(_to_num(row.calculated_stat)),
-                 _fmt_int(_to_num(row.n_sites))]
+        cells = [
+            row.pop1,
+            row.pop2,
+            row.chrom,
+            row.window_pos_1_str,
+            row.window_pos_2_str,
+            _fmt_float(_to_num(row.calculated_stat)),
+            _fmt_int(_to_num(row.n_sites)),
+        ]
         if fst_components:
             if fst_type == "wc":
                 cells.extend([
@@ -409,36 +477,67 @@ def _format_temp_row_for_stat(
     return "\t".join(cells)
 
 
-def _format_agg_row(
-    row: AggRow, stat: str, fst_type: str, fst_components: bool
-) -> str:
+def _format_agg_row(row: AggRow, stat: str, fst_type: str, fst_components: bool) -> str:
     """Format an aggregated row as one output line."""
     if stat == "pi":
-        cells = [row.pop1, row.chrom, str(row.window_pos_1), str(row.window_pos_2),
-                 _fmt_float(row.calculated_stat),
-                 _fmt_int(row.n_sites), _fmt_int(row.diffs),
-                 _fmt_int(row.comps), _fmt_int(row.missing)]
+        cells = [
+            row.pop1,
+            row.chrom,
+            str(row.window_pos_1),
+            str(row.window_pos_2),
+            _fmt_float(row.calculated_stat),
+            _fmt_int(row.n_sites),
+            _fmt_int(row.diffs),
+            _fmt_int(row.comps),
+            _fmt_int(row.missing),
+        ]
     elif stat == "dxy":
-        cells = [row.pop1, row.pop2 or "", row.chrom,
-                 str(row.window_pos_1), str(row.window_pos_2),
-                 _fmt_float(row.calculated_stat),
-                 _fmt_int(row.n_sites), _fmt_int(row.diffs),
-                 _fmt_int(row.comps), _fmt_int(row.missing)]
+        cells = [
+            row.pop1,
+            row.pop2 or "",
+            row.chrom,
+            str(row.window_pos_1),
+            str(row.window_pos_2),
+            _fmt_float(row.calculated_stat),
+            _fmt_int(row.n_sites),
+            _fmt_int(row.diffs),
+            _fmt_int(row.comps),
+            _fmt_int(row.missing),
+        ]
     elif stat == "watterson_theta":
-        cells = [row.pop1, row.chrom, str(row.window_pos_1), str(row.window_pos_2),
-                 _fmt_float(row.calculated_stat),
-                 _fmt_int(row.n_sites), _fmt_float(row.diffs),
-                 _fmt_int(row.comps), _fmt_float(row.missing)]
+        cells = [
+            row.pop1,
+            row.chrom,
+            str(row.window_pos_1),
+            str(row.window_pos_2),
+            _fmt_float(row.calculated_stat),
+            _fmt_int(row.n_sites),
+            _fmt_float(row.diffs),
+            _fmt_int(row.comps),
+            _fmt_float(row.missing),
+        ]
     elif stat == "tajima_d":
-        cells = [row.pop1, row.chrom, str(row.window_pos_1), str(row.window_pos_2),
-                 _fmt_float(row.calculated_stat),
-                 _fmt_int(row.n_sites), _fmt_float(row.diffs),
-                 _fmt_float(row.comps), _fmt_float(row.missing)]
+        cells = [
+            row.pop1,
+            row.chrom,
+            str(row.window_pos_1),
+            str(row.window_pos_2),
+            _fmt_float(row.calculated_stat),
+            _fmt_int(row.n_sites),
+            _fmt_float(row.diffs),
+            _fmt_float(row.comps),
+            _fmt_float(row.missing),
+        ]
     elif stat == "fst":
-        cells = [row.pop1, row.pop2 or "", row.chrom,
-                 str(row.window_pos_1), str(row.window_pos_2),
-                 _fmt_float(row.calculated_stat),
-                 _fmt_int(row.n_sites)]
+        cells = [
+            row.pop1,
+            row.pop2 or "",
+            row.chrom,
+            str(row.window_pos_1),
+            str(row.window_pos_2),
+            _fmt_float(row.calculated_stat),
+            _fmt_int(row.n_sites),
+        ]
         if fst_components:
             if fst_type == "wc":
                 cells.extend([
@@ -456,7 +555,7 @@ def _format_agg_row(
     return "\t".join(cells)
 
 
-def write_stat_file(
+def write_stat_file(  # noqa: C901
     out_path: Path,
     stat: str,
     rows_by_chrom: Dict[str, List[TempRow]],

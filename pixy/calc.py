@@ -33,7 +33,8 @@ ObservedAlleleCount: TypeAlias = int
 
 @lru_cache(maxsize=1024)
 def _harmonic_sum(n: int) -> np.float64:
-    """Return sum_{k=1}^{n-1} 1/k. Returns np.float64(0.0) when n <= 1.
+    """
+    Return sum_{k=1}^{n-1} 1/k. Returns np.float64(0.0) when n <= 1.
 
     Used by Watterson's theta and Tajima's D, which evaluate this for each variant-site class
     keyed by the per-site observed-allele count. The result depends only on `n`, so caching by
@@ -59,7 +60,8 @@ def _harmonic_sum_sq(n: int) -> np.float64:
 
 @lru_cache(maxsize=1024)
 def _tajima_constants(n: int) -> Tuple[float, float]:
-    """Return (e1, e2) — the Tajima 1989 coefficients used in the stdev calculation.
+    """
+    Return (e1, e2) — the Tajima 1989 coefficients used in the stdev calculation.
 
     Returns (0.0, 0.0) for `n < 2` (no variance contribution possible).
     """
@@ -77,7 +79,8 @@ def _tajima_constants(n: int) -> Tuple[float, float]:
 
 
 def _n_haps(gt_array: GenotypeArray) -> int:
-    """Return the number of haploid samples represented by a (Haplotype|Genotype)Array.
+    """
+    Return the number of haploid samples represented by a (Haplotype|Genotype)Array.
 
     `HaplotypeArray` exposes this directly as `n_haplotypes`; for the general case the
     haploid sample count is `n_samples * ploidy`. This branch appeared inline in several
@@ -134,7 +137,8 @@ _INT32_SAFE_NHAPS_MAX = 46340
 def _count_diff_comp_missing_vectorized(
     allele_counts: NDArray[Any], n_haps: int
 ) -> Tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
-    """Vectorized form of `count_diff_comp_missing` over all sites at once.
+    """
+    Vectorized form of `count_diff_comp_missing` over all sites at once.
 
     Inputs:
         allele_counts: (n_sites, n_alleles) int array (typically int32 from scikit-allel).

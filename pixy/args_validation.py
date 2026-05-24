@@ -29,7 +29,6 @@ from numpy.typing import NDArray
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
 
-
 # ---------------------------------------------------------------------------
 # Pandas-free table types that replace the previous pandas.DataFrame fields on
 # PixyArgs (populations_df / bed_df / sites_df). Each holds the same per-row
@@ -40,7 +39,8 @@ from pixy.enums import PixyStat
 
 @dataclass(frozen=True)
 class PopulationsTable:
-    """Sample-id / population mapping derived from the --populations file.
+    """
+    Sample-id / population mapping derived from the --populations file.
 
     Replaces the previous `populations_df` DataFrame, whose columns were
     `ID`, `Population`, and (added after VCF lookup) `callset_index`.
@@ -64,12 +64,17 @@ class PopulationsTable:
 
     @property
     def num_populations(self) -> int:
+        """Number of distinct populations in the table."""
         return len(self.unique_populations)
 
     def indices_for(self, population: str) -> NDArray[np.intp]:
         """Callset indices of all samples in `population`. Order is preserved."""
         return np.array(
-            [ci for pop, ci in zip(self.populations, self.callset_index) if pop == population],
+            [
+                ci
+                for pop, ci in zip(self.populations, self.callset_index, strict=True)
+                if pop == population
+            ],
             dtype=np.intp,
         )
 
@@ -82,7 +87,8 @@ class PopulationsTable:
 
 @dataclass(frozen=True)
 class BedTable:
-    """List of windowing intervals from a BED file (`chrom`, `chromStart`, `chromEnd`).
+    """
+    List of windowing intervals from a BED file (`chrom`, `chromStart`, `chromEnd`).
 
     Replaces the previous `bed_df` DataFrame whose columns were
     `chrom`, `chromStart`, `chromEnd`.
@@ -98,11 +104,14 @@ class BedTable:
             raise ValueError("chroms, chrom_starts, chrom_ends must be the same length")
 
     def intervals_for(self, chromosome: str) -> List[List[int]]:
-        """Return `[[start, end], ...]` for the given chromosome (parallel to the previous
-        zip-of-dataframe-columns pattern used in `__main__.py`)."""
+        """
+        Return `[[start, end], ...]` for the given chromosome.
+
+        Parallel to the previous zip-of-dataframe-columns pattern used in `__main__.py`.
+        """
         return [
             [s, e]
-            for c, s, e in zip(self.chroms, self.chrom_starts, self.chrom_ends)
+            for c, s, e in zip(self.chroms, self.chrom_starts, self.chrom_ends, strict=True)
             if c == chromosome
         ]
 
@@ -113,7 +122,8 @@ class BedTable:
 
 @dataclass(frozen=True)
 class SitesTable:
-    """Per-chromosome sorted position lists from the --sites_file.
+    """
+    Per-chromosome sorted position lists from the --sites_file.
 
     Replaces the previous `sites_df` DataFrame whose columns were `CHROM` and `POS`.
     The previous code repeatedly filtered the DataFrame by chromosome and sorted the
@@ -124,6 +134,7 @@ class SitesTable:
 
     @cached_property
     def chromosomes(self) -> Tuple[str, ...]:
+        """Tuple of chromosome names that have at least one site."""
         return tuple(self.by_chrom.keys())
 
     def positions_for(self, chromosome: str) -> List[int]:
@@ -234,7 +245,8 @@ class PixyArgs:
 
     @cached_property
     def pop_names(self) -> NDArray[np.str_]:
-        """Unique population names in first-appearance order, as a numpy `str_` array.
+        """
+        Unique population names in first-appearance order, as a numpy `str_` array.
 
         Kept as numpy (rather than a Python tuple) for compatibility with downstream code that
         iterates the result with numpy semantics. The underlying ordering comes from
@@ -254,7 +266,8 @@ def _read_tsv_rows(
     missing_data_msg: str,
     too_few_columns_msg: str,
 ) -> List[List[str]]:
-    """Read a tab-delimited file into a list of stripped, validated rows.
+    """
+    Read a tab-delimited file into a list of stripped, validated rows.
 
     Each row must contain exactly `expected_cols` non-empty fields after stripping. Empty
     lines are skipped. The two message arguments mirror the wording the previous
@@ -280,7 +293,8 @@ def _read_tsv_rows(
 
 
 def validate_populations_path(populations_path: Path) -> PopulationsTable:
-    """Read and validate the --populations file.
+    """
+    Read and validate the --populations file.
 
     A valid populations file has 2 tab-separated columns; column 1 is the sample identifier
     and column 2 is the population label.
@@ -315,7 +329,8 @@ def validate_populations_path(populations_path: Path) -> PopulationsTable:
 
 
 def validate_bed_path(bed_path: Path) -> BedTable:
-    """Read and validate a BED3 file (chrom, chromStart, chromEnd).
+    """
+    Read and validate a BED3 file (chrom, chromStart, chromEnd).
 
     Raises:
         FileNotFoundError: If the path does not exist.
@@ -351,7 +366,8 @@ def validate_bed_path(bed_path: Path) -> BedTable:
 
 
 def validate_sites_path(sites_path: Path) -> SitesTable:
-    """Read and validate the --sites_file (`CHROM\\tPOS`).
+    r"""
+    Read and validate the --sites_file (`CHROM\tPOS`).
 
     The previous implementation kept the raw rows in a DataFrame and filtered/sorted them
     later in each consumer. We pre-group rows by chromosome and pre-sort positions here, so
@@ -383,7 +399,9 @@ def validate_sites_path(sites_path: Path) -> SitesTable:
                 f"{sites_path}: sites column 2 (POS) must be an integer; got {r[1]!r}"
             ) from e
         by_chrom.setdefault(chrom, []).append(pos)
-    return SitesTable(by_chrom={chrom: tuple(sorted(positions)) for chrom, positions in by_chrom.items()})
+    return SitesTable(
+        by_chrom={chrom: tuple(sorted(positions)) for chrom, positions in by_chrom.items()}
+    )
 
 
 def validate_vcf_path(vcf_path: str) -> None:
@@ -547,7 +565,8 @@ def validate_window_and_interval_args(args: argparse.Namespace) -> str:
 
 # helper for parsing ploidy from a single GT string (e.g. "0/0", "0|1", "1")
 def _read_vcf_samples(vcf_path: str) -> List[str]:
-    """Read the sample names from a (bgzipped) VCF's `#CHROM` header line.
+    """
+    Read the sample names from a (bgzipped) VCF's `#CHROM` header line.
 
     Replaces `allel.read_vcf_headers(...).samples` — pixy only needs the sample list, and
     going through scikit-allel forces the import of dask/zarr/pyarrow/scipy (~50 MB RSS,

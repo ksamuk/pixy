@@ -76,7 +76,8 @@ class PixyTempResult:
     tajima_d_variant_counts: Union[str, NA] = "NA"
 
     def __str__(self) -> str:
-        """Returns a tab-delimited string representation for writing out to the temp file.
+        """
+        Returns a tab-delimited string representation for writing out to the temp file.
 
         Floats are written with `%.14g` precision so that the temp file itself caps the
         precision uniformly. Previously this used `str(float)` (= 17-digit repr); downstream
