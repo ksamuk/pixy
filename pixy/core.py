@@ -42,6 +42,24 @@ from pixy.stats.summary import precompute_filtered_variant_array
 # keyed by (pop1, pop2?, bin_idx) and emits output line-by-line.
 
 
+def temp_file_listener(q: "Queue", temp_file: str) -> None:
+    """Drain worker-produced rows from a queue and append them to the temp file.
+
+    Lives in `pixy.core` rather than `pixy.__main__` because workers launched under
+    `forkserver` or `spawn` start a fresh interpreter where `__main__` is the worker
+    bootstrap, not pixy's CLI entrypoint — so `pickle` cannot resolve attributes of the
+    parent's `__main__` module by name. Functions targeted by `pool.apply_async` must live
+    in an importable module (which `pixy.core` is) for cross-process pickling to round-trip.
+    """
+    with open(temp_file, "a") as f:
+        while True:
+            m = q.get()
+            if m == "kill":
+                break
+            f.write(str(m) + "\n")
+            f.flush()  # immediately write data, do not buffer
+
+
 # function for breaking down large windows into chunks
 def assign_subwindows_to_windows(
     window_pre_list: List[List[int]], chunk_size: int

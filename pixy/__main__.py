@@ -316,6 +316,12 @@ def main() -> None:  # noqa: C901
     from multiprocessing import Pool
     from multiprocessing import Queue
 
+    # `BaseContext` is referenced at runtime by `cast(BaseContext, ...)` further down (not just
+    # in annotations), so it has to be imported eagerly here — the TYPE_CHECKING-only import
+    # at the top of the module covers static analysis but not the runtime cast.
+    from multiprocessing.context import BaseContext
+    from multiprocessing.managers import SyncManager  # noqa: F401 — runtime annotation target
+
     import pixy.args_validation
     import pixy.calc  # noqa: F401  — workers reach it through pixy.core
     import pixy.core
@@ -391,27 +397,13 @@ def main() -> None:  # noqa: C901
         q: Queue = manager.Queue()
         pool: Pool = ctx.Pool(int(args.n_cores))
 
-        # a listener function for writing a temp file
-        # used to write output in multicore mode
-        def listener(q: Queue, temp_file: str) -> None:
-            """
-            Writes to a given `temp_file` in multicore mode.
-
-            Args:
-                q: the `Queue` from which to retrieve data
-                temp_file: the file handle to which the data will be written
-            """
-            with open(temp_file, "a") as f:
-                while 1:
-                    m = q.get()
-                    if m == "kill":  # we are done
-                        break
-                    f.write(str(m) + "\n")
-                    f.flush()  # immediately write data, do not buffer
-
-        # launch the watcher function for collecting output asynchronously
+        # launch the listener for collecting output asynchronously. The listener lives in
+        # `pixy.core` (not here) because worker processes started under forkserver/spawn
+        # cannot resolve attributes of the `__main__` module — pickling a function from
+        # `__main__` only works if the workers inherit the parent's `__main__` namespace,
+        # which `fork` does but `forkserver`/`spawn` do not.
         watcher: ApplyResult = pool.apply_async(  # noqa: F841
-            listener,
+            pixy.core.temp_file_listener,
             args=(
                 q,
                 str(pixy_args.temp_file),

@@ -723,6 +723,53 @@ def test_pixy_main_valid_inputs(
         assert_files_are_consistent(generated_data_path, exp_data_path)
 
 
+@pytest.mark.regression
+def test_pixy_multicore_matches_single_core(
+    pixy_out_dir: Path,
+    tmp_path: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+) -> None:
+    """Smoke test for ``--n_cores > 1``: 2-core output must equal 1-core output byte-for-byte.
+
+    Exercises the parts of ``pixy.__main__.main`` that are only reachable when
+    ``--n_cores >= 2`` — the multiprocessing manager, the worker pool, the
+    cross-process queue, and the temp-file listener. None of those are touched
+    by the rest of the suite (which all runs at the default ``--n_cores 1``).
+
+    The test pins ``--chunk_size`` to a value small enough that the input VCF
+    produces several chunks; otherwise a 2-core pool only ever gets one chunk
+    of work and the listener is never exercised. Output is compared directly
+    to a 1-core run on the same inputs (not to a baseline file) so this stays
+    decoupled from the output-format regression baselines.
+    """
+    sc_out = tmp_path / "single_core"
+    mc_out = tmp_path / "multi_core"
+    sc_out.mkdir()
+    mc_out.mkdir()
+
+    common = dict(
+        stats=["pi", "fst", "dxy"],
+        window_size=10000,
+        vcf_path=ag1000_vcf_path,
+        populations_path=ag1000_pop_path,
+        # chunk_size must be >= window_size; this value yields ~5 chunks per chromosome
+        # for the ag1000 test fixture, enough for a 2-core pool to see real parallelism.
+        chunk_size=20000,
+    )
+    run_pixy_helper(pixy_out_dir=sc_out, cores=1, **common)
+    run_pixy_helper(pixy_out_dir=mc_out, cores=2, **common)
+
+    for name in ("pixy_pi.txt", "pixy_dxy.txt", "pixy_fst.txt"):
+        sc = sc_out / name
+        mc = mc_out / name
+        assert sc.exists(), f"single-core run produced no {name}"
+        assert mc.exists(), f"multi-core run produced no {name}"
+        # `assert_files_are_consistent` sorts then line-compares, which is what we want:
+        # multicore output rows can arrive in non-deterministic order across runs.
+        assert_files_are_consistent(mc, sc)
+
+
 ################################################################################
 # Tests for pixy.main(): limited/single sites
 ################################################################################
