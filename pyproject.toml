@@ -1,6 +1,6 @@
 [tool.poetry]
 name          = "pixy"
-version       = "2.0.0-dev2"
+version       = "2.0.0"
 description   = "An unbiased estimation of average nucleotide diversity within (π) and between (dxy) populations from a VCF"
 readme        = "README.md"
 authors       = [
@@ -15,12 +15,9 @@ documentation = "https://pixy.readthedocs.io/en/latest/about.html"
 
 [tool.poetry.dependencies]
 python       = ">=3.10,<3.15"
-multiprocess = ">=0.70.17"
 numcodecs    = ">=0.13"
 numpy        = ">=1.24,<3"
-pandas       = ">=1.5,<4"
 scikit-allel = ">=1.3.13"
-scipy        = ">=1.10,<2"
 typing-extensions = "*"
 
 [tool.poetry.group.dev.dependencies]
@@ -98,16 +95,9 @@ exclude                     = [
 
 [[tool.mypy.overrides]]
 module = [
-    "multiprocess",
-    "scipy",
     "allel",
-    "pandas",
     "numpy",
 ]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "multiprocess.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

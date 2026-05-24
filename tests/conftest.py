@@ -4,7 +4,6 @@ from typing import List
 from typing import Optional
 from unittest.mock import patch
 
-import pandas as pd
 import pytest
 
 from pixy.__main__ import main
@@ -289,18 +288,32 @@ def show_diff(expected_file: Path, generated_file: Path) -> str:
     """
     Show the diff between an expected and generated file.
 
-    Useful to examine why a regression test fails.
+    Useful to examine why a regression test fails. Uses stdlib `difflib.unified_diff` —
+    no pandas dependency. Output is the first ~30 differing lines from each file with the
+    standard `--- expected / +++ generated` header.
 
     Args:
          expected_file: the path of the expected file (i.e., ground-truth)
          generated_file: the path of the generated file
-
     """
-    exp = pd.read_csv(expected_file, sep="\t")
-    gen = pd.read_csv(generated_file, sep="\t")
-    diff = exp.compare(gen, result_names=("Expected", "Generated"), align_axis=0)
-    pretty_display: str = diff.to_string()
-    return pretty_display
+    import difflib
+
+    with open(expected_file, "r") as ef:
+        expected = ef.readlines()
+    with open(generated_file, "r") as gf:
+        generated = gf.readlines()
+    diff_lines = list(
+        difflib.unified_diff(
+            expected,
+            generated,
+            fromfile=f"expected: {expected_file}",
+            tofile=f"generated: {generated_file}",
+            n=2,
+        )
+    )
+    if not diff_lines:
+        return "(no textual diff — line counts may differ or whitespace-only mismatch)"
+    return "".join(diff_lines[:60])
 
 
 def files_are_consistent(gen_file_path: Path, exp_file_path: Path) -> bool:

@@ -1,3 +1,5 @@
+import math
+
 import allel
 import numpy as np
 import pytest
@@ -8,7 +10,6 @@ from allel import mean_pairwise_difference
 from allel import mean_pairwise_difference_between
 from allel import watterson_theta
 from allel import weir_cockerham_fst
-from scipy import special
 
 from pixy.calc import calc_dxy
 from pixy.calc import calc_fst
@@ -563,7 +564,7 @@ def test_count_diff_comp_missing_non_consecutive_alleles() -> None:
     diffs, comps, missing = count_diff_comp_missing(row, n_haps)
 
     assert diffs == 79  # 79 * 1 (REF × ALT2); ALT1 absent contributes 0
-    assert comps == int(special.comb(N=80, k=2))
+    assert comps == math.comb(80, 2)
     assert missing == 0
 
 

@@ -36,8 +36,9 @@ Installing the development version
 ==================================
 
 Clone the repository, create the dev environment from the provided
-``environment.yaml`` (which pulls Python 3.11 plus ``samtools`` and
-``htslib`` from bioconda), and then install the Python dependencies with
+``environment.yaml`` (which pulls a supported Python — 3.10 through 3.14
+— plus ``samtools`` and ``htslib`` from bioconda), and then install the
+Python dependencies with
 Poetry::
 
     git clone https://github.com/ksamuk/pixy.git

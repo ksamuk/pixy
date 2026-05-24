@@ -76,8 +76,23 @@ class PixyTempResult:
     tajima_d_variant_counts: Union[str, NA] = "NA"
 
     def __str__(self) -> str:
-        """Returns a tab-delimited string representation for writing out to the temp file."""
-        return "\t".join(str(getattr(self, field.name)) for field in fields(self))
+        """
+        Returns a tab-delimited string representation for writing out to the temp file.
+
+        Floats are written with `%.14g` precision so that the temp file itself caps the
+        precision uniformly. Previously this used `str(float)` (= 17-digit repr); downstream
+        readers (pandas `read_csv` in the original code; pure-Python `float()` in the agg
+        rewrite) handled precision differently, producing slightly different output strings.
+        Capping at 14 significant digits at the source keeps both readers byte-identical.
+        """
+        out = []
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if isinstance(value, float):
+                out.append(f"{value:.14g}")
+            else:
+                out.append(str(value))
+        return "\t".join(out)
 
 
 @dataclass

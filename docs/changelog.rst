@@ -72,7 +72,7 @@ Project / packaging
 - Strict static type-checking with mypy.
 - ``ruff`` for linting and formatting.
 - Continuous integration runs the full test suite on every PR.
-- Python 3.9, 3.10 and 3.11 are supported.
+- Python 3.10 through 3.14 are supported.
 
 pixy 1.0.0
 ==========

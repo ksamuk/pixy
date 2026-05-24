@@ -2,10 +2,10 @@
 ====================
 
 [![Install with Conda](https://img.shields.io/badge/Install%20with-conda-brightgreen.svg)](https://anaconda.org/conda-forge/pixy)
-[![Anaconda Version](https://img.shields.io/badge/Anaconda.org-2.0.0.beta15-blue.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
+[![Anaconda Version](https://img.shields.io/badge/Anaconda.org-2.0.0-blue.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
 [![Anaconda Date](https://img.shields.io/badge/Last%20updated-26%20Oct%202025-blue.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
 [![Anaconda Platforms](https://img.shields.io/badge/Platforms-osx--arm64,linux--64,osx--64-orange.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
-[![Python Versions](https://img.shields.io/badge/python-3.9_|_3.10_|_3.11-blue)](https://github.com/ksamuk/pixy)
+[![Python Versions](https://img.shields.io/badge/python-3.10_|_3.11_|_3.12_|_3.13_|_3.14-blue)](https://github.com/ksamuk/pixy)
 [![CI](https://github.com/ksamuk/pixy/actions/workflows/python_package.yml/badge.svg?branch=master)](https://github.com/ksamuk/pixy/actions/workflows/python_package.yml?query=branch%3Amaster)
 [![mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
@@ -49,7 +49,7 @@ conda config --add channels conda-forge
 ```
 Then, create and activate a new conda environment for pixy:
 ```
-conda create -n "pixy" python=3.11
+conda create -n "pixy" python=3.12
 conda activate pixy
 ```
 
@@ -64,7 +64,7 @@ You can test your pixy installation by running:
 ```
 pixy --help
 ```
-If you have trouble installing pixy in an environment using python 3.11, try rolling back to python 3.9.
+`pixy` supports Python 3.10 through 3.14. If you have trouble installing in one version, try another in that range.
 
 For information in installing conda, see here:
 
@@ -81,13 +81,13 @@ We are very open to pull requests for new features or bugfixes. If a pull reques
 ## Development Roadmap (Planned Features as of April 2025)
 - Computation of summary statistics from genotype likelihoods
 - Simplified alternative to "All-Sites VCF" workflow
-- Python 3.12 support
-- Reduced/simplified dependencies
 
 ### Completed in pixy 2.0.0
 - Update to handle GATK missing data formats (reverted due to changes in GATK)
 - Support for multiallelic sites
 - Support for .csi indexes
-- Support for arbitrary and variable ploidy levels (including sex chromosomes) 
+- Support for arbitrary and variable ploidy levels (including sex chromosomes)
 - Simplified contributor workflows
 - Computation of Watterson's Theta and Tajima's D
+- Python 3.10 through 3.14 support
+- Reduced/simplified dependencies (dropped `pandas`, `scipy`, and `multiprocess`)
