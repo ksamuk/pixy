@@ -100,6 +100,24 @@ def mixed_ploidy_pop_path(datadir: Path) -> Path:
 
 
 @pytest.fixture()
+def haploid_vcf_path(datadir: Path) -> Path:
+    """
+    Path to a simulated pure-haploid VCF.
+
+    Built with `vcfsim --ploidy 1`: two haploid contigs (``chr1`` and ``chr2``), each with
+    ~1960 sites and 20 samples (``tsk_1`` .. ``tsk_20``). Useful for asserting that pixy's
+    per-contig ploidy inference works when no contig is diploid.
+    """
+    return datadir / "haploid_test.vcf.gz"
+
+
+@pytest.fixture()
+def haploid_pop_path(datadir: Path) -> Path:
+    """Populations file pairing the haploid VCF (10 samples in A, 10 in B)."""
+    return datadir / "haploid_populations.txt"
+
+
+@pytest.fixture()
 def missing5000_vcf_path(datadir: Path) -> Path:
     """Path to a simulated VCF that is known to be missing a larger number of genotypes."""
     return datadir / "simulated_data_missing5000_sites.vcf.gz"

@@ -165,6 +165,125 @@ def test_calc_dxy_single_locus() -> None:
     assert result.avg_dxy == pytest.approx(expected_diffs / expected_comps)
 
 
+def test_calc_pi_haploid() -> None:
+    """
+    Test that our Pi calculation is valid for haploid input.
+
+    Two sites, six haploid samples; expected diffs/comps are computed by hand and the result is
+    cross-checked against the `scikit-allel` mean-pairwise-difference implementation (which agrees
+    with pixy when no genotypes are missing).
+    """
+    gt_array = GenotypeArray([
+        [[0], [0], [1], [0], [1], [1]],  # site 1: 3 zeros, 3 ones
+        [[0], [0], [0], [0], [1], [1]],  # site 2: 4 zeros, 2 ones
+    ])
+
+    # sanity
+    assert gt_array.n_samples == 6
+    assert gt_array.n_variants == 2
+    assert gt_array.ploidy == 1
+
+    result: PiResult = calc_pi(gt_array)
+
+    # Section 1.1 of Korunes & Samuk: pairwise diff/comp on haploid alleles
+    expected_diffs = (3 * 3) + (4 * 2)  # 9 + 8
+    expected_comps = math.comb(6, 2) * 2  # 15 comparisons per site, 2 sites
+    assert result.total_diffs == expected_diffs
+    assert result.total_comps == expected_comps
+    assert result.total_missing == 0
+    assert result.avg_pi == pytest.approx(expected_diffs / expected_comps)
+
+    # match scikit-allel (valid because there are no missing sites)
+    allele_counts: AlleleCountsArray = gt_array.count_alleles()
+    assert result.avg_pi == pytest.approx(
+        mean_pairwise_difference(ac=allele_counts, an=np.sum(allele_counts, axis=1)).mean()
+    )
+
+
+def test_calc_dxy_haploid() -> None:
+    """
+    Test that our Dxy calculation is valid for haploid input.
+
+    Two sites, two populations of 4 haploid samples each. Expected diffs/comps are computed by
+    hand and cross-checked against the `scikit-allel` between-population mean-pairwise-difference.
+    """
+    pop1_gt_array = GenotypeArray([
+        [[0], [0], [1], [1]],  # pop1/site 1: ac = [2, 2]
+        [[0], [0], [0], [1]],  # pop1/site 2: ac = [3, 1]
+    ])
+    pop2_gt_array = GenotypeArray([
+        [[0], [1], [1], [1]],  # pop2/site 1: ac = [1, 3]
+        [[1], [1], [1], [1]],  # pop2/site 2: ac = [0, 4]
+    ])
+
+    # sanity
+    assert pop1_gt_array.n_samples == pop2_gt_array.n_samples == 4
+    assert pop1_gt_array.n_variants == pop2_gt_array.n_variants == 2
+    assert pop1_gt_array.ploidy == pop2_gt_array.ploidy == 1
+
+    result: DxyResult = calc_dxy(pop1_gt_array=pop1_gt_array, pop2_gt_array=pop2_gt_array)
+
+    # diffs at site i = ac1[0]*ac2[1] + ac1[1]*ac2[0]
+    expected_diffs_site_1 = 2 * 3 + 2 * 1  # = 8
+    expected_diffs_site_2 = 3 * 4 + 1 * 0  # = 12
+    expected_diffs = expected_diffs_site_1 + expected_diffs_site_2  # 20
+    expected_comps = 4 * 4 * 2  # 4 haploids in each pop, 2 sites
+
+    assert result.total_diffs == expected_diffs
+    assert result.total_comps == expected_comps
+    assert result.total_missing == 0
+    assert result.avg_dxy == pytest.approx(expected_diffs / expected_comps)
+
+    # cross-check against scikit-allel (only valid because there is no missing data)
+    allel_dxy = mean_pairwise_difference_between(
+        ac1=pop1_gt_array.count_alleles(),
+        ac2=pop2_gt_array.count_alleles(),
+    )
+    assert result.avg_dxy == pytest.approx(allel_dxy.mean())
+
+
+def test_calc_fst_hudson_haploid() -> None:
+    """
+    Compare Hudson FST calculation to the `scikit-allel` implementation, on haploid input.
+
+    Hudson FST is allele-frequency-based and therefore well-defined for any ploidy.
+    """
+    pop1_gt_array = GenotypeArray([
+        [[0], [0], [1], [1]],  # site 1
+        [[0], [0], [0], [1]],  # site 2
+    ])
+    pop2_gt_array = GenotypeArray([
+        [[0], [1], [1], [1]],  # site 1
+        [[1], [1], [1], [1]],  # site 2
+    ])
+
+    num, den = hudson_fst(
+        ac1=pop1_gt_array.count_alleles(),
+        ac2=pop2_gt_array.count_alleles(),
+    )
+    expected_fst = num.sum() / den.sum()
+
+    combined_gt_array = pop1_gt_array.concatenate(pop2_gt_array, axis=1)
+    assert combined_gt_array.n_samples == pop1_gt_array.n_samples + pop2_gt_array.n_samples
+    assert combined_gt_array.n_variants == pop1_gt_array.n_variants == pop2_gt_array.n_variants
+    assert combined_gt_array.ploidy == 1
+
+    result: FstResult = calc_fst(
+        gt_array_fst=combined_gt_array,
+        fst_pop_indicies=[
+            [0, 1, 2, 3],  # population 1
+            [4, 5, 6, 7],  # population 2
+        ],
+        fst_type=FSTEstimator.HUDSON,
+    )
+
+    assert result.fst == pytest.approx(expected_fst)
+    assert result.a == pytest.approx(num.sum())
+    assert result.b == pytest.approx(den.sum())
+    assert result.c == 0
+    assert result.n_sites == combined_gt_array.n_variants
+
+
 def test_calc_pi_arbitrary_ploidy() -> None:
     """
     Test that our Pi calculation is valid in the context of arbitrary ploidy.

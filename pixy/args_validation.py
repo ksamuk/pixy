@@ -915,16 +915,17 @@ def check_and_validate_args(  # noqa: C901
         logger.info(f"Inferred ploidy: {distinct_ploidies[0]} (uniform across contigs)")
     else:
         logger.info(f"Inferred variable ploidy across contigs: {ploidy_map}")
-        # WC-FST is only supported for diploid data; warn up front if a non-diploid contig
-        # will be encountered while WC-FST is requested.
-        if "fst" in args.stats and args.fst_type.upper() == "WC":
-            non_diploid = [c for c, p in ploidy_map.items() if p != 2]
-            if non_diploid:
-                logger.warning(
-                    "Weir-Cockerham FST is not supported for non-diploid contigs. "
-                    f"FST will be skipped for: {non_diploid}. "
-                    "Use --fst_type hudson to compute FST on these contigs."
-                )
+
+    # WC-FST is only supported for diploid data; warn up front if any non-diploid contig
+    # will be encountered while WC-FST is requested (covers both mixed- and uniform-ploidy VCFs).
+    if "fst" in args.stats and args.fst_type.upper() == "WC":
+        non_diploid = [c for c, p in ploidy_map.items() if p != 2]
+        if non_diploid:
+            logger.warning(
+                "Weir-Cockerham FST is not supported for non-diploid contigs. "
+                f"FST will be skipped for: {non_diploid}. "
+                "Use --fst_type hudson to compute FST on these contigs."
+            )
 
     logger.info("All initial checks passed!")
     stats: List[PixyStat] = [PixyStat[stat.upper()] for stat in args.stats]
