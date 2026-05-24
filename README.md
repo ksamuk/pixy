@@ -3,7 +3,7 @@
 
 [![Install with Conda](https://img.shields.io/badge/Install%20with-conda-brightgreen.svg)](https://anaconda.org/conda-forge/pixy)
 [![Anaconda Version](https://img.shields.io/badge/Anaconda.org-2.0.0-blue.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
-[![Anaconda Date](https://img.shields.io/badge/Last%20updated-26%20Oct%202025-blue.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
+[![Anaconda Date](https://img.shields.io/badge/Last%20updated-24%20May%202026-blue.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
 [![Anaconda Platforms](https://img.shields.io/badge/Platforms-osx--arm64,linux--64,osx--64-orange.svg?style=round-square)](https://anaconda.org/conda-forge/pixy)
 [![Python Versions](https://img.shields.io/badge/python-3.10_|_3.11_|_3.12_|_3.13_|_3.14-blue)](https://github.com/ksamuk/pixy)
 [![CI](https://github.com/ksamuk/pixy/actions/workflows/python_package.yml/badge.svg?branch=master)](https://github.com/ksamuk/pixy/actions/workflows/python_package.yml?query=branch%3Amaster)
