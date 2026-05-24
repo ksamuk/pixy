@@ -10,7 +10,7 @@
 [![mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 [![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://docs.astral.sh/ruff/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20275847.svg)](https://doi.org/10.5281/zenodo.20275847)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20361931.svg)](https://doi.org/10.5281/zenodo.20361931)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 `pixy` is a command-line tool for painlessly computing unbiased estimators of population genetic summary statistics that measure genetic variation within (π, θ<sub>W</sub>, Tajima’s D) and between (d<sub>xy</sub>, F<sub>ST</sub>) populations from a VCF. In particular, pixy facilitates the use of VCFs containing invariant (monomorphic) sites, which are **essential** for the correct computation of π and d<sub>xy</sub> in the face of missing data (i.e. always).
