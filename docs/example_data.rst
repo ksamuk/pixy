@@ -138,12 +138,16 @@ Expected results
 ----------------
 
 With the parameters above (μ = 5.49×10\ :sup:`-9`,
-N\ :sub:`e` = 1.65×10\ :sup:`6`), the theoretical per-site
-heterozygosity in either daughter population is
+N\ :sub:`e` = 1.65×10\ :sup:`6`), the infinite-sites expectation
+for per-site heterozygosity in either daughter population is
+θ = 4·N\ :sub:`e`·μ ≈ 0.0362. ``vcfsim`` (via ``msprime``) uses the
+JC69 finite-sites mutation model by default, so the same site can
+be hit by repeated or back-mutations and the expected *observable*
+proportion of pairwise differences is slightly lower:
 
 .. parsed-literal::
 
-    π ≈ 4 · N\ :sub:`e` · μ ≈ 0.036
+    π ≈ θ / (1 + 4θ/3) ≈ 0.035
 
 and d\ :sub:`xy` between the two populations is slightly higher
 because of the divergence. F\ :sub:`ST` should fall in the
