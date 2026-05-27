@@ -222,6 +222,7 @@ def read_and_filter_genotypes(
     window_pos_2: int,
     sites_list_chunk: Optional[List[int]],
     ploidy: int,
+    needs_invariants: bool = True,
 ) -> Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
     """
     Ingests genotypes from a VCF file, retains biallelic SNPs or invariant sites.
@@ -240,6 +241,10 @@ def read_and_filter_genotypes(
         ploidy (int): The ploidy of the given chromosome, used to correctly shape the genotype
             array read from the VCF. Typically obtained from
             ``args.ploidy_map[chromosome]``.
+        needs_invariants (bool): Whether to include invariant sites in the returned arrays.
+            Should be ``True`` when computing pi, dxy, tajima_d, or watterson_theta (all of
+            which use callable-site counts in their denominators), and ``False`` when computing
+            FST only (which only needs variant sites).
 
     Returns:
         Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
@@ -296,18 +301,18 @@ def read_and_filter_genotypes(
         # build an array of positions for the region
         pos_array = allel.SortedIndex(callset["variants/POS"])
 
-        # create a mask for biallelic snps and invariant sites
+        # create a mask for biallelic SNPs; invariant sites are added only when needed
+        # (pi, dxy, tajima_d, watterson_theta all require them for their denominators;
+        # FST only needs variant sites so can skip this step for a meaningful speedup)
         is_biallelic_snp = np.logical_and(
             callset["variants/is_snp"][:] == 1,
             callset["variants/numalt"][:] == 1,
         )
 
-        is_invariant_site = callset["variants/numalt"][:] == 0
-
-        # build the mask for multiallelic or biallelic snps + invariant sites
-        # NB: np.logical_or takes a maximum of TWO arrays
-
-        snp_invar_mask = np.logical_or(is_biallelic_snp, is_invariant_site)
+        snp_invar_mask = is_biallelic_snp
+        if needs_invariants:
+            is_invariant_site = callset["variants/numalt"][:] == 0
+            snp_invar_mask = np.logical_or(snp_invar_mask, is_invariant_site)
 
         if include_multiallelic_snps:
             is_multiallelic_snp = np.logical_and(
@@ -403,15 +408,25 @@ def compute_summary_stats(  # noqa: C901
         "fst" in args.stats and str(args.fst_type).upper() == "WC" and chrom_ploidy != 2
     )
 
+    # Invariant sites are only needed for pi, dxy, tajima_d, and watterson_theta, which use
+    # callable-site counts in their denominators. FST only needs variant sites, so skip
+    # invariant ingestion when FST is the sole requested statistic.
+    stats_needing_invariants = {"pi", "dxy", "tajima_d", "watterson_theta"}
+    needs_invariants: bool = bool(stats_needing_invariants.intersection(args.stats))
+
     # read in the genotype data for the chunk
     callset_is_none, gt_array, pos_array = read_and_filter_genotypes(
-        args, chromosome, chunk_pos_1, chunk_pos_2, sites_list_chunk, chrom_ploidy
+        args,
+        chromosome,
+        chunk_pos_1,
+        chunk_pos_2,
+        sites_list_chunk,
+        chrom_ploidy,
+        needs_invariants,
     )
 
     # if computing FST, pre-compute a filtered array of variants (only)
     if "fst" in args.stats and not skip_fst_for_chrom:
-        # These should only be returned by `read_and_filter_genotypes` as None if `fst` is not a
-        # requested stat. The asserts are to narrow the types.
         assert gt_array is not None, "genotype array is None"
         assert pos_array is not None, "position array is None"
 

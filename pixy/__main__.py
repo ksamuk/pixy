@@ -334,9 +334,35 @@ def main() -> None:  # noqa: C901
     }
     chrom_list = pixy_args.chromosomes
 
+    # For FST-only runs, scale up the chunk size to reduce VCF I/O overhead.
+    # FST needs only variant sites; invariant sites are still read by allel.read_vcf (we cannot
+    # skip them at parse time) but are filtered out immediately afterward. Larger chunks mean
+    # fewer total allel.read_vcf calls, which is the dominant runtime cost for FST. The
+    # multiplier trades proportionally more memory per chunk for far fewer I/O round-trips.
+    # Users who are memory-constrained can override with an explicit --chunk_size.
+    _stats_needing_invariants: set = {
+        PixyStat.PI,
+        PixyStat.DXY,
+        PixyStat.TAJIMA_D,
+        PixyStat.WATTERSON_THETA,
+    }
+    _needs_invariants: bool = bool(_stats_needing_invariants.intersection(pixy_args.stats))
+    _fst_chunk_multiplier: int = 10
+    effective_chunk_size: int = (
+        pixy_args.chunk_size
+        if _needs_invariants
+        else pixy_args.chunk_size * _fst_chunk_multiplier
+    )
+
     logger.info(
         f"[pixy] Preparing for calculation of summary statistics: {', '.join(map(str, args.stats))}"
     )
+    if not _needs_invariants:
+        logger.info(
+            f"[pixy] FST-only run: using adaptive chunk size of {effective_chunk_size:,} bp "
+            f"({_fst_chunk_multiplier}× the --chunk_size of {pixy_args.chunk_size:,} bp). "
+            "Pass --chunk_size to override if memory is limited."
+        )
 
     fst_cite: str
     if PixyStat.FST in pixy_args.stats:
@@ -501,9 +527,9 @@ def main() -> None:  # noqa: C901
             # Set aggregate to true if
             # 1) the window size is larger than the chunk size OR
             # 2) the window size wasn't specified, but the chrom is longer than the cutoff
-            if (window_size > pixy_args.chunk_size) or (
+            if (window_size > effective_chunk_size) or (
                 (pixy_args.window_size is None)
-                and ((interval_end - interval_start) > pixy_args.chunk_size)
+                and ((interval_end - interval_start) > effective_chunk_size)
             ):
                 aggregate = True
             else:
@@ -522,15 +548,15 @@ def main() -> None:  # noqa: C901
 
         # if aggregating, break down large windows into smaller windows
         if aggregate:
-            window_list = pixy.core.assign_subwindows_to_windows(window_list, pixy_args.chunk_size)
+            window_list = pixy.core.assign_subwindows_to_windows(window_list, effective_chunk_size)
 
         # using chunk_size, assign  windows to chunks
-        window_list = pixy.core.assign_windows_to_chunks(window_list, pixy_args.chunk_size)
+        window_list = pixy.core.assign_windows_to_chunks(window_list, effective_chunk_size)
 
         # if using a sites file, assign sites to chunks, as with windows above
         if pixy_args.sites is not None:
             sites_pre_list = pixy_args.sites.positions_for(chromosome)
-            sites_list = pixy.core.assign_sites_to_chunks(sites_pre_list, pixy_args.chunk_size)
+            sites_list = pixy.core.assign_sites_to_chunks(sites_pre_list, effective_chunk_size)
         else:
             sites_list = None
         # obtain the list of chunks from the window list
