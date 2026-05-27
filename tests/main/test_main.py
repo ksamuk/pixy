@@ -759,10 +759,7 @@ def test_pixy_main_valid_inputs(
         vcf_path=ag1000_vcf_path,
         populations_path=ag1000_pop_path,
     )
-    assert (
-        "[pixy] Data set contains 2 populations, 2 chromosome(s), and 36 sample(s)"
-        in caplog.messages
-    )
+    assert "Data set contains 2 populations, 2 chromosome(s), and 36 sample(s)" in caplog.messages
 
     expected_out_files: List[Path] = [
         Path("pixy_dxy.txt"),

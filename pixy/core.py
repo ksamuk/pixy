@@ -426,7 +426,11 @@ def compute_summary_stats(  # noqa: C901
     )
 
     # if computing FST, pre-compute a filtered array of variants (only)
-    if "fst" in args.stats and not skip_fst_for_chrom:
+    # Initialize to None so the window loop below can reference them even when the
+    # callset is empty (no VCF records in this chunk — common in sparse RAD-seq data).
+    gt_array_fst: Optional[GenotypeArray] = None
+    pos_array_fst: Optional[SortedIndex] = None
+    if "fst" in args.stats and not skip_fst_for_chrom and not callset_is_none:
         assert gt_array is not None, "genotype array is None"
         assert pos_array is not None, "position array is None"
 

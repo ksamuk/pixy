@@ -55,7 +55,8 @@ def main() -> None:  # noqa: C901
     # initialize logger
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(name)s:%(funcName)s:%(lineno)s [%(levelname)s]: %(message)s",
+        format="%(asctime)s [pixy] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     logger = logging.getLogger(__name__)
     # initialize arguments
@@ -322,8 +323,8 @@ def main() -> None:  # noqa: C901
 
     # validate arguments with the check_and_validate_args fuction
     # returns parsed populaion, chromosome, and sample info
-    logger.info(f"[pixy] pixy {version}")
-    logger.info("[pixy] See documentation at https://pixy.readthedocs.io/en/latest/")
+    logger.info(f"pixy {version}")
+    logger.info("See documentation at https://pixy.readthedocs.io/en/latest/")
 
     pixy_args: PixyArgs = pixy.args_validation.check_and_validate_args(args)
     # propagate per-contig ploidy map onto the raw args namespace so it is available to
@@ -353,11 +354,11 @@ def main() -> None:  # noqa: C901
     )
 
     logger.info(
-        f"[pixy] Preparing for calculation of summary statistics: {', '.join(map(str, args.stats))}"
+        f"Preparing for calculation of summary statistics: {', '.join(map(str, args.stats))}"
     )
     if not _needs_invariants:
         logger.info(
-            f"[pixy] FST-only run: using adaptive chunk size of {effective_chunk_size:,} bp "
+            f"FST-only run: using adaptive chunk size of {effective_chunk_size:,} bp "
             f"({_fst_chunk_multiplier}× the --chunk_size of {pixy_args.chunk_size:,} bp). "
             "Pass --chunk_size to override if memory is limited."
         )
@@ -368,30 +369,27 @@ def main() -> None:  # noqa: C901
             fst_cite = "Weir and Cockerham (1984)"
         elif pixy_args.fst_type is FSTEstimator.HUDSON:
             fst_cite = "Hudson (1992)"
-        logger.info(f"[pixy] Using {fst_cite}'s estimator of FST.")
+        logger.info(f"Using {fst_cite}'s estimator of FST.")
 
     logger.info(
-        f"[pixy] Data set contains {len(pixy_args.pop_names)} populations, "
+        f"Data set contains {len(pixy_args.pop_names)} populations, "
         f"{len(chrom_list)} chromosome(s), "
         f"and {len(pixy_args.pop_ids)} sample(s)"
     )
 
     if pixy_args.window_size is not None:
-        logger.info(f"[pixy] Window size: {pixy_args.window_size} bp")
+        logger.info(f"Window size: {pixy_args.window_size} bp")
 
     if args.bed_file is not None:
-        logger.info(f"[pixy] Windows sourced from: {args.bed_file}")
+        logger.info(f"Windows sourced from: {args.bed_file}")
 
     if args.sites_file is not None:
-        logger.info(f"[pixy] Calculations restricted to sites in {args.sites_file}")
+        logger.info(f"Calculations restricted to sites in {args.sites_file}")
 
     # time the calculations
     start_time = time.time()
-    logger.info(
-        f"Started calculations at \
-        {time.strftime('%H:%M:%S on %Y-%m-%d', time.localtime(start_time))}"
-    )
-    logger.info(f"[pixy] Using {pixy_args.num_cores} out of {mp.cpu_count()} available CPU cores")
+    logger.info("Started calculations!")
+    logger.info(f"Using {pixy_args.num_cores} out of {mp.cpu_count()} available CPU cores")
     # if in mc mode, set up multiprocessing
     if pixy_args.num_cores > 1:
         # Use `forkserver` on Linux and `spawn` elsewhere (macOS, Windows).
@@ -434,7 +432,7 @@ def main() -> None:  # noqa: C901
     # begin processing each chromosome
 
     for chromosome in pixy_args.chromosomes:
-        logger.info(f"[pixy] Processing chromosome/contig {chromosome}")
+        logger.info(f"Processing chromosome/contig {chromosome}")
 
         # if not using a bed file, build windows manually
         if pixy_args.bed is None:
@@ -483,7 +481,7 @@ def main() -> None:  # noqa: C901
 
             targ_region = chromosome + ":" + str(interval_start) + "-" + str(interval_end)
 
-            logger.info(f"[pixy] Calculating statistics for region {targ_region}")
+            logger.info(f"Calculating statistics for region {targ_region}")
 
             # Determine list of windows over which to compute stats
             # in the case were window size = 1, AND there is a sites file, use the sites file as the
@@ -540,7 +538,7 @@ def main() -> None:  # noqa: C901
 
         if len(window_list) == 0:
             raise Exception(
-                "[pixy] ERROR: Window creation failed. Ensure that the POS column in the VCF is "
+                "ERROR: Window creation failed. Ensure that the POS column in the VCF is "
                 "valid or change --window_size."
             )
 
@@ -668,7 +666,7 @@ def main() -> None:  # noqa: C901
         successful_stat_names.add(trow.stat)
     if not found_any:
         raise Exception(
-            "[pixy] ERROR: pixy failed to write any output. Confirm that your bed/sites files and "
+            "ERROR: pixy failed to write any output. Confirm that your bed/sites files and "
             "intervals refer to existing chromosomes and positions in the VCF."
         )
 
@@ -677,7 +675,7 @@ def main() -> None:  # noqa: C901
     if set(pixy_args.stats) != set(successful_stats):
         missing_stats = list(set(pixy_args.stats) - set(successful_stats))
         logger.warning(
-            "[pixy] WARNING: pixy failed to find any valid genotype data to calculate the "
+            "WARNING: pixy failed to find any valid genotype data to calculate the "
             f"following summary statistics {', '.join([str(stat) for stat in missing_stats])}."
             " No output file will be created for these statistics."
         )
@@ -729,7 +727,7 @@ def main() -> None:  # noqa: C901
         )
         if chroms_with_no_data:
             logger.info(
-                "[pixy] NOTE: The following chromosomes/scaffolds did not have sufficient data "
+                "NOTE: The following chromosomes/scaffolds did not have sufficient data "
                 f"to estimate FST: {', '.join(chroms_with_no_data)}"
             )
 
@@ -774,31 +772,25 @@ def main() -> None:  # noqa: C901
 
     if len(output_files) == 0:
         logger.warning(
-            "[pixy] WARNING: pixy failed to write any output files. Your VCF may not contain "
+            "WARNING: pixy failed to write any output files. Your VCF may not contain "
             "valid genotype data, or it was removed via filtering using the specified sites/bed "
             "file (if any)."
         )
 
     # print completion message
-    end_time = time.time()
-    logger.info(
-        "[pixy] All calculations complete at "
-        + time.strftime("%H:%M:%S on %Y-%m-%d", time.localtime(end_time))
-    )
+    logger.info("All calculations complete!")
     total_time = time.time() - start_time
-    logger.info("[pixy] Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(total_time)))
-    logger.info(f"[pixy] Output files written to {pixy_args.output_dir}")
+    logger.info("Time elapsed: " + time.strftime("%H:%M:%S", time.gmtime(total_time)))
+    logger.info(f"Output files written to {pixy_args.output_dir}")
 
     if len(leftover_tmp_files) > 0:
         logger.info(
-            f"[pixy] NOTE: There are pixy temp files in {pixy_args.output_dir}."
-            "[pixy] If these are not actively being used (e.g. by another running pixy process), "
+            f"NOTE: There are pixy temp files in {pixy_args.output_dir}."
+            "If these are not actively being used (e.g. by another running pixy process), "
             "they can be safely deleted."
         )
 
-    logger.info(
-        f"[pixy] If you use pixy in your research, please cite the following paper: {citation}"
-    )
+    logger.info(f"If you use pixy in your research, please cite the following paper: {citation}")
 
     # restore output
     if args.silent:
