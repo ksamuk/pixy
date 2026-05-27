@@ -349,9 +349,7 @@ def main() -> None:  # noqa: C901
     _needs_invariants: bool = bool(_stats_needing_invariants.intersection(pixy_args.stats))
     _fst_chunk_multiplier: int = 10
     effective_chunk_size: int = (
-        pixy_args.chunk_size
-        if _needs_invariants
-        else pixy_args.chunk_size * _fst_chunk_multiplier
+        pixy_args.chunk_size if _needs_invariants else pixy_args.chunk_size * _fst_chunk_multiplier
     )
 
     logger.info(
