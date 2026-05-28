@@ -248,6 +248,14 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
     # large intermediate that scales with `n_sites * n_alleles` stays in int32.
     pop1_arr = np.asarray(pop1_allele_counts)
     pop2_arr = np.asarray(pop2_allele_counts)
+    # count_alleles() returns shape (n_sites, 0) when every genotype in a population
+    # is missing (-1); pad the narrower array so both arrays have the same number of
+    # allele columns before the einsum.
+    n_alleles = max(pop1_arr.shape[1], pop2_arr.shape[1])
+    if pop1_arr.shape[1] < n_alleles:
+        pop1_arr = np.pad(pop1_arr, [(0, 0), (0, n_alleles - pop1_arr.shape[1])])
+    if pop2_arr.shape[1] < n_alleles:
+        pop2_arr = np.pad(pop2_arr, [(0, 0), (0, n_alleles - pop2_arr.shape[1])])
     max_product = pop1_n_haps * pop2_n_haps
     if max_product > 2**31 - 1 or pop1_arr.dtype.itemsize < 4 or pop2_arr.dtype.itemsize < 4:
         pop1_arr = pop1_arr.astype(np.int64)
