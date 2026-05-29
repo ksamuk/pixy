@@ -15,6 +15,7 @@ debug/*.vcf*
 pixy_tmp*
 debug_temp*
 debug/*
+validation
 
 __pycache__/
 .coverage

@@ -31,7 +31,12 @@ In addition, one of
     Path to a headerless BED file containing custom regions
     (``chrom``, ``chromStart``, ``chromEnd``) over which to compute the
     statistics. Useful when windows must match a specific genomic feature set
-    (genes, introns, etc.) and may be heterogeneous in size.
+    (genes, introns, etc.) and may be heterogeneous in size. Coordinates follow
+    the BED standard (0-based, half-open): ``chromStart`` is inclusive and
+    ``chromEnd`` is exclusive. The first base of a chromosome is ``0``, so a row
+    ``chr1\t0\t1000`` selects the first 1000 bases (1-based positions 1..1000).
+    Pixy reports the corresponding window in ``window_pos_1`` / ``window_pos_2``
+    using 1-based inclusive coordinates.
 
 Optional
 ========

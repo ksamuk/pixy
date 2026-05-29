@@ -52,6 +52,13 @@ New features
 Bug fixes
 ---------
 
+- ``--bed_file`` coordinates are now interpreted as standard BED
+  (0-based, half-open) rather than 1-based inclusive. Previously the
+  raw ``chromStart`` was treated as a 1-based inclusive start, which
+  shifted the left edge of every window one base earlier than the
+  user intended and inflated each window's length by one site. Users
+  reusing existing BED files that were authored against the old
+  behaviour should subtract 1 from each ``chromStart``.
 - Multiallelic-site handling has been corrected. Previously, sites
   with more than two alleles could be counted incorrectly in F\ :sub:`ST`
   computations.

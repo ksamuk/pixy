@@ -28,6 +28,9 @@ from numpy.typing import NDArray
 
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
+from pixy.sprite import SpriteMask
+from pixy.sprite import validate_sprite_against_populations
+from pixy.sprite import validate_sprite_data_rows
 
 # ---------------------------------------------------------------------------
 # Pandas-free table types that replace the previous pandas.DataFrame fields on
@@ -88,10 +91,10 @@ class PopulationsTable:
 @dataclass(frozen=True)
 class BedTable:
     """
-    List of windowing intervals from a BED file (`chrom`, `chromStart`, `chromEnd`).
+    List of windowing intervals derived from a user-supplied BED file.
 
-    Replaces the previous `bed_df` DataFrame whose columns were
-    `chrom`, `chromStart`, `chromEnd`.
+    Stored coordinates are 1-based inclusive (pixy's internal convention), already
+    converted from the BED 0-based half-open input by ``validate_bed_path``.
     """
 
     chroms: Tuple[str, ...]
@@ -189,6 +192,10 @@ class PixyArgs:
         ploidy_map: a mapping from contig name to inferred ploidy. Built from the first record of
             each analyzed contig in the input VCF, allowing per-contig variable ploidy (e.g.
             diploid autosomes alongside haploid sex chromosomes or organellar contigs).
+        sprite_mask: an optional ``SpriteMask`` parsed from --sprite_bed. When provided, --vcf
+            is treated as a variants-only callset and the per-window callable-site denominator
+            for pi, dxy, Tajima's D, and Watterson's theta is sourced from the sprite mask
+            rather than from invariant sites in the VCF. FST is unaffected.
 
     Raises:
         ValueError: if an interval is specified without both start and end positions
@@ -216,6 +223,10 @@ class PixyArgs:
     interval_end: Union[int, None] = None
     sites: Union[SitesTable, None] = None
     ploidy_map: Union[Dict[str, int], None] = None
+    # When set, indicates that --vcf is a variants-only VCF and the per-site callable
+    # denominator for pi/dxy/Tajima's D / Watterson's theta should be analytically
+    # supplied by the sprite mask. FST is unaffected (it uses variant sites only).
+    sprite_mask: Union[SpriteMask, None] = None
 
     def __post_init__(self) -> None:
         """Checks a subset of mutually exclusive `pixy` args to ensure compliance."""
@@ -332,9 +343,16 @@ def validate_bed_path(bed_path: Path) -> BedTable:
     """
     Read and validate a BED3 file (chrom, chromStart, chromEnd).
 
+    BED coordinates are 0-based half-open by the UCSC spec: ``chromStart`` is
+    inclusive and ``chromEnd`` is exclusive. Pixy uses 1-based inclusive
+    coordinates internally (matching VCF/tabix region strings and the
+    ``window_pos_1`` / ``window_pos_2`` columns it emits), so we convert at
+    read time: ``window_pos_1 = chromStart + 1`` and ``window_pos_2 = chromEnd``.
+
     Raises:
         FileNotFoundError: If the path does not exist.
-        ValueError: If any row has fewer than 3 fields or empty values.
+        ValueError: If any row has fewer than 3 fields, empty values, non-integer
+            coordinates, a negative ``chromStart``, or ``chromEnd <= chromStart``.
     """
     if not os.path.exists(bed_path):
         raise FileNotFoundError(f"The specified BED file {bed_path} does not exist")
@@ -354,14 +372,27 @@ def validate_bed_path(bed_path: Path) -> BedTable:
     starts: List[int] = []
     ends: List[int] = []
     for r in rows:
-        chroms.append(r[0])
         try:
-            starts.append(int(r[1]))
-            ends.append(int(r[2]))
+            chrom_start = int(r[1])
+            chrom_end = int(r[2])
         except ValueError as e:
             raise ValueError(
                 f"{bed_path}: BED columns 2 and 3 must be integers; got {r[1]!r}, {r[2]!r}"
             ) from e
+        if chrom_start < 0:
+            raise ValueError(
+                f"{bed_path}: BED chromStart must be >= 0 (got {chrom_start} on "
+                f"{r[0]}:{chrom_start}-{chrom_end})"
+            )
+        if chrom_end <= chrom_start:
+            raise ValueError(
+                f"{bed_path}: BED chromEnd must be > chromStart "
+                f"(got {r[0]}:{chrom_start}-{chrom_end})"
+            )
+        chroms.append(r[0])
+        # Convert BED 0-based half-open to pixy's 1-based inclusive convention.
+        starts.append(chrom_start + 1)
+        ends.append(chrom_end)
     return BedTable(chroms=tuple(chroms), chrom_starts=tuple(starts), chrom_ends=tuple(ends))
 
 
@@ -763,6 +794,47 @@ def check_and_validate_args(  # noqa: C901
     else:
         bed = None
 
+    # SPRITE MASK
+    # If a sprite BED is supplied, --vcf is variants-only; the invariant-site denominator
+    # comes from the sprite mask and the invariant-presence check on the VCF is moot.
+    sprite_mask: Union[SpriteMask, None]
+    sprite_bed_arg: Union[str, None] = getattr(args, "sprite_bed", None)
+    if sprite_bed_arg is not None:
+        sprite_path: Path = Path(os.path.expanduser(sprite_bed_arg))
+        if not os.path.exists(sprite_path):
+            raise FileNotFoundError(f"The specified sprite BED file {sprite_path} does not exist")
+        # Tabix index required for per-window queries.
+        tbi = Path(str(sprite_path) + ".tbi")
+        csi = Path(str(sprite_path) + ".csi")
+        if not (tbi.exists() or csi.exists()):
+            raise ValueError(
+                f"The sprite BED {sprite_path} is not indexed. "
+                "Index it with `tabix -p bed [filename].bed.gz` first."
+            )
+        sprite_mask = SpriteMask.from_path(sprite_path)
+        # Cross-check populations and per-pop sample counts against --populations.
+        pop_to_sample_count: Dict[str, int] = {}
+        for pop in populations.populations:
+            pop_to_sample_count[pop] = pop_to_sample_count.get(pop, 0) + 1
+        problem = validate_sprite_against_populations(
+            sprite_mask=sprite_mask, pop_to_sample_count=pop_to_sample_count
+        )
+        if problem is not None:
+            raise ValueError(problem)
+        # Confirm the sprite BED actually carries data rows and that the first few
+        # rows parse cleanly. Catches truncated / accidentally header-only sprite
+        # outputs and malformed counts before pixy hits them mid-window.
+        problem = validate_sprite_data_rows(sprite_mask=sprite_mask)
+        if problem is not None:
+            raise ValueError(problem)
+        logger.info(
+            f"Using sprite mask {sprite_path} "
+            f"(threshold={sprite_mask.metadata.threshold}, "
+            f"populations={list(sprite_mask.metadata.populations)})"
+        )
+    else:
+        sprite_mask = None
+
     # VALIDATE THE VCF
 
     # check if the vcf contains any invariant sites
@@ -770,6 +842,11 @@ def check_and_validate_args(  # noqa: C901
     logger.info("Checking for invariant sites...")
     check_message = "OK"
     bypass_invariant_check: bool = args.bypass_invariant_check
+    # A sprite mask supplies the invariant-site denominator analytically, so it both
+    # implies and supersedes --bypass_invariant_check. Force it on (silently — the
+    # "EXTREME WARNING" log below is misleading in this mode).
+    if sprite_mask is not None:
+        bypass_invariant_check = True
     if not bypass_invariant_check:
         # Read up to the first 100k data records and collect the distinct ALT values.
         # We bail out as soon as we have seen the invariant marker ('.') alongside at least one
@@ -808,7 +885,10 @@ def check_and_validate_args(  # noqa: C901
                 "This warning can be suppressed via --bypass_invariant_check 'yes'.'"
             )
     else:
-        if not (len(args.stats) == 1 and (args.stats[0] == "fst")):
+        # When the sprite path is in use, the invariant denominator is supplied by the
+        # mask rather than by VCF invariants — the "incorrect estimates" warning would be
+        # misleading there. Keep the existing warning for the manual --bypass case.
+        if sprite_mask is None and not (len(args.stats) == 1 and (args.stats[0] == "fst")):
             logger.warning(
                 "EXTREME WARNING: --bypass_invariant_check is set to True. Note that a "
                 "lack of invariant sites will result in incorrect estimates."
@@ -953,6 +1033,7 @@ def check_and_validate_args(  # noqa: C901
         tajima_components=getattr(args, "tajima_components", False),
         temp_file=tmp_path,
         ploidy_map=ploidy_map,
+        sprite_mask=sprite_mask,
     )
 
 
