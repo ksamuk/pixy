@@ -336,29 +336,6 @@ def read_and_filter_genotypes(
         # select rows that ARE snps or invariant sites in the position array
         pos_array = pos_array[snp_invar_mask]
 
-        # Deduplicate positions: bcftools call --all-sites emits both an
-        # invariant (numalt=0) record and a biallelic SNP (numalt=1) record at
-        # the same POS for many sites.  Counting both would inflate no_sites and
-        # count_comparisons at those positions.  Drop invariant records at any
-        # position that also carries a biallelic SNP record — the SNP record
-        # already supplies the callable-genotype information pixy needs.  This is
-        # done without assuming which record comes first in the VCF.
-        pos_arr_np = np.asarray(pos_array)
-        if len(pos_arr_np) > 1:
-            numalt_filtered = np.asarray(callset["variants/numalt"])[snp_invar_mask]
-            is_invariant = numalt_filtered == 0
-            # A duplicate exists when the same POS appears both before and after
-            # the current row.
-            has_dup = np.zeros(len(pos_arr_np), dtype=bool)
-            has_dup[:-1] |= pos_arr_np[:-1] == pos_arr_np[1:]
-            has_dup[1:] |= pos_arr_np[:-1] == pos_arr_np[1:]
-            # Remove invariant records that share a POS with a biallelic SNP.
-            remove = is_invariant & has_dup
-            if remove.any():
-                keep = ~remove
-                gt_array = gt_array[keep]
-                pos_array = allel.SortedIndex(pos_arr_np[keep])
-
         # TODO: cannot index value of type None
         # if a list of target sites was specified, mask out all non-target sites
         if sites_list_chunk is not None:
