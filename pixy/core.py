@@ -336,6 +336,19 @@ def read_and_filter_genotypes(
         # select rows that ARE snps or invariant sites in the position array
         pos_array = pos_array[snp_invar_mask]
 
+        # Deduplicate positions: bcftools call --all-sites emits both an
+        # invariant (numalt=0) record and a variant record at the same POS for
+        # many sites.  Counting both would inflate no_sites and count_comparisons
+        # at those positions.  Keep only the LAST record at each POS — the
+        # invariant record comes first in the VCF output, the biallelic SNP
+        # second, so keeping the last preserves the informative variant record.
+        pos_arr_np = np.asarray(pos_array)
+        if len(pos_arr_np) > 1:
+            is_last = np.concatenate([pos_arr_np[:-1] != pos_arr_np[1:], [True]])
+            if not is_last.all():
+                gt_array = gt_array[is_last]
+                pos_array = allel.SortedIndex(pos_arr_np[is_last])
+
         # TODO: cannot index value of type None
         # if a list of target sites was specified, mask out all non-target sites
         if sites_list_chunk is not None:
