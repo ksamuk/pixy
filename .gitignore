@@ -16,6 +16,7 @@ pixy_tmp*
 debug_temp*
 debug/*
 validation
+.ci.sh
 
 __pycache__/
 .coverage

@@ -640,7 +640,7 @@ def _ploidy_from_gt(gt_str: str) -> int:
 # first record for each contig. Returns a dict mapping contig name -> ploidy.
 # Supports VCFs with variable ploidy across contigs (e.g. autosomes vs. sex
 # chromosomes or organellar contigs).
-def infer_ploidy_per_contig(vcf_path: str, chrom_list: List[str]) -> "dict[str, int]":
+def infer_ploidy_per_contig(vcf_path: str, chrom_list: List[str]) -> "dict[str, int]":  # noqa: C901
     """
     Infer ploidy per contig by reading the first record of each contig via tabix.
 
@@ -659,11 +659,16 @@ def infer_ploidy_per_contig(vcf_path: str, chrom_list: List[str]) -> "dict[str, 
         return {}
 
     # We spawn one tabix process and pass every contig as a region argument; tabix outputs
-    # the records sequentially. As soon as we've seen the first record for each contig we
-    # terminate. The previous version spawned one tabix per contig — for assemblies with
-    # hundreds of unplaced contigs that subprocess overhead dominated startup time.
+    # the records sequentially. The previous version spawned one tabix per contig — for
+    # assemblies with hundreds of unplaced contigs that subprocess overhead dominated startup.
+    #
+    # For each contig we walk all sample columns (not just the first) and scan up to
+    # max_sites records looking for a sample with ploidy > 1. Single-dot missing GTs
+    # (which _ploidy_from_gt maps to 1) are naturally skipped by the p > 1 guard.
+    max_sites = 100_000
     ploidy_map: dict[str, int] = {}
     remaining = set(chrom_list)
+    site_count: dict[str, int] = {}
     with subprocess.Popen(
         ["tabix", vcf_path, *chrom_list],
         stdout=subprocess.PIPE,
@@ -680,15 +685,31 @@ def infer_ploidy_per_contig(vcf_path: str, chrom_list: List[str]) -> "dict[str, 
             chrom = fields[0]
             if chrom not in remaining:
                 continue
-            first_gt = fields[9].split(":")[0]
-            ploidy_map[chrom] = _ploidy_from_gt(first_gt)
-            remaining.discard(chrom)
+            found_diploid = False
+            for sample_field in fields[9:]:
+                p = _ploidy_from_gt(sample_field.split(":")[0])
+                if p > 1:
+                    ploidy_map[chrom] = p
+                    remaining.discard(chrom)
+                    found_diploid = True
+                    break
+            if not found_diploid:
+                site_count[chrom] = site_count.get(chrom, 0) + 1
+                if site_count[chrom] >= max_sites:
+                    ploidy_map[chrom] = 1  # genuinely haploid
+                    remaining.discard(chrom)
             if not remaining:
                 break
         proc.terminate()
 
+    # Chroms whose records were all haploid-looking but the stream ended before max_sites:
+    # we've seen at least one record, so they're genuinely haploid rather than absent.
+    for chrom in [c for c in remaining if c in site_count]:
+        ploidy_map[chrom] = 1
+        remaining.discard(chrom)
+
     if remaining:
-        # Order the error report by the user's original chrom_list for reproducible messages.
+        # Only chroms with NO records at all reach here.
         missing = [c for c in chrom_list if c in remaining]
         raise RuntimeError(
             f"No genotype records found in VCF for contig(s) {missing!r}; cannot infer ploidy."
