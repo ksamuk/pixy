@@ -26,6 +26,9 @@ from pixy.enums import PixyStat
 from pixy.models import PixyTempResult
 from pixy.models import TajimaDResult
 from pixy.models import WattersonThetaResult
+from pixy.sprite import SpriteMask
+from pixy.sprite import WindowInvariantContributions
+from pixy.sprite import compute_window_invariant_contributions
 from pixy.stats.summary import compute_summary_dxy
 from pixy.stats.summary import compute_summary_fst
 from pixy.stats.summary import compute_summary_pi
@@ -411,8 +414,15 @@ def compute_summary_stats(  # noqa: C901
     # Invariant sites are only needed for pi, dxy, tajima_d, and watterson_theta, which use
     # callable-site counts in their denominators. FST only needs variant sites, so skip
     # invariant ingestion when FST is the sole requested statistic.
+    #
+    # When a sprite mask is supplied, the invariant denominator comes from the mask
+    # instead of from VCF invariants — the input VCF is variants-only by design, so
+    # `needs_invariants` should be False even for pi/dxy/tajima_d/watterson_theta.
+    sprite_mask: Optional[SpriteMask] = getattr(args, "sprite_mask", None)
     stats_needing_invariants = {"pi", "dxy", "tajima_d", "watterson_theta"}
-    needs_invariants: bool = bool(stats_needing_invariants.intersection(args.stats))
+    needs_invariants: bool = (
+        bool(stats_needing_invariants.intersection(args.stats)) and sprite_mask is None
+    )
 
     # read in the genotype data for the chunk
     callset_is_none, gt_array, pos_array = read_and_filter_genotypes(
@@ -447,6 +457,11 @@ def compute_summary_stats(  # noqa: C901
         if per_site_fst_results is not None:
             pixy_output.extend(per_site_fst_results)
 
+    # Whether the sprite path is active (drives per-window invariant-contribution lookups
+    # and the post-hoc Watterson/Tajima merges further down).
+    sprite_active: bool = sprite_mask is not None
+    pop_names_list: List[str] = [str(p) for p in popnames]
+
     # loop over the windows within the chunk and compute summary stats
     for window_index in range(0, len(window_list_chunk)):
         window_pos_1 = window_list_chunk[window_index][0]
@@ -476,6 +491,62 @@ def compute_summary_stats(  # noqa: C901
             if len(gt_region) == 0:
                 window_is_empty = True
 
+        # Sprite invariant contribution for this window (computed once and reused
+        # across pi/dxy/tajima/watterson). When the sprite mask is not active, this
+        # stays None and the consumers behave exactly as before.
+        invariant_contribution: Optional[WindowInvariantContributions] = None
+        if sprite_active:
+            assert sprite_mask is not None  # narrowed by sprite_active
+            # Variant positions within the current window (1-based, pixy convention),
+            # used to subtract variant sites from each sprite range when computing the
+            # invariant count. `pos_array` is the entire chunk; subset to the window.
+            if pos_array is None:
+                window_var_positions: List[int] = []
+            else:
+                in_window = (pos_array >= window_pos_1) & (pos_array <= window_pos_2)
+                window_var_positions = [int(p) for p in np.asarray(pos_array)[in_window]]
+            invariant_contribution = compute_window_invariant_contributions(
+                sprite_mask=sprite_mask,
+                chromosome=chromosome,
+                window_pos_1=window_pos_1,
+                window_pos_2=window_pos_2,
+                variant_positions=window_var_positions,
+                pop_names=pop_names_list,
+                ploidy=chrom_ploidy,
+            )
+            # If the window had no VCF variants AND we got at least one invariant site
+            # back from the mask, treat the window as non-empty: the sprite contribution
+            # supplies a real denominator. Without this flip the consumers would NA-out
+            # everything and discard the invariant-only data.
+            if window_is_empty:
+                any_inv = any(p.num_sites > 0 for p in invariant_contribution.pi.values()) or any(
+                    d.num_sites > 0 for d in invariant_contribution.dxy.values()
+                )
+                if any_inv:
+                    window_is_empty = False
+                    # Build a zero-row genotype region so the per-stat code paths don't
+                    # crash on `gt_region.take(...)`. Each compute_summary_X function
+                    # handles the empty-population case by emitting NA, after which the
+                    # invariant_contribution merge promotes the totals.
+                    if gt_array is not None and len(gt_array) > 0:
+                        gt_region = gt_array[0:0]
+                    else:
+                        # No variant rows in this chunk to slice from (sparse VCF, or
+                        # the whole chunk is variant-free). Construct a zero-row
+                        # GenotypeArray of (0, n_samples, ploidy) so .take(popindices[pop])
+                        # still returns an empty pop-specific array. We route the
+                        # construction through [0:0] so it picks up the same
+                        # type-narrowing as the slice-from-existing branch above.
+                        max_idx = -1
+                        for idx in popindices.values():
+                            if len(idx) > 0:
+                                max_idx = max(max_idx, int(np.max(idx)))
+                        n_samples = max_idx + 1 if max_idx >= 0 else 0
+                        empty_full = GenotypeArray(
+                            np.empty((0, n_samples, chrom_ploidy), dtype=np.int8)
+                        )
+                        gt_region = empty_full[0:0]
+
         # PI:
         # AVERAGE NUCLEOTIDE DIFFERENCES WITHIN POPULATIONS
 
@@ -488,6 +559,7 @@ def compute_summary_stats(  # noqa: C901
                 chromosome=chromosome,
                 window_pos_1=window_pos_1,
                 window_pos_2=window_pos_2,
+                invariant_contribution=invariant_contribution,
             )
 
             pixy_output.extend(pi_results)
@@ -505,6 +577,7 @@ def compute_summary_stats(  # noqa: C901
                 chromosome=chromosome,
                 window_pos_1=window_pos_1,
                 window_pos_2=window_pos_2,
+                invariant_contribution=invariant_contribution,
             )
 
             pixy_output.extend(dxy_results)
@@ -557,6 +630,14 @@ def compute_summary_stats(  # noqa: C901
                     # otherwise compute Tajima's D as normal
                     else:
                         tajima_result = calc_tajima_d(gt_pop)
+                # Add the sprite invariant-site contribution to num_sites only.
+                # Invariants don't contribute to raw_pi, Watterson's theta, the per-site
+                # variant-class counts, or the d_stdev — those are all variant-only quantities.
+                num_sites = tajima_result.num_sites
+                if invariant_contribution is not None:
+                    inv_t = invariant_contribution.tajima.get(str(pop))
+                    if inv_t is not None:
+                        num_sites = num_sites + inv_t.num_sites
                 # consult the docstring of `PixyTempResult` for more details on overloaded fields
                 pixy_results: PixyTempResult = PixyTempResult(
                     pixy_stat=PixyStat.TAJIMA_D,
@@ -566,7 +647,7 @@ def compute_summary_stats(  # noqa: C901
                     window_pos_1=window_pos_1,
                     window_pos_2=window_pos_2,
                     calculated_stat=tajima_result.tajima_d,
-                    shared_sites_with_alleles=tajima_result.num_sites,
+                    shared_sites_with_alleles=num_sites,
                     total_differences=tajima_result.raw_pi,
                     total_comparisons=tajima_result.watterson_theta,
                     total_missing=tajima_result.d_stdev,
@@ -598,6 +679,43 @@ def compute_summary_stats(  # noqa: C901
                         watterson_result = calc_watterson_theta(gt_pop)
                     # consult the docstring of `PixyTempResult`
                     # for more details on overloaded fields
+                # Merge in the sprite invariant contribution. Invariants don't add to
+                # raw_theta or to num_var_sites (no variants by definition), but they DO
+                # add to num_sites and reshape `num_weighted_sites` because that quantity
+                # depends on the window-wide `max(k_haps)` across both variants and
+                # invariants. We recompute weighted_sites here from the union distribution.
+                num_sites_combined = watterson_result.num_sites
+                raw_theta = watterson_result.raw_theta
+                num_var_sites = watterson_result.num_var_sites
+                num_weighted = watterson_result.num_weighted_sites
+                avg_theta = watterson_result.avg_theta
+                if invariant_contribution is not None:
+                    inv_w = invariant_contribution.watterson.get(str(pop))
+                    if inv_w is not None and inv_w.num_sites > 0:
+                        # Combine k-distributions. The variant side is available from the
+                        # genotype array, but recomputing it costs little and keeps the
+                        # logic localized; reach for it only when we actually have an
+                        # invariant contribution to merge in.
+                        from collections import Counter
+
+                        k_dist: "Counter[int]" = Counter(inv_w.k_haps_counter)
+                        if not window_is_empty and gt_region is not None:
+                            gt_pop = gt_region.take(popindices[pop], axis=1)
+                            if len(gt_pop) > 0:
+                                allele_counts = gt_pop.count_alleles()
+                                for k_haps in np.asarray(allele_counts).sum(axis=1):
+                                    if k_haps > 0:
+                                        k_dist[int(k_haps)] += 1
+                        num_sites_combined = num_sites_combined + inv_w.num_sites
+                        if k_dist:
+                            max_k = max(k_dist)
+                            num_weighted = float(
+                                sum(count * (k / max_k) for k, count in k_dist.items())
+                            )
+                        # Recompute avg_theta with the new denominator. `raw_theta` from
+                        # `calc_watterson_theta` may already be a numeric value or "NA".
+                        if num_sites_combined > 0 and not isinstance(raw_theta, str):
+                            avg_theta = float(raw_theta) / num_sites_combined
                 pixy_results = PixyTempResult(
                     pixy_stat=PixyStat.WATTERSON_THETA,
                     population_1=pop,
@@ -605,11 +723,11 @@ def compute_summary_stats(  # noqa: C901
                     chromosome=chromosome,
                     window_pos_1=window_pos_1,
                     window_pos_2=window_pos_2,
-                    calculated_stat=watterson_result.avg_theta,
-                    shared_sites_with_alleles=watterson_result.num_sites,
-                    total_differences=watterson_result.raw_theta,
-                    total_comparisons=watterson_result.num_var_sites,
-                    total_missing=watterson_result.num_weighted_sites,
+                    calculated_stat=avg_theta,
+                    shared_sites_with_alleles=num_sites_combined,
+                    total_differences=raw_theta,
+                    total_comparisons=num_var_sites,
+                    total_missing=num_weighted,
                 )
                 pixy_output.append(pixy_results)
 

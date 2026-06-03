@@ -25,6 +25,7 @@ from pixy.models import DxyResult
 from pixy.models import FstResult
 from pixy.models import PiResult
 from pixy.models import PixyTempResult
+from pixy.sprite import WindowInvariantContributions
 
 
 def precompute_filtered_variant_array(
@@ -157,8 +158,17 @@ def compute_summary_pi(
     chromosome: str,
     window_pos_1: int,
     window_pos_2: int,
+    invariant_contribution: Union[WindowInvariantContributions, None] = None,
 ) -> List[PixyTempResult]:
-    """Compute pi for all populations in the specified window."""
+    """
+    Compute pi for all populations in the specified window.
+
+    When ``invariant_contribution`` is supplied (the sprite-mask code path), each
+    population's invariant-site contribution to ``total_comparisons``, ``total_missing``,
+    and ``no_sites`` is added on top of the variant-site totals derived from
+    ``gt_region``. ``total_differences`` is unchanged because invariant sites have
+    no allele differences by definition.
+    """
     pixy_results: List[PixyTempResult] = []
 
     for pop in popnames:
@@ -190,6 +200,31 @@ def compute_summary_pi(
                 no_sites = int(np.count_nonzero(np.sum(gt_pop.count_alleles(max_allele=1), 1)))
                 pi_result = calc_pi(gt_pop)
 
+        # Merge in the analytical invariant contribution from the sprite mask, if any.
+        # The variant-derived `total_diffs / total_comps / total_missing` came from
+        # `calc_pi` (with NA for the empty-window case). Invariants only add to the
+        # denominator; the numerator (diffs) stays as-is.
+        total_diffs = pi_result.total_diffs
+        total_comps = pi_result.total_comps
+        total_missing = pi_result.total_missing
+        if invariant_contribution is not None:
+            inv = invariant_contribution.pi.get(str(pop))
+            if inv is not None and (inv.comps > 0 or inv.missing > 0 or inv.num_sites > 0):
+                # Promote NA to 0 once we have any non-NA contribution; pixy treats NA as
+                # "no data observed", but adding invariant comps means we DO have data.
+                total_diffs = 0 if total_diffs == "NA" else total_diffs
+                total_comps = inv.comps if total_comps == "NA" else total_comps + inv.comps
+                total_missing = (
+                    inv.missing if total_missing == "NA" else total_missing + inv.missing
+                )
+                no_sites += inv.num_sites
+
+        avg_pi: Union[float, str]
+        if isinstance(total_comps, int) and total_comps > 0 and not isinstance(total_diffs, str):
+            avg_pi = total_diffs / total_comps
+        else:
+            avg_pi = pi_result.avg_pi  # NA passthrough
+
         # create a `PixyTempResult` composed of pi results to write to file
         pixy_result: PixyTempResult = PixyTempResult(
             pixy_stat=PixyStat.PI,
@@ -198,11 +233,11 @@ def compute_summary_pi(
             chromosome=chromosome,
             window_pos_1=window_pos_1,
             window_pos_2=window_pos_2,
-            calculated_stat=pi_result.avg_pi,
+            calculated_stat=avg_pi,
             shared_sites_with_alleles=no_sites,
-            total_differences=pi_result.total_diffs,
-            total_comparisons=pi_result.total_comps,
-            total_missing=pi_result.total_missing,
+            total_differences=total_diffs,
+            total_comparisons=total_comps,
+            total_missing=total_missing,
         )
 
         # append the result to list of `PixyTempResult` objects
@@ -219,8 +254,15 @@ def compute_summary_dxy(
     chromosome: str,
     window_pos_1: int,
     window_pos_2: int,
+    invariant_contribution: Union[WindowInvariantContributions, None] = None,
 ) -> List[PixyTempResult]:
-    """Compute dxy for all pairwise combinations of populations in the specified window."""
+    """
+    Compute dxy for all pairwise combinations of populations in the specified window.
+
+    When ``invariant_contribution`` is supplied (the sprite-mask code path), each
+    population pair's invariant-site contribution to ``total_comparisons``,
+    ``total_missing``, and ``no_sites`` is added on top of the variant-site totals.
+    """
     pixy_results: List[PixyTempResult] = []
 
     dxy_pop_list = list(combinations(popnames, 2))
@@ -266,6 +308,25 @@ def compute_summary_dxy(
                 no_sites = np.sum(np.logical_and(pop1_sites, pop2_sites))
                 dxy_result = calc_dxy(pop1_gt_array=pop1_gt_region, pop2_gt_array=pop2_gt_region)
 
+        total_diffs = dxy_result.total_diffs
+        total_comps = dxy_result.total_comps
+        total_missing = dxy_result.total_missing
+        if invariant_contribution is not None:
+            inv = invariant_contribution.dxy.get((str(pop1), str(pop2)))
+            if inv is not None and (inv.comps > 0 or inv.missing > 0 or inv.num_sites > 0):
+                total_diffs = 0 if total_diffs == "NA" else total_diffs
+                total_comps = inv.comps if total_comps == "NA" else total_comps + inv.comps
+                total_missing = (
+                    inv.missing if total_missing == "NA" else total_missing + inv.missing
+                )
+                no_sites = int(no_sites) + inv.num_sites
+
+        avg_dxy: Union[float, str]
+        if isinstance(total_comps, int) and total_comps > 0 and not isinstance(total_diffs, str):
+            avg_dxy = total_diffs / total_comps
+        else:
+            avg_dxy = dxy_result.avg_dxy
+
         # create a string of for the dxy results
         pixy_result: PixyTempResult = PixyTempResult(
             pixy_stat=PixyStat.DXY,
@@ -274,11 +335,11 @@ def compute_summary_dxy(
             chromosome=chromosome,
             window_pos_1=window_pos_1,
             window_pos_2=window_pos_2,
-            calculated_stat=dxy_result.avg_dxy,
+            calculated_stat=avg_dxy,
             shared_sites_with_alleles=no_sites,
-            total_differences=dxy_result.total_diffs,
-            total_comparisons=dxy_result.total_comps,
-            total_missing=dxy_result.total_missing,
+            total_differences=total_diffs,
+            total_comparisons=total_comps,
+            total_missing=total_missing,
         )
 
         # append the result to list of `PixyTempResult` objects

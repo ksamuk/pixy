@@ -9,6 +9,7 @@ from pixy.args_validation import PixyArgs
 from pixy.args_validation import _ploidy_from_gt
 from pixy.args_validation import check_and_validate_args
 from pixy.args_validation import infer_ploidy_per_contig
+from pixy.args_validation import validate_bed_path
 
 
 @pytest.mark.parametrize("bypass_variant_check", [True, False])
@@ -122,3 +123,41 @@ def test_infer_ploidy_per_contig_missing_contig_raises(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="No genotype records found"):
         infer_ploidy_per_contig(str(bgz_path), ["chr1", "chrMissing"])
+
+
+################################################################################
+# Tests for BED coordinate conversion (0-based half-open -> 1-based inclusive)
+################################################################################
+
+
+def test_validate_bed_path_converts_to_one_based_inclusive(tmp_path: Path) -> None:
+    """BED rows are stored as 1-based inclusive (chromStart+1, chromEnd) internally."""
+    bed_path = tmp_path / "regions.bed"
+    bed_path.write_text("chr1\t0\t1000\nchr1\t1499\t1530\nchrX\t99\t200\n")
+
+    table = validate_bed_path(bed_path)
+
+    assert table.chroms == ("chr1", "chr1", "chrX")
+    # 0..1000 (half-open) == 1..1000 (1-based inclusive)
+    # 1499..1530        == 1500..1530
+    # 99..200           == 100..200
+    assert table.chrom_starts == (1, 1500, 100)
+    assert table.chrom_ends == (1000, 1530, 200)
+
+
+def test_validate_bed_path_rejects_end_le_start(tmp_path: Path) -> None:
+    """An empty or inverted BED interval (chromEnd <= chromStart) is rejected."""
+    bed_path = tmp_path / "bad.bed"
+    bed_path.write_text("chr1\t500\t500\n")
+
+    with pytest.raises(ValueError, match="chromEnd must be > chromStart"):
+        validate_bed_path(bed_path)
+
+
+def test_validate_bed_path_rejects_negative_start(tmp_path: Path) -> None:
+    """A negative chromStart is rejected."""
+    bed_path = tmp_path / "bad.bed"
+    bed_path.write_text("chr1\t-1\t100\n")
+
+    with pytest.raises(ValueError, match="chromStart must be >= 0"):
+        validate_bed_path(bed_path)
