@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from functools import cached_property
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -28,9 +29,9 @@ from numpy.typing import NDArray
 
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
-from pixy.wisp import WispMask
-from pixy.wisp import validate_wisp_against_populations
-from pixy.wisp import validate_wisp_data_rows
+
+if TYPE_CHECKING:
+    from pixy.wisp import WispMask
 
 # ---------------------------------------------------------------------------
 # Pandas-free table types that replace the previous pandas.DataFrame fields on
@@ -460,18 +461,20 @@ def validate_vcf_path(vcf_path: str) -> None:
             '"tabix [filename].vcf.gz" if necessary)'
         )
 
-    if not (os.path.exists(vcf_path + ".tbi") or os.path.exists(vcf_path + ".csi")):
+    # Pick whichever index is present (prefer .tbi to match tabix's own preference) and bump
+    # its mtime/atime to now so it never appears older than the VCF on disk (some pipelines
+    # rsync the VCF after the index and tabix then complains). `os.utime` is the in-process
+    # equivalent of `touch -c` and avoids a fork+exec on every pixy run.
+    if os.path.exists(vcf_path + ".tbi"):
+        index_path = vcf_path + ".tbi"
+    elif os.path.exists(vcf_path + ".csi"):
+        index_path = vcf_path + ".csi"
+    else:
         raise ValueError(
             "The vcf is not indexed. Please either use `tabix` or `bcftools` to"
             "produce a `.tbi` or `.csi` index."
         )
-
-    # update the date of the index
-    # this apparently resolves issues of indexes being older than vcfs in some pipelines
-    if os.path.exists(vcf_path + ".tbi"):
-        subprocess.run(["touch", "-c", str(vcf_path + ".tbi")])
-    else:
-        subprocess.run(["touch", "-c", str(vcf_path + ".csi")])
+    os.utime(index_path, None)
 
 
 def validate_output_path(output_folder: str, output_prefix: str) -> Tuple[str, str]:
@@ -524,8 +527,9 @@ def get_chrom_list(args: argparse.Namespace) -> List[str]:
     Raises:
         Exception: If any chromosomes specified are not found in the VCF.
     """
-    # get the list of all chromosomes in the dataset
-    chrom_all = subprocess.check_output("tabix -l " + args.vcf, shell=True).decode("utf-8").split()
+    # get the list of all chromosomes in the dataset. `shell=False` avoids the extra `/bin/sh`
+    # fork+exec on each call and removes shell-injection risk from user-supplied VCF paths.
+    chrom_all = subprocess.check_output(["tabix", "-l", args.vcf]).decode("utf-8").split()
     if args.chromosomes != "all":
         # If a subset of chromosomes were specified, limit our analysis to those, and ensure that
         # they are all present in the VCF
@@ -544,12 +548,17 @@ def get_chrom_list(args: argparse.Namespace) -> List[str]:
     return chrom_list
 
 
-def validate_window_and_interval_args(args: argparse.Namespace) -> str:
+def validate_window_and_interval_args(
+    args: argparse.Namespace, chrom_list: Union[List[str], None] = None
+) -> str:
     """
     Validate the window and interval arguments when a BED file is not provided.
 
     Args:
         args: The parsed command-line arguments.
+        chrom_list: Pre-computed list of chromosomes to analyze. When `None`, the function
+            falls back to calling `get_chrom_list(args)` itself. Callers that already have a
+            chrom list should pass it in to skip the extra `tabix -l` subprocess.
 
     Returns:
         A "check message", which is "OK" if all conditions are met, or a "WARNING" if the specified
@@ -574,7 +583,8 @@ def validate_window_and_interval_args(args: argparse.Namespace) -> str:
             "When specifying an interval, both --interval_start and --interval_end are required."
         )
 
-    chrom_list: List[str] = get_chrom_list(args)
+    if chrom_list is None:
+        chrom_list = get_chrom_list(args)
     if (args.interval_start is not None or args.interval_end is not None) and len(chrom_list) > 1:
         raise ValueError(
             "--interval_start and --interval_end are not valid when calculating over "
@@ -595,27 +605,67 @@ def validate_window_and_interval_args(args: argparse.Namespace) -> str:
 
 
 # helper for parsing ploidy from a single GT string (e.g. "0/0", "0|1", "1")
-def _read_vcf_samples(vcf_path: str) -> List[str]:
+def _read_vcf_samples_and_alts(  # noqa: C901
+    vcf_path: str, scan_alts: bool, max_alt_records: int = 100_000
+) -> Tuple[List[str], Union[set, None]]:
     """
-    Read the sample names from a (bgzipped) VCF's `#CHROM` header line.
+    Read the VCF header for the sample list and, optionally, sample ALT values from records.
 
-    Replaces `allel.read_vcf_headers(...).samples` — pixy only needs the sample list, and
-    going through scikit-allel forces the import of dask/zarr/pyarrow/scipy (~50 MB RSS,
-    ~300 ms wall) every time the validator runs. This helper streams just the VCF header
-    block and stops as soon as it finds the column line.
+    A single ``gzip.open`` covers both passes — initializing zlib twice on the same file
+    used to cost ~5–50 ms per run depending on header size and disk speed.
+
+    The returned ``alt_values`` set follows the original invariant-check semantics: scan up
+    to ``max_alt_records`` data records, but exit early once both the invariant marker
+    (``.``) and at least one variant ALT have been seen, since at that point the downstream
+    decision is fully determined. When ``scan_alts`` is False the second pass is skipped
+    entirely and ``alt_values`` is returned as ``None``.
+
+    Replaces the previous `allel.read_vcf_headers(...).samples`-based reader, which pulled
+    in dask/zarr/pyarrow/scipy (~50 MB RSS, ~300 ms wall) just to grab the sample list.
+
+    Raises:
+        ValueError: if the file ends before the `#CHROM` column line is found.
     """
+    samples: Union[List[str], None] = None
+    alt_values: Union[set, None] = set() if scan_alts else None
+    seen_alt_records = 0
     with gzip.open(vcf_path, "rt") as fh:
         for line in fh:
-            if line.startswith("#CHROM"):
-                fields = line.rstrip("\n").split("\t")
-                # standard VCF: 9 fixed columns then per-sample columns
-                return fields[9:]
-            if not line.startswith("#"):
-                # Past the header without seeing #CHROM — malformed VCF
+            if samples is None:
+                if line.startswith("#CHROM"):
+                    fields = line.rstrip("\n").split("\t")
+                    # standard VCF: 9 fixed columns then per-sample columns
+                    samples = fields[9:]
+                    if not scan_alts:
+                        break
+                    continue
+                if not line.startswith("#"):
+                    # Past the header without seeing #CHROM — malformed VCF
+                    break
+                continue
+            # samples already captured; we're now in the data section reading ALT values
+            if line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t", 5)
+            if len(fields) >= 5:
+                # `alt_values` is non-None here because `scan_alts` was True (we'd have
+                # broken out above otherwise); the cast keeps mypy quiet without runtime cost.
+                assert alt_values is not None
+                alt_values.add(fields[4])
+            seen_alt_records += 1
+            # Once we've seen both an invariant ALT and a non-invariant ALT, the downstream
+            # check is fully decided and there's no point reading further.
+            assert alt_values is not None
+            if "." in alt_values and (alt_values - {"."}):
                 break
-    raise ValueError(
-        f"VCF {vcf_path!r} has no `#CHROM` header line; cannot determine sample names."
-    )
+            if seen_alt_records >= max_alt_records:
+                break
+
+    if samples is None:
+        raise ValueError(
+            f"VCF {vcf_path!r} has no `#CHROM` header line; cannot determine sample names."
+        )
+    return samples, alt_values
 
 
 def _ploidy_from_gt(gt_str: str) -> int:
@@ -772,18 +822,19 @@ def check_and_validate_args(  # noqa: C901
     # most of the downstream operations require a string
     validate_vcf_path(vcf_path)
 
-    if args.output_folder != "":
-        output_folder = args.output_folder + "/"
-    else:
-        output_folder = os.path.expanduser(os.getcwd() + "/")
-
-    output_prefix = output_folder + args.output_prefix
-
-    # Read the VCF header to get the sample list. Previously this used
-    # `allel.read_vcf_headers`, which transitively imports dask/zarr/pyarrow and adds ~300 ms
-    # / ~50 MB to startup. The sample list is the only piece of header info we use here, and
-    # the `#CHROM` column line that carries it is trivial to parse directly.
-    vcf_samples: List[str] = _read_vcf_samples(vcf_path)
+    # Whether the invariant-ALT scan can be skipped is known up front from the user-supplied
+    # flags: --bypass_invariant_check explicitly opts out, and supplying a --wisp_bed implies
+    # it (the wisp mask supplies the invariant denominator analytically). Computing this here
+    # lets the single-pass VCF reader below skip the data-section scan when it isn't needed.
+    bypass_invariant_check: bool = args.bypass_invariant_check or (
+        getattr(args, "wisp_bed", None) is not None
+    )
+    # One gzip pass for both the sample list (always needed) and the ALT-value scan (only
+    # when invariant-checking is on). Previously these were two separate `gzip.open` calls
+    # that each re-decompressed the VCF header.
+    vcf_samples, alt_values = _read_vcf_samples_and_alts(
+        vcf_path, scan_alts=not bypass_invariant_check
+    )
 
     logger.info("Validating VCF and input parameters...")
 
@@ -796,7 +847,6 @@ def check_and_validate_args(  # noqa: C901
 
     # CHECK CPU CONFIGURATION
     logger.info("Checking CPU configuration...")
-    check_message = "OK"
 
     available_cores: int = os.cpu_count() or 1
     if args.n_cores > available_cores:
@@ -817,10 +867,18 @@ def check_and_validate_args(  # noqa: C901
 
     # WISP MASK
     # If a wisp BED is supplied, --vcf is variants-only; the invariant-site denominator
-    # comes from the wisp mask and the invariant-presence check on the VCF is moot.
-    wisp_mask: Union[WispMask, None]
+    # comes from the wisp mask and the invariant-presence check on the VCF is moot
+    # (`bypass_invariant_check` was already set True above when --wisp_bed was supplied).
+    wisp_mask: Union["WispMask", None]
     wisp_bed_arg: Union[str, None] = getattr(args, "wisp_bed", None)
     if wisp_bed_arg is not None:
+        # Defer wisp imports: they pull in `json` and the wisp dataclasses, which add ~14 ms
+        # to startup but are only needed when --wisp_bed is supplied. Most pixy runs don't
+        # use a wisp mask, so this keeps their args-validation step lighter.
+        from pixy.wisp import WispMask
+        from pixy.wisp import validate_wisp_against_populations
+        from pixy.wisp import validate_wisp_data_rows
+
         wisp_path: Path = Path(os.path.expanduser(wisp_bed_arg))
         if not os.path.exists(wisp_path):
             raise FileNotFoundError(f"The specified wisp BED file {wisp_path} does not exist")
@@ -861,37 +919,9 @@ def check_and_validate_args(  # noqa: C901
     # check if the vcf contains any invariant sites
     # a very basic check: just looks for at least one invariant site in the alt field
     logger.info("Checking for invariant sites...")
-    check_message = "OK"
-    bypass_invariant_check: bool = args.bypass_invariant_check
-    # A wisp mask supplies the invariant-site denominator analytically, so it both
-    # implies and supersedes --bypass_invariant_check. Force it on (silently — the
-    # "EXTREME WARNING" log below is misleading in this mode).
-    if wisp_mask is not None:
-        bypass_invariant_check = True
-    if not bypass_invariant_check:
-        # Read up to the first 100k data records and collect the distinct ALT values.
-        # We bail out as soon as we have seen the invariant marker ('.') alongside at least one
-        # variant ALT, since at that point both branches of the check below are already decided.
-        # Implemented in pure Python (no shell pipeline) to avoid shell-injection risk from
-        # user-supplied VCF paths, and to remove the dependency on system `gunzip`/`awk`/`sort`.
-        alt_values: set[str] = set()
-        max_records = 100_000
-        seen_records = 0
-        with gzip.open(vcf_path, "rt") as fh:
-            for line in fh:
-                if line.startswith("#"):
-                    continue
-                fields = line.rstrip("\n").split("\t", 5)
-                if len(fields) >= 5:
-                    alt_values.add(fields[4])
-                seen_records += 1
-                # Once we've seen both an invariant ALT and a non-invariant ALT, the check below
-                # is fully decided and there's no point reading further.
-                if "." in alt_values and (alt_values - {"."}):
-                    break
-                if seen_records >= max_records:
-                    break
-
+    # `alt_values` was populated by the up-front single-pass VCF read above; it is None
+    # exactly when `bypass_invariant_check` was already true, i.e. the scan was skipped.
+    if alt_values is not None:
         if "." not in alt_values:
             raise ValueError(
                 "The provided VCF appears to contain no invariant sites "
@@ -916,8 +946,6 @@ def check_and_validate_args(  # noqa: C901
             )
 
     # check if requested chromosomes exist in vcf
-    # parses the whole CHROM column (!)
-
     logger.info("Checking chromosome data...")
 
     chrom_list: List[str] = get_chrom_list(args)
@@ -927,10 +955,9 @@ def check_and_validate_args(  # noqa: C901
     # validate the BED file (if present)
 
     logger.info("Checking intervals/sites...")
-    check_message = "OK"
 
     if args.bed_file is None:
-        check_message = validate_window_and_interval_args(args)
+        check_message = validate_window_and_interval_args(args, chrom_list=chrom_list)
         logger.info(check_message)
     else:
         if (
@@ -983,17 +1010,15 @@ def check_and_validate_args(  # noqa: C901
     # - format is IND POP (tab separated)
     # - throws an error if individuals are missing from VCF
 
-    # get a list of samples from the callset
-    samples_list = vcf_samples
     # make sure every indiv in the pop file is in the VCF callset
     sample_ids: List[str] = list(populations.ids)
-    missing = list(set(sample_ids) - set(samples_list))
+    missing = list(set(sample_ids) - set(vcf_samples))
 
     # find the samples in the callset index by matching up the order of samples between the
     # population file and the callset
     # also check if there are invalid samples in the popfile
     try:
-        samples_callset_index = tuple(samples_list.index(s) for s in populations.ids)
+        samples_callset_index = tuple(vcf_samples.index(s) for s in populations.ids)
     except ValueError as e:
         raise ValueError(
             f"The following samples are listed in the population file but not in the VCF: {missing}"
