@@ -192,15 +192,17 @@ def main() -> None:  # noqa: C901
         required=False,
     )
     optional.add_argument(
-        "--sprite_bed",
+        "--wisp_bed",
         type=str,
         nargs="?",
         help=(
-            "Path to a sprite-format quantized callable-sites BED (bgzipped and tabix indexed).\n"
+            "Path to a wisp-format quantized callable-sites BED (bgzipped and tabix indexed).\n"
             "When supplied, --vcf is treated as a variants-only callset and the per-window\n"
             "callable-site denominator for pi/dxy/tajima_d/watterson_theta is sourced from the\n"
-            "sprite mask. The mask's per-population sample counts must agree with the\n"
-            "--populations file. FST is unaffected."
+            "wisp mask. The mask's per-population sample counts must agree with the\n"
+            "--populations file. FST is unaffected.\n"
+            "See https://github.com/samuk-lab/wisp for the companion tool that produces\n"
+            "wisp BEDs."
         ),
         required=False,
     )
@@ -345,10 +347,10 @@ def main() -> None:  # noqa: C901
     # propagate per-contig ploidy map onto the raw args namespace so it is available to
     # worker functions (which currently receive `args`, not `pixy_args`).
     args.ploidy_map = pixy_args.ploidy_map
-    # Propagate the sprite mask (parsed once during validation) onto args so worker
+    # Propagate the wisp mask (parsed once during validation) onto args so worker
     # functions can reach it without re-reading the BED header. The mask object holds
     # only the metadata and the BED path; per-window queries are made via tabix.
-    args.sprite_mask = pixy_args.sprite_mask
+    args.wisp_mask = pixy_args.wisp_mask
     popindices = {
         name: pixy_args.populations.indices_for(str(name)) for name in pixy_args.pop_names
     }

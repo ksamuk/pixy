@@ -25,7 +25,7 @@ from pixy.models import DxyResult
 from pixy.models import FstResult
 from pixy.models import PiResult
 from pixy.models import PixyTempResult
-from pixy.sprite import WindowInvariantContributions
+from pixy.wisp import WindowInvariantContributions
 
 
 def precompute_filtered_variant_array(
@@ -163,7 +163,7 @@ def compute_summary_pi(
     """
     Compute pi for all populations in the specified window.
 
-    When ``invariant_contribution`` is supplied (the sprite-mask code path), each
+    When ``invariant_contribution`` is supplied (the wisp-mask code path), each
     population's invariant-site contribution to ``total_comparisons``, ``total_missing``,
     and ``no_sites`` is added on top of the variant-site totals derived from
     ``gt_region``. ``total_differences`` is unchanged because invariant sites have
@@ -200,7 +200,7 @@ def compute_summary_pi(
                 no_sites = int(np.count_nonzero(np.sum(gt_pop.count_alleles(max_allele=1), 1)))
                 pi_result = calc_pi(gt_pop)
 
-        # Merge in the analytical invariant contribution from the sprite mask, if any.
+        # Merge in the analytical invariant contribution from the wisp mask, if any.
         # The variant-derived `total_diffs / total_comps / total_missing` came from
         # `calc_pi` (with NA for the empty-window case). Invariants only add to the
         # denominator; the numerator (diffs) stays as-is.
@@ -259,7 +259,7 @@ def compute_summary_dxy(
     """
     Compute dxy for all pairwise combinations of populations in the specified window.
 
-    When ``invariant_contribution`` is supplied (the sprite-mask code path), each
+    When ``invariant_contribution`` is supplied (the wisp-mask code path), each
     population pair's invariant-site contribution to ``total_comparisons``,
     ``total_missing``, and ``no_sites`` is added on top of the variant-site totals.
     """

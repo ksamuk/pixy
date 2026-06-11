@@ -204,7 +204,7 @@ def run_pixy_helper(  # noqa: C901
     fst_type: Optional[str] = None,
     fst_components: bool = False,
     tajima_components: bool = False,
-    sprite_bed_path: Optional[Path] = None,
+    wisp_bed_path: Optional[Path] = None,
 ) -> None:
     """
     Run `pixy` with the specified arguments.
@@ -280,8 +280,8 @@ def run_pixy_helper(  # noqa: C901
     if include_multiallelic_snps:
         test_args.extend(["--include_multiallelic_snps"])
 
-    if sprite_bed_path is not None:
-        test_args.extend(["--sprite_bed", f"{sprite_bed_path}"])
+    if wisp_bed_path is not None:
+        test_args.extend(["--wisp_bed", f"{wisp_bed_path}"])
 
     print(f"test_args: {test_args}")
     with patch.object(sys, "argv", test_args):

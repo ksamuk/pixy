@@ -26,13 +26,13 @@ from pixy.enums import PixyStat
 from pixy.models import PixyTempResult
 from pixy.models import TajimaDResult
 from pixy.models import WattersonThetaResult
-from pixy.sprite import SpriteMask
-from pixy.sprite import WindowInvariantContributions
-from pixy.sprite import compute_window_invariant_contributions
 from pixy.stats.summary import compute_summary_dxy
 from pixy.stats.summary import compute_summary_fst
 from pixy.stats.summary import compute_summary_pi
 from pixy.stats.summary import precompute_filtered_variant_array
+from pixy.wisp import WindowInvariantContributions
+from pixy.wisp import WispMask
+from pixy.wisp import compute_window_invariant_contributions
 
 # Note: the previous pandas-based aggregation pipeline (`aggregate_output()` plus the helpers
 # `_group_aggregated_output`, `_calculate_aggregated_stat`, `_coerce_aggregated_output_types`,
@@ -415,13 +415,13 @@ def compute_summary_stats(  # noqa: C901
     # callable-site counts in their denominators. FST only needs variant sites, so skip
     # invariant ingestion when FST is the sole requested statistic.
     #
-    # When a sprite mask is supplied, the invariant denominator comes from the mask
+    # When a wisp mask is supplied, the invariant denominator comes from the mask
     # instead of from VCF invariants — the input VCF is variants-only by design, so
     # `needs_invariants` should be False even for pi/dxy/tajima_d/watterson_theta.
-    sprite_mask: Optional[SpriteMask] = getattr(args, "sprite_mask", None)
+    wisp_mask: Optional[WispMask] = getattr(args, "wisp_mask", None)
     stats_needing_invariants = {"pi", "dxy", "tajima_d", "watterson_theta"}
     needs_invariants: bool = (
-        bool(stats_needing_invariants.intersection(args.stats)) and sprite_mask is None
+        bool(stats_needing_invariants.intersection(args.stats)) and wisp_mask is None
     )
 
     # read in the genotype data for the chunk
@@ -457,9 +457,9 @@ def compute_summary_stats(  # noqa: C901
         if per_site_fst_results is not None:
             pixy_output.extend(per_site_fst_results)
 
-    # Whether the sprite path is active (drives per-window invariant-contribution lookups
+    # Whether the wisp path is active (drives per-window invariant-contribution lookups
     # and the post-hoc Watterson/Tajima merges further down).
-    sprite_active: bool = sprite_mask is not None
+    wisp_active: bool = wisp_mask is not None
     pop_names_list: List[str] = [str(p) for p in popnames]
 
     # loop over the windows within the chunk and compute summary stats
@@ -491,14 +491,14 @@ def compute_summary_stats(  # noqa: C901
             if len(gt_region) == 0:
                 window_is_empty = True
 
-        # Sprite invariant contribution for this window (computed once and reused
-        # across pi/dxy/tajima/watterson). When the sprite mask is not active, this
+        # Wisp invariant contribution for this window (computed once and reused
+        # across pi/dxy/tajima/watterson). When the wisp mask is not active, this
         # stays None and the consumers behave exactly as before.
         invariant_contribution: Optional[WindowInvariantContributions] = None
-        if sprite_active:
-            assert sprite_mask is not None  # narrowed by sprite_active
+        if wisp_active:
+            assert wisp_mask is not None  # narrowed by wisp_active
             # Variant positions within the current window (1-based, pixy convention),
-            # used to subtract variant sites from each sprite range when computing the
+            # used to subtract variant sites from each wisp range when computing the
             # invariant count. `pos_array` is the entire chunk; subset to the window.
             if pos_array is None:
                 window_var_positions: List[int] = []
@@ -506,7 +506,7 @@ def compute_summary_stats(  # noqa: C901
                 in_window = (pos_array >= window_pos_1) & (pos_array <= window_pos_2)
                 window_var_positions = [int(p) for p in np.asarray(pos_array)[in_window]]
             invariant_contribution = compute_window_invariant_contributions(
-                sprite_mask=sprite_mask,
+                wisp_mask=wisp_mask,
                 chromosome=chromosome,
                 window_pos_1=window_pos_1,
                 window_pos_2=window_pos_2,
@@ -515,7 +515,7 @@ def compute_summary_stats(  # noqa: C901
                 ploidy=chrom_ploidy,
             )
             # If the window had no VCF variants AND we got at least one invariant site
-            # back from the mask, treat the window as non-empty: the sprite contribution
+            # back from the mask, treat the window as non-empty: the wisp contribution
             # supplies a real denominator. Without this flip the consumers would NA-out
             # everything and discard the invariant-only data.
             if window_is_empty:
@@ -630,7 +630,7 @@ def compute_summary_stats(  # noqa: C901
                     # otherwise compute Tajima's D as normal
                     else:
                         tajima_result = calc_tajima_d(gt_pop)
-                # Add the sprite invariant-site contribution to num_sites only.
+                # Add the wisp invariant-site contribution to num_sites only.
                 # Invariants don't contribute to raw_pi, Watterson's theta, the per-site
                 # variant-class counts, or the d_stdev — those are all variant-only quantities.
                 num_sites = tajima_result.num_sites
@@ -679,7 +679,7 @@ def compute_summary_stats(  # noqa: C901
                         watterson_result = calc_watterson_theta(gt_pop)
                     # consult the docstring of `PixyTempResult`
                     # for more details on overloaded fields
-                # Merge in the sprite invariant contribution. Invariants don't add to
+                # Merge in the wisp invariant contribution. Invariants don't add to
                 # raw_theta or to num_var_sites (no variants by definition), but they DO
                 # add to num_sites and reshape `num_weighted_sites` because that quantity
                 # depends on the window-wide `max(k_haps)` across both variants and
