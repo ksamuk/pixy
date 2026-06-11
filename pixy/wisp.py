@@ -1,5 +1,5 @@
 r"""
-Sprite mask support for pixy: variants-only VCF + a quantized callable-sites BED.
+Wisp mask support for pixy: variants-only VCF + a quantized callable-sites BED.
 
 Background
 ----------
@@ -9,22 +9,23 @@ genotype — the "callable" denominator. The canonical way to supply this is an
 all-sites VCF (one record per reference position, with `./.` GTs where coverage
 fails). All-sites VCFs are large and expensive to call.
 
-The sprite companion tool produces a much smaller representation: a BED with one
-column per population whose value is the number of samples in that population
-with an "intact" genotype across every site in the interval. Adjacent intervals
-with identical counts across all populations are collapsed into a single row.
+The wisp companion tool (https://github.com/samuk-lab/wisp) produces a much smaller
+representation: a BED with one column per population whose value is the number of
+samples in that population with an "intact" genotype across every site in the
+interval. Adjacent intervals with identical counts across all populations are
+collapsed into a single row.
 
-When a sprite BED is supplied alongside a variants-only VCF, pixy reads variant
+When a wisp BED is supplied alongside a variants-only VCF, pixy reads variant
 sites from the VCF as before and analytically adds the contribution of invariant
 sites to each window's denominator, deriving the per-site sample counts from the
-sprite mask. The variant-site arithmetic is unchanged.
+wisp mask. The variant-site arithmetic is unchanged.
 
 Format
 ------
 The first line of the BED carries a JSON header preceded by
-``#sprite_mask_metadata\\t``::
+``#wisp_mask_metadata\\t``::
 
-    #sprite_mask_metadata\\t{"populations": ["GBR", "YRI"],
+    #wisp_mask_metadata\\t{"populations": ["GBR", "YRI"],
                             "population_sample_counts": {"GBR": 10, "YRI": 10},
                             "population_columns": [
                               {"column_number": 4, "name": "GBR"},
@@ -51,18 +52,18 @@ from typing import Tuple
 
 
 @dataclass(frozen=True)
-class SpriteMetadata:
+class WispMetadata:
     """
-    Metadata parsed from the ``#sprite_mask_metadata`` JSON header.
+    Metadata parsed from the ``#wisp_mask_metadata`` JSON header.
 
     Attributes:
         populations: per-population labels in their BED-column order.
         population_sample_counts: total sample count (``N``) per population — the maximum
             possible value any data cell can take.
-        threshold: depth (or whatever criterion sprite used) below which a sample is
+        threshold: depth (or whatever criterion wisp used) below which a sample is
             considered to lack an intact genotype. Stored for diagnostics only.
         column_index_for: mapping from population name to the 0-based index into the data
-            row's split fields where that population's count lives. (Sprite's
+            row's split fields where that population's count lives. (Wisp's
             ``column_number`` is 1-based; we convert.)
     """
 
@@ -72,25 +73,23 @@ class SpriteMetadata:
     column_index_for: Dict[str, int]
 
     @classmethod
-    def from_header_line(cls, line: str) -> "SpriteMetadata":
+    def from_header_line(cls, line: str) -> "WispMetadata":
         r"""
-        Parse the first ``#sprite_mask_metadata`` line of a sprite BED.
+        Parse the first ``#wisp_mask_metadata`` line of a wisp BED.
 
-        The expected shape is ``#sprite_mask_metadata\t{JSON}\n``.
+        The expected shape is ``#wisp_mask_metadata\t{JSON}\n``.
         """
-        if not line.startswith("#sprite_mask_metadata\t"):
-            raise ValueError(
-                "Sprite BED is missing the required `#sprite_mask_metadata` header line"
-            )
+        if not line.startswith("#wisp_mask_metadata\t"):
+            raise ValueError("Wisp BED is missing the required `#wisp_mask_metadata` header line")
         _, json_text = line.rstrip("\n").split("\t", 1)
         try:
             meta = json.loads(json_text)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Sprite metadata header is not valid JSON: {e.msg}") from e
+            raise ValueError(f"Wisp metadata header is not valid JSON: {e.msg}") from e
 
         for key in ("populations", "population_sample_counts", "population_columns"):
             if key not in meta:
-                raise ValueError(f"Sprite metadata is missing required key {key!r}")
+                raise ValueError(f"Wisp metadata is missing required key {key!r}")
 
         populations = tuple(str(p) for p in meta["populations"])
         sample_counts = {str(k): int(v) for k, v in meta["population_sample_counts"].items()}
@@ -102,7 +101,7 @@ class SpriteMetadata:
             col = int(entry["column_number"]) - 1
             if col < 3:
                 raise ValueError(
-                    f"Sprite metadata has population {name!r} mapped to column {col + 1}; "
+                    f"Wisp metadata has population {name!r} mapped to column {col + 1}; "
                     "population columns must come after chrom/start/end (column >= 4)"
                 )
             col_for[name] = col
@@ -110,13 +109,13 @@ class SpriteMetadata:
         missing = [p for p in populations if p not in col_for]
         if missing:
             raise ValueError(
-                f"Sprite metadata declares populations {missing!r} but no column mapping"
+                f"Wisp metadata declares populations {missing!r} but no column mapping"
             )
         # And every name should have a sample count.
         missing_counts = [p for p in populations if p not in sample_counts]
         if missing_counts:
             raise ValueError(
-                f"Sprite metadata declares populations {missing_counts!r} but no sample counts"
+                f"Wisp metadata declares populations {missing_counts!r} but no sample counts"
             )
         threshold = int(meta.get("threshold", 0))
         return cls(
@@ -128,12 +127,12 @@ class SpriteMetadata:
 
 
 @dataclass(frozen=True)
-class SpriteRange:
+class WispRange:
     """
-    One quantized callable-sites interval from a sprite BED.
+    One quantized callable-sites interval from a wisp BED.
 
     Coordinates are 0-based half-open (BED convention). ``counts`` is parallel to
-    ``SpriteMetadata.populations``.
+    ``WispMetadata.populations``.
     """
 
     start: int
@@ -147,23 +146,23 @@ class SpriteRange:
 
 
 @dataclass
-class SpriteMask:
+class WispMask:
     """
-    Tabix-backed reader over a sprite BED.
+    Tabix-backed reader over a wisp BED.
 
     Reading is done one window at a time via ``iter_range``; the file itself is never
     fully loaded into memory.
     """
 
     path: Path
-    metadata: SpriteMetadata
+    metadata: WispMetadata
     # In-memory cache of populations we know how to look up — populated lazily.
     _pop_order_cache: Dict[Tuple[str, ...], Tuple[int, ...]] = field(default_factory=dict)
 
     @classmethod
-    def from_path(cls, path: Path) -> "SpriteMask":
+    def from_path(cls, path: Path) -> "WispMask":
         """
-        Open a sprite BED and parse its metadata header.
+        Open a wisp BED and parse its metadata header.
 
         The companion ``.tbi`` index is required for window queries; we don't verify
         that here so that the calling validator can produce a pixy-style error message.
@@ -171,7 +170,7 @@ class SpriteMask:
         opener = gzip.open if str(path).endswith(".gz") else open
         with opener(path, "rt") as fh:
             first = fh.readline()
-        metadata = SpriteMetadata.from_header_line(first)
+        metadata = WispMetadata.from_header_line(first)
         return cls(path=path, metadata=metadata)
 
     def column_indices_for(self, populations: Tuple[str, ...]) -> Tuple[int, ...]:
@@ -183,7 +182,7 @@ class SpriteMask:
         except KeyError as e:
             missing = [p for p in populations if p not in self.metadata.column_index_for]
             raise ValueError(
-                f"Population(s) {missing!r} are not present in the sprite metadata "
+                f"Population(s) {missing!r} are not present in the wisp metadata "
                 f"(known: {list(self.metadata.column_index_for)})"
             ) from e
         self._pop_order_cache[populations] = indices
@@ -195,9 +194,9 @@ class SpriteMask:
         start: int,
         end: int,
         column_indices: Tuple[int, ...],
-    ) -> Iterator[SpriteRange]:
+    ) -> Iterator[WispRange]:
         """
-        Yield sprite ranges overlapping the half-open interval ``[start, end)``.
+        Yield wisp ranges overlapping the half-open interval ``[start, end)``.
 
         ``column_indices`` is the field-index sequence returned by
         ``column_indices_for`` for the populations you want to pull.
@@ -219,7 +218,7 @@ class SpriteMask:
         if proc.returncode != 0:
             # tabix prints to stderr on a missing/unindexed file. Surface that verbatim.
             raise RuntimeError(
-                f"tabix lookup failed for sprite BED {self.path}: {proc.stderr.strip()}"
+                f"tabix lookup failed for wisp BED {self.path}: {proc.stderr.strip()}"
             )
         for raw_line in proc.stdout.splitlines():
             line = raw_line.rstrip("\n")
@@ -231,11 +230,11 @@ class SpriteMask:
             if len(fields) <= max_col:
                 row_pos = fields[1] if len(fields) > 1 else "?"
                 raise ValueError(
-                    f"Sprite BED {self.path}: row at {chrom}:{row_pos} "
+                    f"Wisp BED {self.path}: row at {chrom}:{row_pos} "
                     f"has {len(fields)} fields but column index {max_col} was requested"
                 )
             counts = tuple(int(fields[c]) for c in column_indices)
-            yield SpriteRange(
+            yield WispRange(
                 start=int(fields[1]),
                 end=int(fields[2]),
                 counts=counts,
@@ -344,7 +343,7 @@ class WindowInvariantContributions:
 
 
 def compute_window_invariant_contributions(  # noqa: C901
-    sprite_mask: SpriteMask,
+    wisp_mask: WispMask,
     chromosome: str,
     window_pos_1: int,
     window_pos_2: int,
@@ -353,32 +352,32 @@ def compute_window_invariant_contributions(  # noqa: C901
     ploidy: int,
 ) -> WindowInvariantContributions:
     """
-    Compute analytical invariant-site contributions for one window from a sprite mask.
+    Compute analytical invariant-site contributions for one window from a wisp mask.
 
     Args:
-        sprite_mask: the open sprite mask.
+        wisp_mask: the open wisp mask.
         chromosome: chromosome name.
         window_pos_1: 1-based inclusive window start (pixy's convention).
         window_pos_2: 1-based inclusive window end.
         variant_positions: 1-based positions of variant sites already loaded from the
             VCF for this window. Used to compute ``n_invariant_in_range = range_length -
-            n_variant_in_range`` per sprite interval. Must contain only positions inside
+            n_variant_in_range`` per wisp interval. Must contain only positions inside
             the window.
         pop_names: populations to compute contributions for. Must all be present in
-            the sprite metadata.
+            the wisp metadata.
         ploidy: per-contig ploidy (typically 2; pixy supports per-contig variation).
 
     Returns:
         A ``WindowInvariantContributions`` ready to merge into per-population results.
     """
-    # Window in 0-based half-open coordinates for clipping sprite ranges.
+    # Window in 0-based half-open coordinates for clipping wisp ranges.
     win_start = window_pos_1 - 1
     win_end = window_pos_2  # window_pos_2 is 1-based inclusive ⇒ half-open end == win_pos_2
 
     contributions = WindowInvariantContributions()
     pop_names_t = tuple(pop_names)
-    col_indices = sprite_mask.column_indices_for(pop_names_t)
-    sample_counts = [sprite_mask.metadata.population_sample_counts[p] for p in pop_names]
+    col_indices = wisp_mask.column_indices_for(pop_names_t)
+    sample_counts = [wisp_mask.metadata.population_sample_counts[p] for p in pop_names]
 
     # Pre-init per-pop / per-pair accumulators so missing populations still get an
     # empty contribution (rather than a KeyError later in the consumer).
@@ -390,12 +389,12 @@ def compute_window_invariant_contributions(  # noqa: C901
         for j in range(i + 1, len(pop_names)):
             contributions.dxy[(pop_names[i], pop_names[j])] = DxyInvariantContribution()
 
-    # Sort the variant positions once; we use binary search per sprite range to count
+    # Sort the variant positions once; we use binary search per wisp range to count
     # how many variants fall inside it (those don't count as invariant sites).
     sorted_var_pos = sorted(int(p) for p in variant_positions)
 
-    for rng in sprite_mask.iter_range(chromosome, win_start, win_end, col_indices):
-        # Clip the sprite range to the window in 0-based half-open coordinates.
+    for rng in wisp_mask.iter_range(chromosome, win_start, win_end, col_indices):
+        # Clip the wisp range to the window in 0-based half-open coordinates.
         eff_start_0 = max(rng.start, win_start)
         eff_end_0 = min(rng.end, win_end)
         if eff_end_0 <= eff_start_0:
@@ -487,7 +486,7 @@ def empty_contributions(pop_names: List[str]) -> WindowInvariantContributions:
     """
     Return a zeroed ``WindowInvariantContributions`` for the given populations.
 
-    Used when the sprite path is enabled but a particular window has no sprite ranges
+    Used when the wisp path is enabled but a particular window has no wisp ranges
     overlapping it (the contributions are zero but the structure must be present so
     the consumer can look up populations without KeyError).
     """
@@ -502,14 +501,14 @@ def empty_contributions(pop_names: List[str]) -> WindowInvariantContributions:
     return contributions
 
 
-def validate_sprite_data_rows(  # noqa: C901
-    sprite_mask: SpriteMask, peek_rows: int = 5
+def validate_wisp_data_rows(  # noqa: C901
+    wisp_mask: WispMask, peek_rows: int = 5
 ) -> Optional[str]:
     """
-    Sanity-check the sprite BED's data rows.
+    Sanity-check the wisp BED's data rows.
 
     Reads up to ``peek_rows`` non-header rows after the metadata header and confirms
-    each parses as a well-formed sprite entry:
+    each parses as a well-formed wisp entry:
 
       * the row has at least ``max(column_number) + 1`` tab-delimited fields,
       * the start/end coordinates are integers with ``end > start``,
@@ -518,15 +517,15 @@ def validate_sprite_data_rows(  # noqa: C901
     Returns ``None`` on success, or a human-readable error message on the first
     problem encountered. Errors include a header-only file (no data rows). The
     populations-vs-popfile cross-check is handled separately by
-    ``validate_sprite_against_populations``.
+    ``validate_wisp_against_populations``.
 
     Cheap by design — only the first ``peek_rows`` data rows are inspected, so the
     cost is independent of mask size.
     """
-    path = sprite_mask.path
-    populations = sprite_mask.metadata.populations
+    path = wisp_mask.path
+    populations = wisp_mask.metadata.populations
     if populations:
-        max_col = max(sprite_mask.metadata.column_index_for[p] for p in populations)
+        max_col = max(wisp_mask.metadata.column_index_for[p] for p in populations)
     else:
         max_col = 2
 
@@ -540,7 +539,7 @@ def validate_sprite_data_rows(  # noqa: C901
             fields = stripped.split("\t")
             if len(fields) < max_col + 1:
                 return (
-                    f"Sprite mask {path}: row at line {line_idx} has {len(fields)} "
+                    f"Wisp mask {path}: row at line {line_idx} has {len(fields)} "
                     f"tab-delimited fields; the metadata header declared population columns "
                     f"up to index {max_col} (expected at least {max_col + 1} fields)"
                 )
@@ -548,27 +547,27 @@ def validate_sprite_data_rows(  # noqa: C901
                 start, end = int(fields[1]), int(fields[2])
             except ValueError:
                 return (
-                    f"Sprite mask {path}: row at line {line_idx} has non-integer "
+                    f"Wisp mask {path}: row at line {line_idx} has non-integer "
                     f"coordinates start={fields[1]!r}, end={fields[2]!r}"
                 )
             if end <= start:
                 return (
-                    f"Sprite mask {path}: row at line {line_idx} has end <= start "
+                    f"Wisp mask {path}: row at line {line_idx} has end <= start "
                     f"({fields[0]}:{start}-{end})"
                 )
             for pop in populations:
-                idx = sprite_mask.metadata.column_index_for[pop]
+                idx = wisp_mask.metadata.column_index_for[pop]
                 try:
                     count = int(fields[idx])
                 except ValueError:
                     return (
-                        f"Sprite mask {path}: row at line {line_idx} has non-integer "
+                        f"Wisp mask {path}: row at line {line_idx} has non-integer "
                         f"count for population {pop!r}: {fields[idx]!r}"
                     )
-                n_total = sprite_mask.metadata.population_sample_counts[pop]
+                n_total = wisp_mask.metadata.population_sample_counts[pop]
                 if count < 0 or count > n_total:
                     return (
-                        f"Sprite mask {path}: row at line {line_idx} has count={count} "
+                        f"Wisp mask {path}: row at line {line_idx} has count={count} "
                         f"for population {pop!r} (expected 0..{n_total})"
                     )
             data_rows_seen += 1
@@ -576,50 +575,50 @@ def validate_sprite_data_rows(  # noqa: C901
                 return None
 
     if data_rows_seen == 0:
-        return f"Sprite mask {path}: no data rows found (only the metadata header)"
+        return f"Wisp mask {path}: no data rows found (only the metadata header)"
     return None
 
 
-def validate_sprite_against_populations(
-    sprite_mask: SpriteMask,
+def validate_wisp_against_populations(
+    wisp_mask: WispMask,
     pop_to_sample_count: Dict[str, int],
 ) -> Optional[str]:
     """
-    Confirm that the sprite mask matches the user's populations file.
+    Confirm that the wisp mask matches the user's populations file.
 
     Returns a human-readable error message if there's a mismatch, or ``None`` if
     everything checks out. Mismatches detected:
-      * a population in the sprite metadata that's absent from --populations
-      * a population in --populations that's absent from the sprite metadata
+      * a population in the wisp metadata that's absent from --populations
+      * a population in --populations that's absent from the wisp metadata
       * a per-population sample count that doesn't match between the two
 
     Args:
-        sprite_mask: parsed sprite mask.
+        wisp_mask: parsed wisp mask.
         pop_to_sample_count: mapping from population name to the number of samples
             in that population, as derived from the user's --populations file.
     """
-    sprite_pops = set(sprite_mask.metadata.populations)
+    wisp_pops = set(wisp_mask.metadata.populations)
     user_pops = set(pop_to_sample_count)
 
-    only_in_sprite = sprite_pops - user_pops
-    only_in_users = user_pops - sprite_pops
-    if only_in_sprite or only_in_users:
+    only_in_wisp = wisp_pops - user_pops
+    only_in_users = user_pops - wisp_pops
+    if only_in_wisp or only_in_users:
         problems = []
         if only_in_users:
             problems.append(f"only in populations file: {sorted(only_in_users)}")
-        if only_in_sprite:
-            problems.append(f"only in sprite mask: {sorted(only_in_sprite)}")
-        return "Sprite mask populations do not match --populations file. " + "; ".join(problems)
+        if only_in_wisp:
+            problems.append(f"only in wisp mask: {sorted(only_in_wisp)}")
+        return "Wisp mask populations do not match --populations file. " + "; ".join(problems)
 
     count_mismatches = []
     for pop in sorted(user_pops):
-        sprite_n = sprite_mask.metadata.population_sample_counts.get(pop)
+        wisp_n = wisp_mask.metadata.population_sample_counts.get(pop)
         user_n = pop_to_sample_count[pop]
-        if sprite_n != user_n:
-            count_mismatches.append(f"{pop}: sprite={sprite_n}, populations_file={user_n}")
+        if wisp_n != user_n:
+            count_mismatches.append(f"{pop}: wisp={wisp_n}, populations_file={user_n}")
     if count_mismatches:
         return (
-            "Sprite mask per-population sample counts differ from the populations file: "
+            "Wisp mask per-population sample counts differ from the populations file: "
             + ", ".join(count_mismatches)
         )
     return None

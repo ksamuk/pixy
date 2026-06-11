@@ -1,13 +1,13 @@
 """
-Tests for the sprite-mask code path.
+Tests for the wisp-mask code path.
 
 Covers:
-  * `SpriteMetadata.from_header_line` parsing — happy path + malformed inputs.
-  * `validate_sprite_data_rows` — well-formed BEDs pass; truncated, malformed,
+  * `WispMetadata.from_header_line` parsing — happy path + malformed inputs.
+  * `validate_wisp_data_rows` — well-formed BEDs pass; truncated, malformed,
     or out-of-range BEDs return a descriptive error.
-  * End-to-end pixy run with `--sprite_bed` on a tiny synthetic dataset that
+  * End-to-end pixy run with `--wisp_bed` on a tiny synthetic dataset that
     reproduces the crash scenario from `pixy/core.py:531` (a chromosome where
-    the variants-only VCF has zero records but the sprite mask still supplies
+    the variants-only VCF has zero records but the wisp mask still supplies
     invariant-site coverage).
 """
 
@@ -19,14 +19,14 @@ from pathlib import Path
 
 import pytest
 
-from pixy.sprite import SpriteMask
-from pixy.sprite import SpriteMetadata
-from pixy.sprite import validate_sprite_against_populations
-from pixy.sprite import validate_sprite_data_rows
+from pixy.wisp import WispMask
+from pixy.wisp import WispMetadata
+from pixy.wisp import validate_wisp_against_populations
+from pixy.wisp import validate_wisp_data_rows
 from tests.conftest import run_pixy_helper
 
 HEADER_OK = (
-    "#sprite_mask_metadata\t"
+    "#wisp_mask_metadata\t"
     '{"populations": ["A", "B"], '
     '"population_sample_counts": {"A": 2, "B": 2}, '
     '"population_columns": [{"column_number": 4, "name": "A"}, '
@@ -35,8 +35,8 @@ HEADER_OK = (
 )
 
 
-def _write_sprite_bed(tmp_path: Path, body: str, name: str = "test.bed") -> Path:
-    """Write a sprite BED (header + body lines), gzip + tabix-index it, return the .gz path."""
+def _write_wisp_bed(tmp_path: Path, body: str, name: str = "test.bed") -> Path:
+    """Write a wisp BED (header + body lines), gzip + tabix-index it, return the .gz path."""
     raw = tmp_path / name
     raw.write_text(HEADER_OK + "\n" + body)
     subprocess.run(["bgzip", "-f", str(raw)], check=True)
@@ -45,26 +45,26 @@ def _write_sprite_bed(tmp_path: Path, body: str, name: str = "test.bed") -> Path
     return bgz
 
 
-def _write_plain_sprite(tmp_path: Path, body: str, name: str = "test.bed") -> Path:
-    """Write a plain (non-bgzipped) sprite BED. Skips bgzip/tabix; parser-only fixtures."""
+def _write_plain_wisp(tmp_path: Path, body: str, name: str = "test.bed") -> Path:
+    """Write a plain (non-bgzipped) wisp BED. Skips bgzip/tabix; parser-only fixtures."""
     raw = tmp_path / name
     raw.write_text(HEADER_OK + "\n" + body)
     return raw
 
 
-def _load_sprite_mask(path: Path) -> SpriteMask:
-    """Load a SpriteMask from `path` (transparent .gz vs plain)."""
-    return SpriteMask.from_path(path)
+def _load_wisp_mask(path: Path) -> WispMask:
+    """Load a WispMask from `path` (transparent .gz vs plain)."""
+    return WispMask.from_path(path)
 
 
 # ---------------------------------------------------------------------------
-# SpriteMetadata header parsing
+# WispMetadata header parsing
 # ---------------------------------------------------------------------------
 
 
 def test_metadata_from_header_line_basic() -> None:
     """A well-formed header line parses into the expected populations / counts / columns."""
-    meta = SpriteMetadata.from_header_line(HEADER_OK + "\n")
+    meta = WispMetadata.from_header_line(HEADER_OK + "\n")
     assert meta.populations == ("A", "B")
     assert meta.population_sample_counts == {"A": 2, "B": 2}
     assert meta.threshold == 10
@@ -73,67 +73,67 @@ def test_metadata_from_header_line_basic() -> None:
 
 
 def test_metadata_from_header_line_missing_prefix() -> None:
-    """A header line lacking the `#sprite_mask_metadata` prefix is rejected."""
+    """A header line lacking the `#wisp_mask_metadata` prefix is rejected."""
     with pytest.raises(ValueError, match="missing the required"):
-        SpriteMetadata.from_header_line('{"populations": ["A"]}\n')
+        WispMetadata.from_header_line('{"populations": ["A"]}\n')
 
 
 def test_metadata_from_header_line_bad_json() -> None:
     """A malformed JSON payload after the prefix is rejected."""
     with pytest.raises(ValueError, match="not valid JSON"):
-        SpriteMetadata.from_header_line("#sprite_mask_metadata\t{not-json}\n")
+        WispMetadata.from_header_line("#wisp_mask_metadata\t{not-json}\n")
 
 
 def test_metadata_from_header_line_missing_required_key() -> None:
     """A header missing one of the required JSON keys is rejected."""
-    line = '#sprite_mask_metadata\t{"populations": ["A"]}\n'
+    line = '#wisp_mask_metadata\t{"populations": ["A"]}\n'
     with pytest.raises(ValueError, match="missing required key"):
-        SpriteMetadata.from_header_line(line)
+        WispMetadata.from_header_line(line)
 
 
 def test_metadata_from_header_line_column_out_of_range() -> None:
     """`column_number` <= 3 collides with chrom/start/end and is rejected."""
     # column_number=2 → 0-based index 1, before chrom/start/end (must be >= 3).
     bad = (
-        "#sprite_mask_metadata\t"
+        "#wisp_mask_metadata\t"
         '{"populations": ["A"], '
         '"population_sample_counts": {"A": 2}, '
         '"population_columns": [{"column_number": 2, "name": "A"}]}\n'
     )
     with pytest.raises(ValueError, match="must come after chrom/start/end"):
-        SpriteMetadata.from_header_line(bad)
+        WispMetadata.from_header_line(bad)
 
 
 # ---------------------------------------------------------------------------
-# validate_sprite_data_rows
+# validate_wisp_data_rows
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(
     shutil.which("bgzip") is None or shutil.which("tabix") is None,
-    reason="bgzip and tabix are required to build sprite BED fixtures",
+    reason="bgzip and tabix are required to build wisp BED fixtures",
 )
 def test_validate_data_rows_ok(tmp_path: Path) -> None:
-    """A well-formed (bgzipped, tabix-indexed) sprite BED passes validation."""
-    bgz = _write_sprite_bed(
+    """A well-formed (bgzipped, tabix-indexed) wisp BED passes validation."""
+    bgz = _write_wisp_bed(
         tmp_path,
         body="chr1\t0\t100\t2\t2\nchr1\t100\t200\t2\t1\nchr2\t0\t500\t1\t2\n",
     )
-    assert validate_sprite_data_rows(_load_sprite_mask(bgz)) is None
+    assert validate_wisp_data_rows(_load_wisp_mask(bgz)) is None
 
 
 def test_validate_data_rows_header_only(tmp_path: Path) -> None:
-    """A header-only sprite BED (no data rows) is rejected with a clear message."""
-    raw = _write_plain_sprite(tmp_path, body="")
-    err = validate_sprite_data_rows(_load_sprite_mask(raw))
+    """A header-only wisp BED (no data rows) is rejected with a clear message."""
+    raw = _write_plain_wisp(tmp_path, body="")
+    err = validate_wisp_data_rows(_load_wisp_mask(raw))
     assert err is not None and "no data rows found" in err
 
 
 def test_validate_data_rows_truncated_fields(tmp_path: Path) -> None:
     """A row with fewer columns than the metadata declares is rejected."""
     # Header declares pop column index 4 (1-based 5) but row only has 4 fields.
-    raw = _write_plain_sprite(tmp_path, body="chr1\t0\t100\t2\n")
-    err = validate_sprite_data_rows(_load_sprite_mask(raw))
+    raw = _write_plain_wisp(tmp_path, body="chr1\t0\t100\t2\n")
+    err = validate_wisp_data_rows(_load_wisp_mask(raw))
     assert err is not None
     assert "tab-delimited fields" in err
     assert "index 4" in err
@@ -141,68 +141,68 @@ def test_validate_data_rows_truncated_fields(tmp_path: Path) -> None:
 
 def test_validate_data_rows_non_integer_coords(tmp_path: Path) -> None:
     """A row whose start/end is not an integer is rejected."""
-    raw = _write_plain_sprite(tmp_path, body="chr1\tnope\t100\t2\t2\n")
-    err = validate_sprite_data_rows(_load_sprite_mask(raw))
+    raw = _write_plain_wisp(tmp_path, body="chr1\tnope\t100\t2\t2\n")
+    err = validate_wisp_data_rows(_load_wisp_mask(raw))
     assert err is not None and "non-integer coordinates" in err
 
 
 def test_validate_data_rows_inverted_coords(tmp_path: Path) -> None:
     """A row with end <= start is rejected."""
-    raw = _write_plain_sprite(tmp_path, body="chr1\t100\t100\t2\t2\n")
-    err = validate_sprite_data_rows(_load_sprite_mask(raw))
+    raw = _write_plain_wisp(tmp_path, body="chr1\t100\t100\t2\t2\n")
+    err = validate_wisp_data_rows(_load_wisp_mask(raw))
     assert err is not None and "end <= start" in err
 
 
 def test_validate_data_rows_count_exceeds_n(tmp_path: Path) -> None:
     """A per-population count larger than the declared sample count is rejected."""
     # Header says N_A=2, but row reports 3 callable samples for A.
-    raw = _write_plain_sprite(tmp_path, body="chr1\t0\t100\t3\t2\n")
-    err = validate_sprite_data_rows(_load_sprite_mask(raw))
+    raw = _write_plain_wisp(tmp_path, body="chr1\t0\t100\t3\t2\n")
+    err = validate_wisp_data_rows(_load_wisp_mask(raw))
     assert err is not None and "expected 0..2" in err
 
 
 def test_validate_data_rows_negative_count(tmp_path: Path) -> None:
     """A negative per-population count is rejected."""
-    raw = _write_plain_sprite(tmp_path, body="chr1\t0\t100\t-1\t2\n")
-    err = validate_sprite_data_rows(_load_sprite_mask(raw))
+    raw = _write_plain_wisp(tmp_path, body="chr1\t0\t100\t-1\t2\n")
+    err = validate_wisp_data_rows(_load_wisp_mask(raw))
     assert err is not None and "expected 0..2" in err
 
 
 def test_validate_data_rows_non_integer_count(tmp_path: Path) -> None:
     """A non-integer per-population count is rejected."""
-    raw = _write_plain_sprite(tmp_path, body="chr1\t0\t100\tx\t2\n")
-    err = validate_sprite_data_rows(_load_sprite_mask(raw))
+    raw = _write_plain_wisp(tmp_path, body="chr1\t0\t100\tx\t2\n")
+    err = validate_wisp_data_rows(_load_wisp_mask(raw))
     assert err is not None and "non-integer count" in err
 
 
 # ---------------------------------------------------------------------------
-# validate_sprite_against_populations
+# validate_wisp_against_populations
 # ---------------------------------------------------------------------------
 
 
 def test_validate_against_populations_ok(tmp_path: Path) -> None:
     """Matching populations + sample counts pass the cross-check."""
-    raw = _write_plain_sprite(tmp_path, body="chr1\t0\t100\t2\t2\n")
-    mask = _load_sprite_mask(raw)
-    assert validate_sprite_against_populations(mask, {"A": 2, "B": 2}) is None
+    raw = _write_plain_wisp(tmp_path, body="chr1\t0\t100\t2\t2\n")
+    mask = _load_wisp_mask(raw)
+    assert validate_wisp_against_populations(mask, {"A": 2, "B": 2}) is None
 
 
 def test_validate_against_populations_mismatched_names(tmp_path: Path) -> None:
     """Population names that disagree between the popfile and the mask are surfaced."""
-    raw = _write_plain_sprite(tmp_path, body="chr1\t0\t100\t2\t2\n")
-    mask = _load_sprite_mask(raw)
-    err = validate_sprite_against_populations(mask, {"A": 2, "C": 2})
+    raw = _write_plain_wisp(tmp_path, body="chr1\t0\t100\t2\t2\n")
+    mask = _load_wisp_mask(raw)
+    err = validate_wisp_against_populations(mask, {"A": 2, "C": 2})
     assert err is not None
     assert "only in populations file" in err
-    assert "only in sprite mask" in err
+    assert "only in wisp mask" in err
 
 
 def test_validate_against_populations_mismatched_counts(tmp_path: Path) -> None:
     """Population sample counts that disagree between the popfile and the mask are surfaced."""
-    raw = _write_plain_sprite(tmp_path, body="chr1\t0\t100\t2\t2\n")
-    mask = _load_sprite_mask(raw)
-    err = validate_sprite_against_populations(mask, {"A": 2, "B": 3})
-    assert err is not None and "B: sprite=2, populations_file=3" in err
+    raw = _write_plain_wisp(tmp_path, body="chr1\t0\t100\t2\t2\n")
+    mask = _load_wisp_mask(raw)
+    err = validate_wisp_against_populations(mask, {"A": 2, "B": 3})
+    assert err is not None and "B: wisp=2, populations_file=3" in err
 
 
 # ---------------------------------------------------------------------------
@@ -210,12 +210,12 @@ def test_validate_against_populations_mismatched_counts(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _build_sprite_dataset(tmp_path: Path) -> dict[str, Path]:
+def _build_wisp_dataset(tmp_path: Path) -> dict[str, Path]:
     """
-    Build a 4-sample 2-population synthetic dataset that exercises the sprite path.
+    Build a 4-sample 2-population synthetic dataset that exercises the wisp path.
 
     chr1 has variants but chr2 has zero usable VCF records — exactly the pattern that
-    crashed pixy's sprite path before the fix in ``pixy/core.py``. The sprite mask
+    crashed pixy's wisp path before the fix in ``pixy/core.py``. The wisp mask
     covers both chroms.
     """
     # chr1 carries usable variants. chr2 carries only an indel — ploidy inference
@@ -242,30 +242,30 @@ def _build_sprite_dataset(tmp_path: Path) -> dict[str, Path]:
     pop_file = tmp_path / "pops.txt"
     pop_file.write_text("S1\tA\nS2\tA\nS3\tB\nS4\tB\n")
 
-    # Sprite mask: full callability on both chroms (both pops at N).
-    bed_raw = tmp_path / "sprite.bed"
+    # Wisp mask: full callability on both chroms (both pops at N).
+    bed_raw = tmp_path / "wisp.bed"
     bed_raw.write_text(HEADER_OK + "\n" + "chr1\t0\t1000\t2\t2\n" + "chr2\t0\t1000\t2\t2\n")
     subprocess.run(["bgzip", "-f", str(bed_raw)], check=True)
     bed_gz = bed_raw.with_suffix(".bed.gz")
     subprocess.run(["tabix", "-p", "bed", str(bed_gz)], check=True)
 
-    return {"vcf": vcf_gz, "pops": pop_file, "sprite": bed_gz}
+    return {"vcf": vcf_gz, "pops": pop_file, "wisp": bed_gz}
 
 
 @pytest.mark.skipif(
     shutil.which("bgzip") is None or shutil.which("tabix") is None,
-    reason="bgzip and tabix are required to build the synthetic sprite dataset",
+    reason="bgzip and tabix are required to build the synthetic wisp dataset",
 )
-def test_pixy_with_sprite_mask_runs(tmp_path: Path) -> None:
+def test_pixy_with_wisp_mask_runs(tmp_path: Path) -> None:
     """
-    Regression: sprite-only chromosomes no longer crash with ``gt_region is None``.
+    Regression: wisp-only chromosomes no longer crash with ``gt_region is None``.
 
-    pixy used to fail when a chromosome had zero usable VCF records but the sprite
+    pixy used to fail when a chromosome had zero usable VCF records but the wisp
     mask still supplied invariant coverage. With the ``pixy/core.py`` fix, a
     synthesized zero-row GenotypeArray keeps the per-stat code paths alive and chr2
-    ends up reported with sprite-derived denominators.
+    ends up reported with wisp-derived denominators.
     """
-    inputs = _build_sprite_dataset(tmp_path)
+    inputs = _build_wisp_dataset(tmp_path)
     out_dir = tmp_path / "out"
     out_dir.mkdir()
 
@@ -275,8 +275,8 @@ def test_pixy_with_sprite_mask_runs(tmp_path: Path) -> None:
         vcf_path=inputs["vcf"],
         populations_path=inputs["pops"],
         window_size=500,
-        sprite_bed_path=inputs["sprite"],
-        bypass_invariant_check=False,  # sprite mask implies this on
+        wisp_bed_path=inputs["wisp"],
+        bypass_invariant_check=False,  # wisp mask implies this on
     )
 
     pi_path = out_dir / "pixy_pi.txt"
@@ -288,26 +288,26 @@ def test_pixy_with_sprite_mask_runs(tmp_path: Path) -> None:
     # Header + chr2 rows for both pops (would have been absent / crashed before fix).
     chr2_rows = [ln for ln in pi_lines[1:] if "\tchr2\t" in ln]
     assert len(chr2_rows) >= 2, (
-        f"Expected sprite-derived pi rows for chr2 across both populations, got:\n{chr2_rows!r}"
+        f"Expected wisp-derived pi rows for chr2 across both populations, got:\n{chr2_rows!r}"
     )
     # And every chr2 row should report a real (non-NA) site count, since the
-    # sprite mask supplies invariant denominators even when the VCF is empty.
+    # wisp mask supplies invariant denominators even when the VCF is empty.
     for row in chr2_rows:
         cols = row.split("\t")
         no_sites = cols[5]
         assert no_sites != "NA" and int(no_sites) > 0, (
-            f"chr2 pi row has NA / zero no_sites with sprite mask active: {row!r}"
+            f"chr2 pi row has NA / zero no_sites with wisp mask active: {row!r}"
         )
 
 
 @pytest.mark.skipif(
     shutil.which("bgzip") is None or shutil.which("tabix") is None,
-    reason="bgzip and tabix are required to build the synthetic sprite dataset",
+    reason="bgzip and tabix are required to build the synthetic wisp dataset",
 )
-def test_pixy_with_sprite_mask_rejects_header_only_bed(tmp_path: Path) -> None:
-    """A sprite BED with no data rows is rejected at args-validation time."""
-    inputs = _build_sprite_dataset(tmp_path)
-    # Overwrite the sprite BED with a header-only file.
+def test_pixy_with_wisp_mask_rejects_header_only_bed(tmp_path: Path) -> None:
+    """A wisp BED with no data rows is rejected at args-validation time."""
+    inputs = _build_wisp_dataset(tmp_path)
+    # Overwrite the wisp BED with a header-only file.
     raw = tmp_path / "header_only.bed"
     raw.write_text(HEADER_OK + "\n")
     subprocess.run(["bgzip", "-f", str(raw)], check=True)
@@ -324,18 +324,18 @@ def test_pixy_with_sprite_mask_rejects_header_only_bed(tmp_path: Path) -> None:
             vcf_path=inputs["vcf"],
             populations_path=inputs["pops"],
             window_size=500,
-            sprite_bed_path=bed_gz,
+            wisp_bed_path=bed_gz,
         )
 
 
 @pytest.mark.skipif(
     shutil.which("bgzip") is None or shutil.which("tabix") is None,
-    reason="bgzip and tabix are required to build the synthetic sprite dataset",
+    reason="bgzip and tabix are required to build the synthetic wisp dataset",
 )
-def test_pixy_with_sprite_mask_rejects_population_mismatch(tmp_path: Path) -> None:
-    """Sprite metadata that doesn't match --populations is rejected up front."""
-    inputs = _build_sprite_dataset(tmp_path)
-    # Populations file that names different pops than the sprite mask carries.
+def test_pixy_with_wisp_mask_rejects_population_mismatch(tmp_path: Path) -> None:
+    """Wisp metadata that doesn't match --populations is rejected up front."""
+    inputs = _build_wisp_dataset(tmp_path)
+    # Populations file that names different pops than the wisp mask carries.
     bad_pops = tmp_path / "bad_pops.txt"
     bad_pops.write_text("S1\tX\nS2\tX\nS3\tY\nS4\tY\n")
 
@@ -349,19 +349,19 @@ def test_pixy_with_sprite_mask_rejects_population_mismatch(tmp_path: Path) -> No
             vcf_path=inputs["vcf"],
             populations_path=bad_pops,
             window_size=500,
-            sprite_bed_path=inputs["sprite"],
+            wisp_bed_path=inputs["wisp"],
         )
 
 
 @pytest.mark.skipif(
     shutil.which("bgzip") is None or shutil.which("tabix") is None,
-    reason="bgzip and tabix are required to build the synthetic sprite dataset",
+    reason="bgzip and tabix are required to build the synthetic wisp dataset",
 )
-def test_pixy_with_sprite_mask_missing_index(tmp_path: Path) -> None:
-    """A sprite BED without a .tbi/.csi index is rejected with a clear message."""
-    inputs = _build_sprite_dataset(tmp_path)
-    # Strip the tabix index for the existing sprite BED.
-    tbi = inputs["sprite"].with_suffix(inputs["sprite"].suffix + ".tbi")
+def test_pixy_with_wisp_mask_missing_index(tmp_path: Path) -> None:
+    """A wisp BED without a .tbi/.csi index is rejected with a clear message."""
+    inputs = _build_wisp_dataset(tmp_path)
+    # Strip the tabix index for the existing wisp BED.
+    tbi = inputs["wisp"].with_suffix(inputs["wisp"].suffix + ".tbi")
     if tbi.exists():
         tbi.unlink()
 
@@ -375,5 +375,5 @@ def test_pixy_with_sprite_mask_missing_index(tmp_path: Path) -> None:
             vcf_path=inputs["vcf"],
             populations_path=inputs["pops"],
             window_size=500,
-            sprite_bed_path=inputs["sprite"],
+            wisp_bed_path=inputs["wisp"],
         )

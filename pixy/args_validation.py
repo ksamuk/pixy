@@ -28,9 +28,9 @@ from numpy.typing import NDArray
 
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
-from pixy.sprite import SpriteMask
-from pixy.sprite import validate_sprite_against_populations
-from pixy.sprite import validate_sprite_data_rows
+from pixy.wisp import WispMask
+from pixy.wisp import validate_wisp_against_populations
+from pixy.wisp import validate_wisp_data_rows
 
 # ---------------------------------------------------------------------------
 # Pandas-free table types that replace the previous pandas.DataFrame fields on
@@ -192,9 +192,9 @@ class PixyArgs:
         ploidy_map: a mapping from contig name to inferred ploidy. Built from the first record of
             each analyzed contig in the input VCF, allowing per-contig variable ploidy (e.g.
             diploid autosomes alongside haploid sex chromosomes or organellar contigs).
-        sprite_mask: an optional ``SpriteMask`` parsed from --sprite_bed. When provided, --vcf
+        wisp_mask: an optional ``WispMask`` parsed from --wisp_bed. When provided, --vcf
             is treated as a variants-only callset and the per-window callable-site denominator
-            for pi, dxy, Tajima's D, and Watterson's theta is sourced from the sprite mask
+            for pi, dxy, Tajima's D, and Watterson's theta is sourced from the wisp mask
             rather than from invariant sites in the VCF. FST is unaffected.
 
     Raises:
@@ -225,8 +225,8 @@ class PixyArgs:
     ploidy_map: Union[Dict[str, int], None] = None
     # When set, indicates that --vcf is a variants-only VCF and the per-site callable
     # denominator for pi/dxy/Tajima's D / Watterson's theta should be analytically
-    # supplied by the sprite mask. FST is unaffected (it uses variant sites only).
-    sprite_mask: Union[SpriteMask, None] = None
+    # supplied by the wisp mask. FST is unaffected (it uses variant sites only).
+    wisp_mask: Union[WispMask, None] = None
 
     def __post_init__(self) -> None:
         """Checks a subset of mutually exclusive `pixy` args to ensure compliance."""
@@ -815,46 +815,46 @@ def check_and_validate_args(  # noqa: C901
     else:
         bed = None
 
-    # SPRITE MASK
-    # If a sprite BED is supplied, --vcf is variants-only; the invariant-site denominator
-    # comes from the sprite mask and the invariant-presence check on the VCF is moot.
-    sprite_mask: Union[SpriteMask, None]
-    sprite_bed_arg: Union[str, None] = getattr(args, "sprite_bed", None)
-    if sprite_bed_arg is not None:
-        sprite_path: Path = Path(os.path.expanduser(sprite_bed_arg))
-        if not os.path.exists(sprite_path):
-            raise FileNotFoundError(f"The specified sprite BED file {sprite_path} does not exist")
+    # WISP MASK
+    # If a wisp BED is supplied, --vcf is variants-only; the invariant-site denominator
+    # comes from the wisp mask and the invariant-presence check on the VCF is moot.
+    wisp_mask: Union[WispMask, None]
+    wisp_bed_arg: Union[str, None] = getattr(args, "wisp_bed", None)
+    if wisp_bed_arg is not None:
+        wisp_path: Path = Path(os.path.expanduser(wisp_bed_arg))
+        if not os.path.exists(wisp_path):
+            raise FileNotFoundError(f"The specified wisp BED file {wisp_path} does not exist")
         # Tabix index required for per-window queries.
-        tbi = Path(str(sprite_path) + ".tbi")
-        csi = Path(str(sprite_path) + ".csi")
+        tbi = Path(str(wisp_path) + ".tbi")
+        csi = Path(str(wisp_path) + ".csi")
         if not (tbi.exists() or csi.exists()):
             raise ValueError(
-                f"The sprite BED {sprite_path} is not indexed. "
+                f"The wisp BED {wisp_path} is not indexed. "
                 "Index it with `tabix -p bed [filename].bed.gz` first."
             )
-        sprite_mask = SpriteMask.from_path(sprite_path)
+        wisp_mask = WispMask.from_path(wisp_path)
         # Cross-check populations and per-pop sample counts against --populations.
         pop_to_sample_count: Dict[str, int] = {}
         for pop in populations.populations:
             pop_to_sample_count[pop] = pop_to_sample_count.get(pop, 0) + 1
-        problem = validate_sprite_against_populations(
-            sprite_mask=sprite_mask, pop_to_sample_count=pop_to_sample_count
+        problem = validate_wisp_against_populations(
+            wisp_mask=wisp_mask, pop_to_sample_count=pop_to_sample_count
         )
         if problem is not None:
             raise ValueError(problem)
-        # Confirm the sprite BED actually carries data rows and that the first few
-        # rows parse cleanly. Catches truncated / accidentally header-only sprite
+        # Confirm the wisp BED actually carries data rows and that the first few
+        # rows parse cleanly. Catches truncated / accidentally header-only wisp
         # outputs and malformed counts before pixy hits them mid-window.
-        problem = validate_sprite_data_rows(sprite_mask=sprite_mask)
+        problem = validate_wisp_data_rows(wisp_mask=wisp_mask)
         if problem is not None:
             raise ValueError(problem)
         logger.info(
-            f"Using sprite mask {sprite_path} "
-            f"(threshold={sprite_mask.metadata.threshold}, "
-            f"populations={list(sprite_mask.metadata.populations)})"
+            f"Using wisp mask {wisp_path} "
+            f"(threshold={wisp_mask.metadata.threshold}, "
+            f"populations={list(wisp_mask.metadata.populations)})"
         )
     else:
-        sprite_mask = None
+        wisp_mask = None
 
     # VALIDATE THE VCF
 
@@ -863,10 +863,10 @@ def check_and_validate_args(  # noqa: C901
     logger.info("Checking for invariant sites...")
     check_message = "OK"
     bypass_invariant_check: bool = args.bypass_invariant_check
-    # A sprite mask supplies the invariant-site denominator analytically, so it both
+    # A wisp mask supplies the invariant-site denominator analytically, so it both
     # implies and supersedes --bypass_invariant_check. Force it on (silently — the
     # "EXTREME WARNING" log below is misleading in this mode).
-    if sprite_mask is not None:
+    if wisp_mask is not None:
         bypass_invariant_check = True
     if not bypass_invariant_check:
         # Read up to the first 100k data records and collect the distinct ALT values.
@@ -906,10 +906,10 @@ def check_and_validate_args(  # noqa: C901
                 "This warning can be suppressed via --bypass_invariant_check 'yes'.'"
             )
     else:
-        # When the sprite path is in use, the invariant denominator is supplied by the
+        # When the wisp path is in use, the invariant denominator is supplied by the
         # mask rather than by VCF invariants — the "incorrect estimates" warning would be
         # misleading there. Keep the existing warning for the manual --bypass case.
-        if sprite_mask is None and not (len(args.stats) == 1 and (args.stats[0] == "fst")):
+        if wisp_mask is None and not (len(args.stats) == 1 and (args.stats[0] == "fst")):
             logger.warning(
                 "EXTREME WARNING: --bypass_invariant_check is set to True. Note that a "
                 "lack of invariant sites will result in incorrect estimates."
@@ -1054,7 +1054,7 @@ def check_and_validate_args(  # noqa: C901
         tajima_components=getattr(args, "tajima_components", False),
         temp_file=tmp_path,
         ploidy_map=ploidy_map,
-        sprite_mask=sprite_mask,
+        wisp_mask=wisp_mask,
     )
 
 
