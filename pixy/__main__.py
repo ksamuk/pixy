@@ -13,22 +13,17 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import re
-import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import List
 from typing import Optional
-from typing import cast
 
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
 
 if TYPE_CHECKING:
-    from multiprocessing.context import BaseContext
-
     from pixy.args_validation import PixyArgs
 
 # main pixy function
@@ -326,17 +321,12 @@ def main() -> None:  # noqa: C901
     # By this point argparse has already exited for --version / --citation / --help / bad-arg
     # paths, so anything below only runs for an actual analysis invocation. Each `import x`
     # below binds `x` as a local in main(); later uses in the function find them via the
-    # usual local-then-global lookup.
-    import multiprocessing as mp
-
-    # `BaseContext` is referenced at runtime by `cast(BaseContext, ...)` further down (not just
-    # in annotations), so it has to be imported eagerly here — the TYPE_CHECKING-only import
-    # at the top of the module covers static analysis but not the runtime cast.
-    from multiprocessing.context import BaseContext
+    # usual local-then-global lookup. `multiprocessing` and `subprocess` are deferred further
+    # — they're only loaded when the corresponding code path actually runs.
+    import subprocess
 
     import pixy.args_validation
-    import pixy.calc  # noqa: F401  — workers reach it through pixy.core
-    import pixy.core
+    import pixy.core  # transitively imports pixy.calc, which workers reach via pixy.core
 
     # validate arguments with the check_and_validate_args fuction
     # returns parsed populaion, chromosome, and sample info
@@ -410,9 +400,16 @@ def main() -> None:  # noqa: C901
     # time the calculations
     start_time = time.time()
     logger.info("Started calculations!")
-    logger.info(f"Using {pixy_args.num_cores} out of {mp.cpu_count()} available CPU cores")
+    logger.info(f"Using {pixy_args.num_cores} out of {os.cpu_count()} available CPU cores")
     # if in mc mode, set up multiprocessing
     if pixy_args.num_cores > 1:
+        # Defer the multiprocessing imports to this branch: single-core runs (the default)
+        # never touch them, so loading the package — which itself imports `threading`,
+        # `selectors`, and several other heavy stdlib modules — only happens when needed.
+        import multiprocessing as mp
+        from multiprocessing.context import BaseContext
+        from typing import cast
+
         # Use `forkserver` on Linux and `spawn` elsewhere (macOS, Windows).
         # Plain `fork` would be marginally faster on Linux but is deprecated in
         # Python 3.14+ when the parent process has any threads — and numpy/scipy
@@ -784,6 +781,8 @@ def main() -> None:  # noqa: C901
         for f in os.listdir(pixy_args.output_dir)
         if os.path.isfile(os.path.join(pixy_args.output_dir, f))
     ]
+
+    import re
 
     r = re.compile(".*_dxy.*|.*_pi.*|.*_fst.*|.*_watterson_theta.*|.*_tajima_d.*|")
     output_files = list(filter(r.match, outfolder_files))
