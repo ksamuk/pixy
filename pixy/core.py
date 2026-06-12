@@ -214,11 +214,88 @@ def mask_non_target_sites(
     return gt_array
 
 
+# Default sub-chunk size for the streaming variant-only read path. Matches scikit-allel's
+# own DEFAULT_CHUNK_LENGTH so per-iteration parse overhead is unchanged from a single
+# `read_vcf` call; the win is that invariant rows are dropped per-sub-chunk, so peak RSS
+# scales with `sub_chunk_length + variant_density * full_chunk_length` rather than
+# `full_chunk_length`.
+_STREAMING_SUB_CHUNK_LENGTH: int = 65536
+
+
+def _read_filtered_variants_streaming(  # noqa: C901
+    vcf_path: str,
+    window_region: str,
+    ploidy: int,
+    include_multiallelic_snps: bool,
+) -> Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
+    """
+    Stream a VCF region in sub-chunks, keeping only variant rows in memory.
+
+    Used by `read_and_filter_genotypes` when invariant sites are not needed (FST-only
+    runs, or any path where the VCF is variants-only by design — e.g. the wisp-mask
+    path). For each sub-chunk yielded by `allel.iter_vcf_chunks`, rows that are not
+    biallelic SNPs (or multi-allelic SNPs when `include_multiallelic_snps`) are
+    dropped before being appended to the accumulator. Peak RSS therefore scales with
+    the variant density of the chunk rather than its total length.
+    """
+    pos_pieces: List[NDArray] = []
+    gt_pieces: List[NDArray] = []
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, module="allel")
+        _fields, _samples, _headers, it = allel.iter_vcf_chunks(  # type: ignore[attr-defined]
+            vcf_path,
+            fields=[
+                "CHROM",
+                "POS",
+                "calldata/GT",
+                "variants/is_snp",
+                "variants/numalt",
+            ],
+            numbers={"GT": ploidy},
+            region=window_region,
+            chunk_length=_STREAMING_SUB_CHUNK_LENGTH,
+        )
+
+        for chunk_dict, _chunk_length, _chrom, _last_pos in it:
+            is_biallelic_snp = np.logical_and(
+                chunk_dict["variants/is_snp"][:] == 1,
+                chunk_dict["variants/numalt"][:] == 1,
+            )
+            snp_mask = is_biallelic_snp
+            if include_multiallelic_snps:
+                is_multiallelic_snp = np.logical_and(
+                    chunk_dict["variants/is_snp"][:] == 1,
+                    chunk_dict["variants/numalt"][:] > 1,
+                )
+                snp_mask = np.logical_or(snp_mask, is_multiallelic_snp)
+
+            if not snp_mask.any():
+                continue
+
+            pos_pieces.append(chunk_dict["variants/POS"][snp_mask])
+            gt_pieces.append(chunk_dict["calldata/GT"][snp_mask])
+
+    if not pos_pieces:
+        return True, None, None
+
+    pos_concat = np.concatenate(pos_pieces)
+    gt_concat = np.concatenate(gt_pieces, axis=0)
+
+    gt_array: GenotypeArray
+    if ploidy == 1:
+        gt_array = allel.HaplotypeArray(gt_concat)
+    else:
+        gt_array = allel.GenotypeArray(gt_concat)
+    pos_array = allel.SortedIndex(pos_concat)
+    return False, gt_array, pos_array
+
+
 # function for reading in a genotype matrix from a VCF file
 # also filters out all but biallelic SNPs and invariant sites
 # returns a genotype matrix, and array of genomic coordinates and
 # a logical indicating whether the array(s) are empty
-def read_and_filter_genotypes(
+def read_and_filter_genotypes(  # noqa: C901
     args: argparse.Namespace,
     chromosome: str,
     window_pos_1: int,
@@ -263,6 +340,30 @@ def read_and_filter_genotypes(
 
     include_multiallelic_snps: bool = args.include_multiallelic_snps
 
+    # Pre-declare the array vars so mypy widens to the union type rather than narrowing to
+    # whichever subclass appears first below (HaplotypeArray vs GenotypeArray).
+    gt_array: Optional[GenotypeArray]
+    pos_array: Optional[SortedIndex]
+
+    # When invariant sites are not needed (FST-only, or any path where the VCF is
+    # variants-only by design), stream the region in sub-chunks and drop invariant
+    # rows per-sub-chunk so peak RSS scales with variant density rather than chunk
+    # length. `sites_list_chunk` masking, if any, is applied below by the shared
+    # post-read path; the streaming branch returns early with the assembled arrays.
+    if not needs_invariants:
+        callset_is_none, gt_array, pos_array = _read_filtered_variants_streaming(
+            vcf_path=args.vcf,
+            window_region=window_region,
+            ploidy=ploidy,
+            include_multiallelic_snps=include_multiallelic_snps,
+        )
+        if not callset_is_none and sites_list_chunk is not None:
+            assert pos_array is not None and gt_array is not None
+            gt_array = mask_non_target_sites(gt_array, pos_array, sites_list_chunk)
+            if len(gt_array) == 0:
+                return True, None, None
+        return callset_is_none, gt_array, pos_array
+
     # read in data from the source VCF for the current window
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning, module="allel")
@@ -278,11 +379,6 @@ def read_and_filter_genotypes(
             ],
             numbers={"GT": ploidy},
         )
-
-    # Pre-declare the array vars so mypy widens to the union type rather than narrowing to
-    # whichever subclass appears first below (HaplotypeArray vs GenotypeArray).
-    gt_array: Optional[GenotypeArray]
-    pos_array: Optional[SortedIndex]
 
     # keep track of whether the callset was empty (no sites for this range in the VCF)
     # used by compute_summary_stats to add info about completely missing sites

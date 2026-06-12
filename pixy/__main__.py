@@ -466,18 +466,29 @@ def main() -> None:  # noqa: C901
             # otherwise, get the interval from the VCF's POS column
             else:
                 if pixy_args.sites is None:
-                    # Run `tabix VCF CHROM` (no shell, no piping through cut/tail) and read the
-                    # POS column of the final line. Avoids shell-injection risk on the VCF and
-                    # chromosome strings and removes a dependency on cut/tail being on PATH.
-                    tabix_out = subprocess.check_output(["tabix", args.vcf, chromosome]).decode(
-                        "utf-8"
-                    )
+                    # Stream `tabix VCF CHROM` line-by-line and keep only the POS column of
+                    # the final record. Previously this was `check_output(...).decode("utf-8")`
+                    # which slurped the entire chromosome into RAM (a 10 Mb chromosome with
+                    # mostly-invariant sites can be >1 GB of bytes + decoded str + splitlines
+                    # list), dominating peak RSS for FST-only runs. Streaming keeps memory O(1).
+                    # No shell or cut/tail dependency.
                     last_pos: Optional[str] = None
-                    for line in tabix_out.splitlines():
-                        if line and not line.startswith("#"):
-                            cols = line.split("\t", 2)
-                            if len(cols) >= 2:
-                                last_pos = cols[1]
+                    with subprocess.Popen(
+                        ["tabix", args.vcf, chromosome],
+                        stdout=subprocess.PIPE,
+                        text=True,
+                    ) as proc:
+                        assert proc.stdout is not None
+                        for line in proc.stdout:
+                            if line and not line.startswith("#"):
+                                cols = line.split("\t", 2)
+                                if len(cols) >= 2:
+                                    last_pos = cols[1]
+                    if proc.returncode != 0:
+                        raise RuntimeError(
+                            f"tabix lookup of {chromosome!r} in {args.vcf} failed with exit "
+                            f"code {proc.returncode}"
+                        )
                     if last_pos is None:
                         raise ValueError(
                             f"No records found in VCF for chromosome {chromosome!r}; cannot infer "
