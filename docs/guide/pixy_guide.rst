@@ -17,6 +17,9 @@ If you did not already generate an 'allsites' VCF (VCF with invariant sites), `s
     When working with whole genome data, we suggest you generate *separate invariant sites VCFs for each chromosome*. This is to prevent
     memory limitation issues down the line. This is less of an issue for reduced representation sequencing, naturally.
 
+.. note::
+    **GVCF input.** If you already have a joint-called GVCF (invariant runs stored as ``ALT=<NON_REF>`` block records with ``INFO/END``), you can feed it directly to ``pixy`` with the ``--gvcf`` flag instead of decompressing it to an all-sites VCF first. See the GATK section of the :doc:`../generating_invar/generating_invar` guide and the ``--gvcf`` entry in :doc:`../arguments`.
+
 We recommend using the standard tools dedicated to performing such operations on VCFs: VCFtools and BCFtools (both available on bioconda). The examples below use VCFtools because its filter flags are the most legible, but BCFtools (``bcftools view``, ``bcftools filter``) can perform all of the same operations and is the more actively-maintained tool — use whichever you prefer.
 
 Site-level filtration

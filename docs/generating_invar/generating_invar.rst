@@ -70,6 +70,9 @@ Notes on the options selected above:
 
 Important: In GATK v4.x, we have found that you must specify an interval (``-L``) when running GenotypeGVCFs. Without a designated interval, it appears to encounter missing reference confidence blocks, causing it to fail. This is true even when the problematic blocks are outside of the GenomicsDB interval being passed to it. We recommend always specifying an interval (``-L``) to avoid such issues.
 
+.. note::
+    **Skipping the all-sites decompression.** If disk space is tight, the joint-called GVCF emitted by ``GenotypeGVCFs`` (without ``--all-sites``) can be passed directly to pixy with the ``--gvcf`` flag. ``pixy`` will expand the invariant reference blocks (``ALT=<NON_REF>``, ``INFO/END``) into per-site rows at read time, producing identical results to a fully-decompressed all-sites VCF without the intermediate file. The same flag works on bcftools gVCF-style output (``bcftools call -g``); the ``bcftools convert --gvcf2vcf`` round-trip is then optional.
+
 .. warning::
     **``--all-sites`` is not compatible with VQSR.** The 0/0 (invariant) records emitted by ``GenotypeGVCFs --all-sites`` typically carry only ``DP`` in the INFO field and lack the annotations that ``VariantRecalibrator`` relies on (``QD``, ``FS``, ``SOR``, ``MQ``, ``MQRankSum``, ``ReadPosRankSum``, ``InbreedingCoeff``). For pixy input you should hard-filter instead, and — per the warning at the top of this page — filter variant and invariant sites separately before concatenating them back together.
 

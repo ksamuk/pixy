@@ -6,6 +6,40 @@ Explanations of major changes to ``pixy`` are listed below. For up-to-date
 info on minor versions and bugfixes, see the release notes on GitHub:
 https://github.com/ksamuk/pixy/releases
 
+Unreleased
+==========
+
+New features
+------------
+
+- **wisp companion-tool input (``--wisp_bed``).** Pass a wisp-format
+  quantized callable-sites BED alongside a variants-only VCF; the
+  per-window callable-site denominator for π, d\ :sub:`xy`, Watterson's
+  θ, and Tajima's *D* is then sourced from the wisp mask rather than
+  from invariant sites in the VCF, while F\ :sub:`ST` continues to use
+  only variant sites. This avoids the disk cost of an all-sites VCF for
+  datasets where the callable-site pattern is already compact (see the
+  companion tool at https://github.com/samuk-lab/wisp). Incompatible
+  with ``--gvcf``.
+
+pixy 2.1.3
+==========
+
+New features
+------------
+
+- **Direct GVCF input.** Pass ``--gvcf`` to feed a joint-called GVCF
+  (one in which runs of consecutive invariant positions are stored as
+  block records with ``ALT=<NON_REF>`` and ``INFO/END``) directly to
+  ``pixy``. Invariant blocks are expanded into per-site rows at read
+  time, producing identical results to a fully-decompressed all-sites
+  VCF without the intermediate file. See :doc:`arguments` for the new
+  ``--gvcf`` and ``--gvcf_max_block_size`` flags, and the GATK section
+  of :doc:`generating_invar/generating_invar` for how this lets you
+  skip the ``GenotypeGVCFs --all-sites`` step. Incompatible with
+  ``--wisp_bed``; a clear error is raised if both are supplied or if
+  ``--gvcf`` is set against a non-GVCF input.
+
 pixy 2.0.0
 ==========
 
