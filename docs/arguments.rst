@@ -102,6 +102,23 @@ Optional
     estimates of π and d\ :sub:`xy` are systematically biased and will be
     wrong unless your data are simulated.
 
+**--gvcf**
+    Treat the input as a joint-called GVCF in which runs of consecutive
+    invariant positions are collapsed into block records
+    (``ALT=<NON_REF>`` and ``INFO/END`` covering ``[POS, END]``).
+    ``pixy`` expands each block back into per-site rows at read time so
+    that the per-window callable-site denominator is identical to the one
+    you would get from a fully-decompressed all-sites VCF. Required when
+    feeding a GVCF directly — running on a GVCF without ``--gvcf`` would
+    silently drop the invariant blocks. Incompatible with ``--wisp_bed``.
+
+**--gvcf_max_block_size [integer]**
+    Maximum expected GVCF block length in bp (default: ``100000``). Used
+    only when ``--gvcf`` is set: ``pixy`` widens each tabix query on the
+    left by this amount so blocks that start before the current window
+    are not missed. The default is generous for typical GATK-emitted
+    block lengths; raise it if your GVCF contains longer blocks.
+
 **--silent**
     Suppress all console output.
 
