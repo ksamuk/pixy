@@ -288,6 +288,30 @@ def main() -> None:  # noqa: C901
     )
 
     optional.add_argument(
+        "--gvcf",
+        action="store_true",
+        default=False,
+        help=(
+            "Input VCF is a joint-called GVCF: invariant blocks "
+            "(ALT=<NON_REF>, INFO/END) are expanded to per-site rows at read time. "
+            "Required when feeding a GATK GVCF directly; incompatible with --wisp_bed."
+        ),
+        required=False,
+    )
+    optional.add_argument(
+        "--gvcf_max_block_size",
+        type=int,
+        nargs="?",
+        default=100000,
+        help=(
+            "Maximum expected GVCF block length in bp (default=100000).\n"
+            "Used to widen each tabix query so blocks that start before the window are not "
+            "missed. Only consulted when --gvcf is set."
+        ),
+        required=False,
+    )
+
+    optional.add_argument(
         "--version",
         action="version",
         version=help_image + "version " + version,
@@ -341,6 +365,11 @@ def main() -> None:  # noqa: C901
     # functions can reach it without re-reading the BED header. The mask object holds
     # only the metadata and the BED path; per-window queries are made via tabix.
     args.wisp_mask = pixy_args.wisp_mask
+    # GVCF settings are propagated similarly so `read_and_filter_genotypes` can decide
+    # whether to widen the tabix region and run block expansion. Booleans live on the
+    # argparse namespace already; we mirror them on the validated args for consistency.
+    args.gvcf = pixy_args.gvcf
+    args.gvcf_max_block_size = pixy_args.gvcf_max_block_size
     popindices = {
         name: pixy_args.populations.indices_for(str(name)) for name in pixy_args.pop_names
     }

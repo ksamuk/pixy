@@ -23,6 +23,7 @@ from pixy.calc import calc_watterson_theta
 from pixy.calc import serialize_tajima_d_variant_counts
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
+from pixy.gvcf import expand_blocks
 from pixy.models import PixyTempResult
 from pixy.models import TajimaDResult
 from pixy.models import WattersonThetaResult
@@ -335,8 +336,18 @@ def read_and_filter_genotypes(  # noqa: C901
               if no valid positions remain)
 
     """
+    # GVCF block records can start before `window_pos_1` and end inside the window. A
+    # plain tabix query for `chr:w1-w2` would miss them (tabix matches on record start
+    # position). Widen the left edge by `--gvcf_max_block_size - 1` when --gvcf is set;
+    # the expansion helper then clips the synthesised per-site rows back to [w1, w2].
+    is_gvcf: bool = bool(getattr(args, "gvcf", False))
+    if is_gvcf and needs_invariants:
+        max_block_size: int = int(getattr(args, "gvcf_max_block_size", 100000))
+        query_start = max(1, window_pos_1 - max_block_size + 1)
+    else:
+        query_start = window_pos_1
     # a string representation of the target region of the current window
-    window_region = chromosome + ":" + str(window_pos_1) + "-" + str(window_pos_2)
+    window_region = chromosome + ":" + str(query_start) + "-" + str(window_pos_2)
 
     include_multiallelic_snps: bool = args.include_multiallelic_snps
 
@@ -350,6 +361,8 @@ def read_and_filter_genotypes(  # noqa: C901
     # rows per-sub-chunk so peak RSS scales with variant density rather than chunk
     # length. `sites_list_chunk` masking, if any, is applied below by the shared
     # post-read path; the streaming branch returns early with the assembled arrays.
+    # NB: GVCF block rows are correctly dropped here without any special handling —
+    # blocks have `is_snp == 0` and are filtered out by the biallelic-SNP mask.
     if not needs_invariants:
         callset_is_none, gt_array, pos_array = _read_filtered_variants_streaming(
             vcf_path=args.vcf,
@@ -365,6 +378,9 @@ def read_and_filter_genotypes(  # noqa: C901
         return callset_is_none, gt_array, pos_array
 
     # read in data from the source VCF for the current window
+    # `variants/END` is requested unconditionally — scikit-allel returns it filled with
+    # -1 when the field is missing from a record, which costs nothing for non-GVCF
+    # inputs and is consumed by `pixy.gvcf.expand_blocks` below when --gvcf is set.
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning, module="allel")
         callset = allel.read_vcf(
@@ -376,6 +392,7 @@ def read_and_filter_genotypes(  # noqa: C901
                 "calldata/GT",
                 "variants/is_snp",
                 "variants/numalt",
+                "variants/END",
             ],
             numbers={"GT": ploidy},
         )
@@ -388,6 +405,12 @@ def read_and_filter_genotypes(  # noqa: C901
         pos_array = None
 
     else:
+        # GVCF block expansion happens before the genotype-array construction below, so
+        # the existing biallelic/invariant mask logic stays untouched: synthesised rows
+        # have numalt==0 and are picked up by the `is_invariant_site` branch.
+        if is_gvcf:
+            callset = expand_blocks(callset, region_start=window_pos_1, region_end=window_pos_2)
+
         # if the callset is NOT empty (None), continue with pipeline
         callset_is_none = False
 

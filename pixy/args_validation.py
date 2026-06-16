@@ -197,6 +197,10 @@ class PixyArgs:
             is treated as a variants-only callset and the per-window callable-site denominator
             for pi, dxy, Tajima's D, and Watterson's theta is sourced from the wisp mask
             rather than from invariant sites in the VCF. FST is unaffected.
+        gvcf: whether the input VCF is a GATK GVCF whose invariant blocks should be
+            expanded to per-site rows at read time. Incompatible with `wisp_mask`.
+        gvcf_max_block_size: maximum expected GVCF block size in bp; used to widen each
+            tabix region on the left so blocks starting before a window are not missed.
 
     Raises:
         ValueError: if an interval is specified without both start and end positions
@@ -228,6 +232,13 @@ class PixyArgs:
     # denominator for pi/dxy/Tajima's D / Watterson's theta should be analytically
     # supplied by the wisp mask. FST is unaffected (it uses variant sites only).
     wisp_mask: Union[WispMask, None] = None
+    # When True, --vcf is a GATK GVCF: invariant blocks are expanded to per-site rows
+    # inside `pixy.core.read_and_filter_genotypes` before the existing biallelic /
+    # invariant mask runs.
+    gvcf: bool = False
+    # Maximum expected GVCF block size (bp). Used to widen each tabix region on the
+    # left so a block that starts before the window is not missed.
+    gvcf_max_block_size: int = 100000
 
     def __post_init__(self) -> None:
         """Checks a subset of mutually exclusive `pixy` args to ensure compliance."""
@@ -607,7 +618,7 @@ def validate_window_and_interval_args(
 # helper for parsing ploidy from a single GT string (e.g. "0/0", "0|1", "1")
 def _read_vcf_samples_and_alts(  # noqa: C901
     vcf_path: str, scan_alts: bool, max_alt_records: int = 100_000
-) -> Tuple[List[str], Union[set, None]]:
+) -> Tuple[List[str], Union[set, None], bool]:
     """
     Read the VCF header for the sample list and, optionally, sample ALT values from records.
 
@@ -620,6 +631,11 @@ def _read_vcf_samples_and_alts(  # noqa: C901
     decision is fully determined. When ``scan_alts`` is False the second pass is skipped
     entirely and ``alt_values`` is returned as ``None``.
 
+    The third element of the return is a boolean ``gvcf_marker_seen``: True if any scanned
+    record had ALT in ``{<NON_REF>, <*>}`` or INFO containing ``END=`` with a value strictly
+    greater than POS. This is used by the GVCF detection path; it is always False when
+    ``scan_alts`` is False (no data records were inspected).
+
     Replaces the previous `allel.read_vcf_headers(...).samples`-based reader, which pulled
     in dask/zarr/pyarrow/scipy (~50 MB RSS, ~300 ms wall) just to grab the sample list.
 
@@ -628,6 +644,7 @@ def _read_vcf_samples_and_alts(  # noqa: C901
     """
     samples: Union[List[str], None] = None
     alt_values: Union[set, None] = set() if scan_alts else None
+    gvcf_marker_seen: bool = False
     seen_alt_records = 0
     with gzip.open(vcf_path, "rt") as fh:
         for line in fh:
@@ -646,15 +663,37 @@ def _read_vcf_samples_and_alts(  # noqa: C901
             # samples already captured; we're now in the data section reading ALT values
             if line.startswith("#"):
                 continue
-            fields = line.rstrip("\n").split("\t", 5)
+            # Split into POS + ALT + INFO so we can check for GVCF block markers in the
+            # same pass: ALT='<NON_REF>'/'<*>' and INFO containing END=<value>. We need
+            # field 7 (INFO), so split into at most 8 fields and keep the rest unsplit.
+            fields = line.rstrip("\n").split("\t", 8)
             if len(fields) >= 5:
                 # `alt_values` is non-None here because `scan_alts` was True (we'd have
                 # broken out above otherwise); the cast keeps mypy quiet without runtime cost.
                 assert alt_values is not None
-                alt_values.add(fields[4])
+                alt = fields[4]
+                alt_values.add(alt)
+                if not gvcf_marker_seen:
+                    # The two ALT shapes used to denote a reference-block by GATK / Strelka.
+                    if "<NON_REF>" in alt or "<*>" in alt:
+                        gvcf_marker_seen = True
+                    elif len(fields) >= 8:
+                        info = fields[7]
+                        # INFO ENDs are conventionally semicolon-separated key=value pairs;
+                        # a leading or mid-record END= is enough to identify a block as long
+                        # as END > POS. POS is field 1.
+                        end_val = _info_end_value(info)
+                        if end_val is not None:
+                            try:
+                                if end_val > int(fields[1]):
+                                    gvcf_marker_seen = True
+                            except ValueError:
+                                pass
             seen_alt_records += 1
-            # Once we've seen both an invariant ALT and a non-invariant ALT, the downstream
-            # check is fully decided and there's no point reading further.
+            # Original early-exit: once we've seen both `.` and a non-`.` ALT, the
+            # invariant check is fully decided. The GVCF marker check is opportunistic
+            # — if the file is a GVCF, blocks appear among the very first records and
+            # `gvcf_marker_seen` flips before this exit fires.
             assert alt_values is not None
             if "." in alt_values and (alt_values - {"."}):
                 break
@@ -665,7 +704,24 @@ def _read_vcf_samples_and_alts(  # noqa: C901
         raise ValueError(
             f"VCF {vcf_path!r} has no `#CHROM` header line; cannot determine sample names."
         )
-    return samples, alt_values
+    return samples, alt_values, gvcf_marker_seen
+
+
+def _info_end_value(info: str) -> Union[int, None]:
+    """
+    Extract the integer value of the ``END`` INFO sub-field, if present.
+
+    Returns ``None`` if ``END`` is absent or its value is not parseable.
+    """
+    if "END=" not in info:
+        return None
+    for part in info.split(";"):
+        if part.startswith("END="):
+            try:
+                return int(part[4:])
+            except ValueError:
+                return None
+    return None
 
 
 def _ploidy_from_gt(gt_str: str) -> int:
@@ -822,18 +878,30 @@ def check_and_validate_args(  # noqa: C901
     # most of the downstream operations require a string
     validate_vcf_path(vcf_path)
 
+    # Reject the combination --gvcf + --wisp_bed up front: both are competing strategies
+    # for sourcing the invariant denominator, so combining them is incoherent.
+    gvcf_flag: bool = bool(getattr(args, "gvcf", False))
+    if gvcf_flag and getattr(args, "wisp_bed", None) is not None:
+        raise ValueError(
+            "--gvcf is incompatible with --wisp_bed. Both supply the invariant-site "
+            "denominator; pick one."
+        )
+
     # Whether the invariant-ALT scan can be skipped is known up front from the user-supplied
     # flags: --bypass_invariant_check explicitly opts out, and supplying a --wisp_bed implies
     # it (the wisp mask supplies the invariant denominator analytically). Computing this here
     # lets the single-pass VCF reader below skip the data-section scan when it isn't needed.
+    # When --gvcf is set we still need to scan ALTs — both to confirm the file actually
+    # looks like a GVCF and to surface the GVCF marker in `gvcf_marker_seen` below.
     bypass_invariant_check: bool = args.bypass_invariant_check or (
         getattr(args, "wisp_bed", None) is not None
     )
     # One gzip pass for both the sample list (always needed) and the ALT-value scan (only
-    # when invariant-checking is on). Previously these were two separate `gzip.open` calls
-    # that each re-decompressed the VCF header.
-    vcf_samples, alt_values = _read_vcf_samples_and_alts(
-        vcf_path, scan_alts=not bypass_invariant_check
+    # when invariant-checking is on, or when --gvcf was passed). Previously these were two
+    # separate `gzip.open` calls that each re-decompressed the VCF header.
+    scan_alts: bool = (not bypass_invariant_check) or gvcf_flag
+    vcf_samples, alt_values, gvcf_marker_seen = _read_vcf_samples_and_alts(
+        vcf_path, scan_alts=scan_alts
     )
 
     logger.info("Validating VCF and input parameters...")
@@ -920,8 +988,30 @@ def check_and_validate_args(  # noqa: C901
     # a very basic check: just looks for at least one invariant site in the alt field
     logger.info("Checking for invariant sites...")
     # `alt_values` was populated by the up-front single-pass VCF read above; it is None
-    # exactly when `bypass_invariant_check` was already true, i.e. the scan was skipped.
-    if alt_values is not None:
+    # exactly when `bypass_invariant_check` was already true and --gvcf was not set
+    # (i.e., the scan was skipped). When --gvcf was set the scan still ran so we can
+    # confirm the input actually looks like a GVCF.
+    if gvcf_flag:
+        # GVCF mode: the existing `.` check is meaningless — invariant runs are stored as
+        # block records, not as per-site `.` ALTs. Instead, confirm we actually saw a
+        # GVCF marker (<NON_REF>/<*> in ALT, or INFO/END > POS). If not, the user almost
+        # certainly passed --gvcf against a non-GVCF input by mistake.
+        if not gvcf_marker_seen:
+            raise ValueError(
+                "--gvcf was specified but the VCF does not appear to be a GVCF — no "
+                "`<NON_REF>` / `<*>` ALTs and no `INFO/END` tags greater than POS were "
+                "found in the first 100 000 records."
+            )
+        logger.info("Input recognised as a GVCF; invariant blocks will be expanded at read time.")
+    elif alt_values is not None:
+        # Standard all-sites path. If the file looks like a GVCF but --gvcf was not set,
+        # bail out with an actionable hint rather than silently dropping the blocks.
+        if gvcf_marker_seen:
+            raise ValueError(
+                "The provided VCF contains GVCF block records (`<NON_REF>` / `<*>` ALT "
+                "or `INFO/END`) but --gvcf was not specified. Re-run with --gvcf to expand "
+                "invariant blocks to per-site rows."
+            )
         if "." not in alt_values:
             raise ValueError(
                 "The provided VCF appears to contain no invariant sites "
@@ -1080,6 +1170,8 @@ def check_and_validate_args(  # noqa: C901
         temp_file=tmp_path,
         ploidy_map=ploidy_map,
         wisp_mask=wisp_mask,
+        gvcf=gvcf_flag,
+        gvcf_max_block_size=int(getattr(args, "gvcf_max_block_size", 100000)),
     )
 
 

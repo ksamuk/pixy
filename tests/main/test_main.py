@@ -1289,3 +1289,50 @@ def test_haploid_wc_fst_is_skipped_with_warning(
 
     warning_msgs = " ".join(record.getMessage() for record in caplog.records)
     assert "Weir-Cockerham FST is not supported for non-diploid contigs" in warning_msgs
+
+
+################################################################################
+# Regression test: GVCF input produces identical output to the matching all-sites VCF
+################################################################################
+
+
+@pytest.mark.regression
+def test_pixy_gvcf_matches_all_sites_baseline(
+    tmp_path: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+    ag1000_gvcf_path: Path,
+) -> None:
+    """
+    Pixy's GVCF path must produce byte-identical pi/dxy/fst output to the all-sites path.
+
+    The GVCF fixture is built from the all-sites fixture by collapsing maximal runs of
+    consecutive invariant records into block records (see ``tests/main/data/scripts/
+    build_gvcf_fixture.py``). After ``expand_blocks`` runs at read time the two
+    callsets should be equivalent across all stats, so the output tables must match.
+    """
+    all_sites_out = tmp_path / "all_sites"
+    gvcf_out = tmp_path / "gvcf"
+    all_sites_out.mkdir()
+    gvcf_out.mkdir()
+
+    common: Dict[str, Any] = dict(
+        stats=["pi", "fst", "dxy", "watterson_theta", "tajima_d"],
+        window_size=10000,
+        populations_path=ag1000_pop_path,
+    )
+    run_pixy_helper(pixy_out_dir=all_sites_out, vcf_path=ag1000_vcf_path, **common)
+    run_pixy_helper(pixy_out_dir=gvcf_out, vcf_path=ag1000_gvcf_path, gvcf=True, **common)
+
+    for name in (
+        "pixy_pi.txt",
+        "pixy_dxy.txt",
+        "pixy_fst.txt",
+        "pixy_watterson_theta.txt",
+        "pixy_tajima_d.txt",
+    ):
+        all_sites_path = all_sites_out / name
+        gvcf_path = gvcf_out / name
+        assert all_sites_path.exists(), f"all-sites run produced no {name}"
+        assert gvcf_path.exists(), f"gvcf run produced no {name}"
+        assert_files_are_consistent(gvcf_path, all_sites_path)
