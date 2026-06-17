@@ -20,8 +20,7 @@ from pixy.calc import calc_dxy
 from pixy.calc import calc_fst
 from pixy.calc import calc_fst_persite
 from pixy.calc import calc_pi
-from pixy.calc_gl import calc_pi_gl
-from pixy.calc_gl import likelihoods_to_posteriors
+from pixy.calc_gl import calc_pi_gl_em
 from pixy.enums import FSTEstimator
 from pixy.models import DxyResult
 from pixy.models import FstResult
@@ -174,9 +173,9 @@ def compute_summary_pi(
     no allele differences by definition.
 
     When ``lik_region`` and ``likelihood_field`` are both supplied, pi is estimated from
-    per-sample genotype likelihoods via ``pixy.calc_gl.calc_pi_gl`` instead of from hard
-    calls. ``gt_region`` is still used for the per-population non-missing-site count
-    (``no_sites``) and for invariant-contribution accounting.
+    per-sample genotype likelihoods via ``pixy.calc_gl.calc_pi_gl_em`` (per-site EM-empirical
+    HWE prior) instead of from hard calls. ``gt_region`` is still used for the per-population
+    non-missing-site count (``no_sites``) and for invariant-contribution accounting.
     """
     pixy_results: List[PixyTempResult] = []
     use_likelihoods: bool = lik_region is not None and likelihood_field is not None
@@ -211,9 +210,8 @@ def compute_summary_pi(
                 if use_likelihoods:
                     assert lik_region is not None and likelihood_field is not None
                     lik_pop = lik_region[:, popindices[pop], :]
-                    posteriors, missing_mask = likelihoods_to_posteriors(lik_pop, likelihood_field)
                     n_haps = int(gt_pop.shape[1] * gt_pop.shape[2])
-                    pi_result = calc_pi_gl(posteriors, missing_mask, n_haps=n_haps)
+                    pi_result = calc_pi_gl_em(lik_pop, likelihood_field, n_haps=n_haps)
                 else:
                     pi_result = calc_pi(gt_pop)
 
