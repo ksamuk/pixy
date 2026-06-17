@@ -228,6 +228,12 @@ class PixyArgs:
     # denominator for pi/dxy/Tajima's D / Watterson's theta should be analytically
     # supplied by the wisp mask. FST is unaffected (it uses variant sites only).
     wisp_mask: Union[WispMask, None] = None
+    # When True, pi is computed from per-sample genotype likelihoods (PL or GL FORMAT field)
+    # instead of hard-called genotypes. `likelihood_field` records which field was found in
+    # the VCF header (PL preferred when both are present). v1 supports diploid biallelic only
+    # and `--stats pi` only.
+    use_likelihoods: bool = False
+    likelihood_field: Union[str, None] = None
 
     def __post_init__(self) -> None:
         """Checks a subset of mutually exclusive `pixy` args to ensure compliance."""
@@ -668,6 +674,39 @@ def _read_vcf_samples_and_alts(  # noqa: C901
     return samples, alt_values
 
 
+def _read_vcf_format_ids(vcf_path: str) -> set:
+    """
+    Return the set of FORMAT IDs declared in the VCF header.
+
+    Used by the `--use_likelihoods` validation to pick between PL and GL up front, and to
+    fail fast when neither is declared. One small gzip pass over the header lines.
+    """
+    format_ids: set = set()
+    with gzip.open(vcf_path, "rt") as fh:
+        for line in fh:
+            if line.startswith("##FORMAT="):
+                # Header line shape: ##FORMAT=<ID=PL,Number=G,Type=Integer,...>
+                # Locate the ID= field without parsing the full bracketed expression.
+                tag = "ID="
+                idx = line.find(tag)
+                if idx < 0:
+                    continue
+                rest = line[idx + len(tag) :]
+                # ID value ends at the next comma or '>'.
+                end = len(rest)
+                for ch in (",", ">"):
+                    j = rest.find(ch)
+                    if 0 <= j < end:
+                        end = j
+                format_ids.add(rest[:end].strip())
+            elif line.startswith("#CHROM"):
+                break
+            elif not line.startswith("#"):
+                # Past the header without seeing #CHROM — malformed VCF, but not our concern here.
+                break
+    return format_ids
+
+
 def _ploidy_from_gt(gt_str: str) -> int:
     """Infer ploidy from a single GT genotype string."""
     if "/" in gt_str:
@@ -1034,6 +1073,37 @@ def check_and_validate_args(  # noqa: C901
 
     include_multiallelic_snps: bool = args.include_multiallelic_snps
 
+    # GENOTYPE-LIKELIHOOD MODE
+    # When --use_likelihoods is set, pi is estimated from per-sample PL/GL FORMAT fields
+    # instead of hard calls. v1 supports diploid biallelic sites only and `--stats pi` only.
+    use_likelihoods: bool = getattr(args, "use_likelihoods", False)
+    likelihood_field: Union[str, None] = None
+    if use_likelihoods:
+        non_pi = [s for s in args.stats if s != "pi"]
+        if non_pi:
+            raise ValueError(
+                "--use_likelihoods currently supports only --stats pi "
+                "(dxy, fst, watterson_theta, tajima_d from likelihoods are planned for "
+                f"a later release). Remove from --stats: {non_pi}"
+            )
+        if include_multiallelic_snps:
+            raise ValueError(
+                "--use_likelihoods supports diploid biallelic sites only in v1; "
+                "remove --include_multiallelic_snps."
+            )
+        # Probe the VCF header for PL / GL FORMAT declarations and pick one.
+        format_ids = _read_vcf_format_ids(vcf_path)
+        if "PL" in format_ids:
+            likelihood_field = "PL"
+        elif "GL" in format_ids:
+            likelihood_field = "GL"
+        else:
+            raise ValueError(
+                f"--use_likelihoods requires the VCF {vcf_path!r} to declare a PL or GL "
+                "FORMAT field; neither was found in the header."
+            )
+        logger.info(f"Using genotype likelihoods from FORMAT field: {likelihood_field}")
+
     # check ploidy per contig (supports VCFs with variable ploidy across contigs)
     ploidy_map: Dict[str, int] = infer_ploidy_per_contig(vcf_path, chrom_list)
     distinct_ploidies = sorted(set(ploidy_map.values()))
@@ -1051,6 +1121,15 @@ def check_and_validate_args(  # noqa: C901
                 "Weir-Cockerham FST is not supported for non-diploid contigs. "
                 f"FST will be skipped for: {non_diploid}. "
                 "Use --fst_type hudson to compute FST on these contigs."
+            )
+
+    # --use_likelihoods is diploid-only in v1; reject up front if any analyzed contig is not.
+    if use_likelihoods:
+        non_diploid = [c for c, p in ploidy_map.items() if p != 2]
+        if non_diploid:
+            raise ValueError(
+                "--use_likelihoods supports diploid contigs only in v1; "
+                f"non-diploid contigs were detected: {non_diploid}."
             )
 
     logger.info("All initial checks passed!")
@@ -1080,6 +1159,8 @@ def check_and_validate_args(  # noqa: C901
         temp_file=tmp_path,
         ploidy_map=ploidy_map,
         wisp_mask=wisp_mask,
+        use_likelihoods=use_likelihoods,
+        likelihood_field=likelihood_field,
     )
 
 

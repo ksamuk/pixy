@@ -1289,3 +1289,167 @@ def test_haploid_wc_fst_is_skipped_with_warning(
 
     warning_msgs = " ".join(record.getMessage() for record in caplog.records)
     assert "Weir-Cockerham FST is not supported for non-diploid contigs" in warning_msgs
+
+
+################################################################################
+# --use_likelihoods integration tests
+################################################################################
+
+
+def _make_vcf_with_confident_pl(src_vcf_gz: Path, out_vcf_gz: Path) -> None:
+    """
+    Derive a copy of `src_vcf_gz` with a confident PL field injected per call.
+
+    The synthetic PL maps each diploid GT (0/0, 0/1, 1/1) to (0,255,255), (255,0,255),
+    (255,255,0) respectively, and missing GT (./.) to ".,.,.". This collapses to a
+    one-hot posterior in `pixy.calc_gl.likelihoods_to_posteriors`, so a pixy run with
+    `--use_likelihoods` against this VCF must produce avg_pi identical to the hard-call
+    run — verifying the end-to-end plumbing of PL reading, dispatch, and float output.
+
+    The output file is bgzipped (not plain gzip) so tabix can index it.
+    """
+    import gzip
+    import subprocess
+
+    def synth_pl(gt: str) -> str:
+        sep = "/" if "/" in gt else "|" if "|" in gt else ""
+        alleles = gt.split(sep) if sep else [gt]
+        non_missing = [a for a in alleles if a != "."]
+        if len(non_missing) != len(alleles) or not non_missing:
+            return ".,.,."
+        n_alt = sum(int(a) for a in alleles)
+        triplet = [255, 255, 255]
+        triplet[min(n_alt, 2)] = 0
+        return ",".join(str(x) for x in triplet)
+
+    plain = out_vcf_gz.with_suffix("")  # strip .gz; bgzip re-adds it
+    with gzip.open(src_vcf_gz, "rt") as fh_in, open(plain, "wt") as fh_out:
+        for line in fh_in:
+            if line.startswith("##"):
+                fh_out.write(line)
+                continue
+            if line.startswith("#CHROM"):
+                fh_out.write(
+                    "##FORMAT=<ID=PL,Number=G,Type=Integer,Description="
+                    '"Phred-scaled genotype likelihoods (synthetic, confident)">\n'
+                )
+                fh_out.write(line)
+                continue
+            fields = line.rstrip("\n").split("\t")
+            original_fmt_keys = fields[8].split(":")
+            n_orig_keys = len(original_fmt_keys)
+            # If the source row already declares PL, overwrite the existing values; otherwise
+            # append a new PL slot. (Some ag1000 variant rows carry a caller-emitted PL that
+            # corresponds to a different posterior than our confident synthetic PL — leaving
+            # it in place would defeat the "confident PL reduces to hard-call" guarantee.)
+            if "PL" in original_fmt_keys:
+                pl_idx = original_fmt_keys.index("PL")
+                fields[8] = fields[8]  # unchanged
+            else:
+                pl_idx = n_orig_keys
+                fields[8] = ":".join(original_fmt_keys + ["PL"])
+            for i in range(9, len(fields)):
+                sample_cells = fields[i].split(":")
+                gt_cell = sample_cells[0]
+                # Pad missing intermediate subfields with "." so the sample cell width
+                # matches the FORMAT spec. VCFs often abbreviate missing cells to just
+                # "./.", which would otherwise misalign with our injected PL slot.
+                if len(sample_cells) < n_orig_keys:
+                    sample_cells = sample_cells + ["."] * (n_orig_keys - len(sample_cells))
+                synth = synth_pl(gt_cell)
+                if pl_idx < len(sample_cells):
+                    sample_cells[pl_idx] = synth
+                else:
+                    sample_cells.append(synth)
+                fields[i] = ":".join(sample_cells)
+            fh_out.write("\t".join(fields) + "\n")
+    # bgzip -f writes <plain>.gz and removes <plain>.
+    subprocess.run(["bgzip", "-f", str(plain)], check=True)
+
+
+@pytest.fixture()
+def ag1000_with_pl_vcf(tmp_path: Path, ag1000_vcf_path: Path) -> Path:
+    """Build a copy of the ag1000 fixture with synthetic confident PL fields per call."""
+    import subprocess
+
+    out = tmp_path / "ag1000_with_pl.vcf.gz"
+    _make_vcf_with_confident_pl(ag1000_vcf_path, out)
+    subprocess.run(["tabix", "-p", "vcf", str(out)], check=True)
+    return out
+
+
+def test_use_likelihoods_matches_hardcall_on_confident_pl(
+    pixy_out_dir: Path,
+    ag1000_with_pl_vcf: Path,
+    ag1000_pop_path: Path,
+) -> None:
+    """Confident PL → calc_pi_gl reduces exactly to calc_pi; per-window avg_pi matches."""
+    os.makedirs(pixy_out_dir, exist_ok=True)
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        stats=["pi"],
+        vcf_path=ag1000_with_pl_vcf,
+        populations_path=ag1000_pop_path,
+        window_size=10000,
+        output_prefix="hc",
+    )
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        stats=["pi"],
+        vcf_path=ag1000_with_pl_vcf,
+        populations_path=ag1000_pop_path,
+        window_size=10000,
+        output_prefix="gl",
+        use_likelihoods=True,
+    )
+
+    hc_rows = _read_pixy_tsv(pixy_out_dir / "hc_pi.txt")
+    gl_rows = _read_pixy_tsv(pixy_out_dir / "gl_pi.txt")
+    assert len(hc_rows) == len(gl_rows) > 0
+
+    sort_keys = ["pop", "chromosome", "window_pos_1"]
+    hc_sorted = _sort_rows(hc_rows, sort_keys, key_cast=_POS_INT_CAST)
+    gl_sorted = _sort_rows(gl_rows, sort_keys, key_cast=_POS_INT_CAST)
+    hc_pi = _col(hc_sorted, "avg_pi")
+    gl_pi = _col(gl_sorted, "avg_pi")
+    for h, g in zip(hc_pi, gl_pi, strict=True):
+        if math.isnan(h):
+            assert math.isnan(g)
+        else:
+            assert g == pytest.approx(h, abs=1e-9), f"avg_pi differs: hc={h} gl={g}"
+
+
+def test_use_likelihoods_rejects_unsupported_stats(
+    pixy_out_dir: Path,
+    ag1000_with_pl_vcf: Path,
+    ag1000_pop_path: Path,
+) -> None:
+    """--use_likelihoods should reject stats other than pi in v1."""
+    os.makedirs(pixy_out_dir, exist_ok=True)
+    with pytest.raises(ValueError, match="--use_likelihoods currently supports only --stats pi"):
+        run_pixy_helper(
+            pixy_out_dir=pixy_out_dir,
+            stats=["pi", "dxy"],
+            vcf_path=ag1000_with_pl_vcf,
+            populations_path=ag1000_pop_path,
+            window_size=10000,
+            use_likelihoods=True,
+        )
+
+
+def test_use_likelihoods_rejects_missing_pl_field(
+    pixy_out_dir: Path,
+    multiallelic_vcf_path: Path,
+    multiallelic_pop_path: Path,
+) -> None:
+    """--use_likelihoods requires PL or GL in the VCF header; multiallelic fixture has neither."""
+    os.makedirs(pixy_out_dir, exist_ok=True)
+    with pytest.raises(ValueError, match="requires the VCF .* to declare a PL or GL"):
+        run_pixy_helper(
+            pixy_out_dir=pixy_out_dir,
+            stats=["pi"],
+            vcf_path=multiallelic_vcf_path,
+            populations_path=multiallelic_pop_path,
+            window_size=10000,
+            use_likelihoods=True,
+        )

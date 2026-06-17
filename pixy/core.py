@@ -172,6 +172,102 @@ def assign_sites_to_chunks(sites_pre_list: List[int], chunk_size: int) -> List[L
 # function for masking non-target sites in a genotype array
 # used in conjuctions with the --sites_list command line option
 # NB: `SortedIndex` is of type `int`, but is not generic (at least in 3.8)
+def _empty_likelihood_array(n_sites: int, n_samples: int, likelihood_field: str) -> NDArray:
+    """
+    Return an all-missing PL or GL array of shape (n_sites, n_samples, 3).
+
+    Missing convention matches `pixy.calc_gl.likelihoods_to_posteriors`: -1 for PL,
+    NaN for GL.
+    """
+    if likelihood_field == "PL":
+        return np.full((n_sites, n_samples, 3), -1, dtype=np.int16)
+    return np.full((n_sites, n_samples, 3), np.nan, dtype=np.float64)
+
+
+def _synthesize_likelihoods_at_invariants(
+    lik_array: NDArray,
+    gt_array: NDArray,
+    invariant_mask: NDArray[np.bool_],
+    ploidy: int,
+    likelihood_field: str,
+) -> NDArray:
+    """
+    Replace missing PL/GL rows at invariant sites with confident-from-GT triplets.
+
+    Invariant sites in pixy-friendly VCFs typically carry GT but no PL. For pi to count
+    those sites in the denominator under GL mode, we substitute a one-hot-confident
+    posterior: the genotype indicated by the GT call gets the high-likelihood entry, the
+    other two get a phred-255-equivalent (effectively zero) entry.
+
+    Non-invariant sites and individuals with non-missing PL/GL are left untouched.
+    """
+    if ploidy != 2:
+        # v1 enforces diploid in args validation; this guard documents the invariant.
+        raise ValueError(
+            f"_synthesize_likelihoods_at_invariants requires diploid; got ploidy={ploidy}"
+        )
+    if not invariant_mask.any():
+        return lik_array
+
+    # Determine which rows in lik_array need synthesis: invariant sites whose PL/GL is
+    # missing for at least one sample. To keep this vectorized and simple, we synthesize
+    # at every invariant site row regardless of whether the VCF already supplied PL — at
+    # an invariant site every sample is hom-ref by definition, so the synthetic confident
+    # PL is consistent with any real PL that might be there.
+    n_alt = gt_array[invariant_mask].sum(axis=-1)  # (n_invar_sites, n_samples), values in {0, 1, 2}
+    # Missing GT (-1) sums to a negative number; carry those through as missing.
+    has_missing_gt = (gt_array[invariant_mask] == -1).any(axis=-1)
+
+    if likelihood_field == "PL":
+        # confident PL: 0 on the actual genotype, 255 elsewhere
+        confident = np.full(n_alt.shape + (3,), 255, dtype=np.int16)
+        # `np.put_along_axis` writes 0 at the index of the called genotype per (site, sample).
+        idx = np.clip(n_alt, 0, 2)[..., None]
+        np.put_along_axis(confident, idx, 0, axis=-1)
+        # Missing GT → triplet of -1 (the scikit-allel/pixy missing sentinel for PL).
+        confident[has_missing_gt] = -1
+    else:
+        # confident GL: 0 on the actual genotype, -25.5 elsewhere (≈ 10^-25.5 likelihood)
+        confident = np.full(n_alt.shape + (3,), -25.5, dtype=np.float64)
+        idx = np.clip(n_alt, 0, 2)[..., None]
+        np.put_along_axis(confident, idx, 0.0, axis=-1)
+        confident[has_missing_gt] = np.nan
+
+    # Write the synthesized rows back into the parallel lik_array. We respect any
+    # already-present non-missing PL/GL by only overwriting rows that are entirely missing
+    # for each sample, but for simplicity v1 always overwrites at invariant sites — the
+    # downstream consumer treats these as confident hom-ref anyway.
+    out = lik_array.copy()
+    out[invariant_mask] = confident
+    return out
+
+
+def _mask_non_target_sites_with_likelihoods(
+    gt_array: Union[GenotypeArray, allel.HaplotypeArray],
+    pos_array: SortedIndex,
+    sites_list_chunk: List[int],
+    lik_array: Optional[NDArray],
+) -> Tuple[Union[GenotypeArray, allel.HaplotypeArray], Optional[NDArray]]:
+    """
+    Apply `mask_non_target_sites` plus a parallel mask on `lik_array` (if present).
+
+    Sites not on `sites_list_chunk` have their genotypes and their likelihoods set to
+    missing, so they drop out of both hard-call and GL-based denominators consistently.
+    """
+    new_gt = mask_non_target_sites(gt_array, pos_array, sites_list_chunk)
+    if lik_array is None:
+        return new_gt, None
+    masked_sites: List[int] = sorted(set(pos_array) - set(sites_list_chunk))
+    mask_idx: NDArray[np.intp] = np.flatnonzero(pos_array.locate_keys(masked_sites))
+    new_lik = lik_array.copy()
+    # PL missing = -1; GL missing = NaN. Detect via dtype.
+    if new_lik.dtype.kind == "i":
+        new_lik[mask_idx] = -1
+    else:
+        new_lik[mask_idx] = np.nan
+    return new_gt, new_lik
+
+
 def mask_non_target_sites(
     gt_array: Union[GenotypeArray, allel.HaplotypeArray],
     pos_array: SortedIndex,
@@ -227,7 +323,7 @@ def _read_filtered_variants_streaming(  # noqa: C901
     window_region: str,
     ploidy: int,
     include_multiallelic_snps: bool,
-) -> Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
+) -> Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex], None]:
     """
     Stream a VCF region in sub-chunks, keeping only variant rows in memory.
 
@@ -277,7 +373,7 @@ def _read_filtered_variants_streaming(  # noqa: C901
             gt_pieces.append(chunk_dict["calldata/GT"][snp_mask])
 
     if not pos_pieces:
-        return True, None, None
+        return True, None, None, None
 
     pos_concat = np.concatenate(pos_pieces)
     gt_concat = np.concatenate(gt_pieces, axis=0)
@@ -288,7 +384,10 @@ def _read_filtered_variants_streaming(  # noqa: C901
     else:
         gt_array = allel.GenotypeArray(gt_concat)
     pos_array = allel.SortedIndex(pos_concat)
-    return False, gt_array, pos_array
+    # The streaming path is FST-only (`needs_invariants=False`) and the GL estimator is
+    # invariant-required (pi denominator includes invariant sites), so streaming + GL is
+    # not exercised in v1. The fourth tuple element is reserved for future GL-streaming.
+    return False, gt_array, pos_array, None
 
 
 # function for reading in a genotype matrix from a VCF file
@@ -303,12 +402,19 @@ def read_and_filter_genotypes(  # noqa: C901
     sites_list_chunk: Optional[List[int]],
     ploidy: int,
     needs_invariants: bool = True,
-) -> Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
+) -> Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex], Optional[NDArray]]:
     """
     Ingests genotypes from a VCF file, retains biallelic SNPs or invariant sites.
 
     Filters out non-SNPs, multi-allelic SNPs, and non-variant sites. Optionally masks out
     non-target sites based on a provided list (`sites_list_chunk`).
+
+    When ``args.likelihood_field`` is set ("PL" or "GL"), the corresponding FORMAT field is
+    also read and returned, with the same site-level filtering applied. Invariant sites
+    typically omit PL/GL in the VCF; for those rows the returned array contains the
+    scikit-allel missing sentinel (-1 for PL, NaN for GL), which `pixy.calc_gl` interprets
+    as "missing" — and a separate synthetic-confident-PL fallback is applied to invariants
+    based on their GT call so they contribute to the denominator correctly.
 
     Args:
         args (Namespace): Command-line arguments, should include the path to the VCF file as
@@ -327,12 +433,15 @@ def read_and_filter_genotypes(  # noqa: C901
             FST only (which only needs variant sites).
 
     Returns:
-        Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
+        Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex], Optional[NDArray]]:
             - A boolean flag (`True` if the VCF callset is empty for the region, `False` otherwise)
             - A GenotypeArray containing the filtered genotype data (or `None` if no valid genotypes
               remain)
             - A SortedIndex containing the positions corresponding to the valid genotypes (or `None`
               if no valid positions remain)
+            - A `(n_sites, n_samples, 3)` ndarray of PL or GL data when
+              ``args.likelihood_field`` is set, else ``None``. Synthetic confident triplets are
+              substituted at invariant sites where the VCF does not carry likelihoods.
 
     """
     # a string representation of the target region of the current window
@@ -345,13 +454,17 @@ def read_and_filter_genotypes(  # noqa: C901
     gt_array: Optional[GenotypeArray]
     pos_array: Optional[SortedIndex]
 
+    # GL mode (PL or GL FORMAT field) is set up during arg validation; an absent attribute
+    # means hard-call mode (the default).
+    likelihood_field: Optional[str] = getattr(args, "likelihood_field", None)
+
     # When invariant sites are not needed (FST-only, or any path where the VCF is
     # variants-only by design), stream the region in sub-chunks and drop invariant
     # rows per-sub-chunk so peak RSS scales with variant density rather than chunk
     # length. `sites_list_chunk` masking, if any, is applied below by the shared
     # post-read path; the streaming branch returns early with the assembled arrays.
     if not needs_invariants:
-        callset_is_none, gt_array, pos_array = _read_filtered_variants_streaming(
+        callset_is_none, gt_array, pos_array, lik_array = _read_filtered_variants_streaming(
             vcf_path=args.vcf,
             window_region=window_region,
             ploidy=ploidy,
@@ -361,27 +474,35 @@ def read_and_filter_genotypes(  # noqa: C901
             assert pos_array is not None and gt_array is not None
             gt_array = mask_non_target_sites(gt_array, pos_array, sites_list_chunk)
             if len(gt_array) == 0:
-                return True, None, None
-        return callset_is_none, gt_array, pos_array
+                return True, None, None, None
+        return callset_is_none, gt_array, pos_array, lik_array
 
     # read in data from the source VCF for the current window
+    vcf_fields: List[str] = [
+        "CHROM",
+        "POS",
+        "calldata/GT",
+        "variants/is_snp",
+        "variants/numalt",
+    ]
+    vcf_numbers: Dict[str, int] = {"GT": ploidy}
+    if likelihood_field is not None:
+        # PL / GL is `Number=G`; for diploid biallelic Number=G = 3 (genotypes AA, AB, BB).
+        vcf_fields.append(f"calldata/{likelihood_field}")
+        vcf_numbers[likelihood_field] = 3
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning, module="allel")
         callset = allel.read_vcf(
             args.vcf,
             region=window_region,
-            fields=[
-                "CHROM",
-                "POS",
-                "calldata/GT",
-                "variants/is_snp",
-                "variants/numalt",
-            ],
-            numbers={"GT": ploidy},
+            fields=vcf_fields,
+            numbers=vcf_numbers,
         )
 
     # keep track of whether the callset was empty (no sites for this range in the VCF)
     # used by compute_summary_stats to add info about completely missing sites
+    lik_array = None
     if callset is None:
         callset_is_none = True
         gt_array = None
@@ -432,19 +553,53 @@ def read_and_filter_genotypes(  # noqa: C901
         # select rows that ARE snps or invariant sites in the position array
         pos_array = pos_array[snp_invar_mask]
 
+        # If GL mode is active, slice the likelihood field with the same filter and synthesize
+        # confident triplets for invariant sites that lack PL/GL in the VCF. Invariants typically
+        # carry GT but no PL — the synthetic triplet `(0, 255, 255)` (PL) or `(0, -25.5, -25.5)`
+        # (GL) collapses to a one-hot posterior over hom-ref under `likelihoods_to_posteriors`.
+        if likelihood_field is not None:
+            assert likelihood_field in ("PL", "GL")
+            raw_lik = callset.get(f"calldata/{likelihood_field}")
+            if raw_lik is not None:
+                lik_array = np.asarray(raw_lik)[snp_invar_mask]
+                if needs_invariants:
+                    invar_post_filter = callset["variants/numalt"][:][snp_invar_mask] == 0
+                    lik_array = _synthesize_likelihoods_at_invariants(
+                        lik_array=lik_array,
+                        gt_array=np.asarray(gt_array),
+                        invariant_mask=invar_post_filter,
+                        ploidy=ploidy,
+                        likelihood_field=likelihood_field,
+                    )
+            else:
+                # FORMAT field declared in header but not actually emitted on any row in
+                # the region. Fall back to synthetic likelihoods for every retained row.
+                n_sites = len(gt_array)
+                n_samples = gt_array.shape[1] if n_sites > 0 else 0
+                lik_array = _synthesize_likelihoods_at_invariants(
+                    lik_array=_empty_likelihood_array(n_sites, n_samples, likelihood_field),
+                    gt_array=np.asarray(gt_array),
+                    invariant_mask=np.ones(n_sites, dtype=bool),
+                    ploidy=ploidy,
+                    likelihood_field=likelihood_field,
+                )
+
         # TODO: cannot index value of type None
         # if a list of target sites was specified, mask out all non-target sites
         if sites_list_chunk is not None:
             assert pos_array is not None, "pos_array should not be None"
-            gt_array = mask_non_target_sites(gt_array, pos_array, sites_list_chunk)
+            gt_array, lik_array = _mask_non_target_sites_with_likelihoods(
+                gt_array, pos_array, sites_list_chunk, lik_array
+            )
 
         # extra 'none' check to catch cases where every site was removed by the mask
         if len(gt_array) == 0:
             callset_is_none = True
             gt_array = None
             pos_array = None
+            lik_array = None
 
-    return callset_is_none, gt_array, pos_array
+    return callset_is_none, gt_array, pos_array, lik_array
 
 
 # main pixy function for computing summary stats over a list of windows (for one chunk)
@@ -521,7 +676,7 @@ def compute_summary_stats(  # noqa: C901
     )
 
     # read in the genotype data for the chunk
-    callset_is_none, gt_array, pos_array = read_and_filter_genotypes(
+    callset_is_none, gt_array, pos_array, lik_array = read_and_filter_genotypes(
         args,
         chromosome,
         chunk_pos_1,
@@ -567,6 +722,7 @@ def compute_summary_stats(  # noqa: C901
         gt_region: Union[GenotypeVector, None]
         loc_region: Union[slice, None]
 
+        lik_region: Optional[NDArray] = None
         if pos_array is None:
             window_is_empty = True
             gt_region = None
@@ -582,6 +738,10 @@ def compute_summary_stats(  # noqa: C901
             assert gt_array is not None, "genotype array is None"
             gt_region = gt_array[loc_region]
             assert gt_region is not None  # narrow for the len() call below
+
+            # Parallel slice on the likelihood array when GL mode is active.
+            if lik_array is not None:
+                lik_region = lik_array[loc_region]
 
             # An empty slice after subsetting means the window has no usable sites.
             if len(gt_region) == 0:
@@ -656,6 +816,8 @@ def compute_summary_stats(  # noqa: C901
                 window_pos_1=window_pos_1,
                 window_pos_2=window_pos_2,
                 invariant_contribution=invariant_contribution,
+                lik_region=lik_region,
+                likelihood_field=getattr(args, "likelihood_field", None),
             )
 
             pixy_output.extend(pi_results)

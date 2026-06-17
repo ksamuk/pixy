@@ -205,6 +205,7 @@ def run_pixy_helper(  # noqa: C901
     fst_components: bool = False,
     tajima_components: bool = False,
     wisp_bed_path: Optional[Path] = None,
+    use_likelihoods: bool = False,
 ) -> None:
     """
     Run `pixy` with the specified arguments.
@@ -282,6 +283,9 @@ def run_pixy_helper(  # noqa: C901
 
     if wisp_bed_path is not None:
         test_args.extend(["--wisp_bed", f"{wisp_bed_path}"])
+
+    if use_likelihoods:
+        test_args.extend(["--use_likelihoods"])
 
     print(f"test_args: {test_args}")
     with patch.object(sys, "argv", test_args):

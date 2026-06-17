@@ -20,6 +20,8 @@ from pixy.calc import calc_dxy
 from pixy.calc import calc_fst
 from pixy.calc import calc_fst_persite
 from pixy.calc import calc_pi
+from pixy.calc_gl import calc_pi_gl
+from pixy.calc_gl import likelihoods_to_posteriors
 from pixy.enums import FSTEstimator
 from pixy.models import DxyResult
 from pixy.models import FstResult
@@ -159,6 +161,8 @@ def compute_summary_pi(
     window_pos_1: int,
     window_pos_2: int,
     invariant_contribution: Union[WindowInvariantContributions, None] = None,
+    lik_region: Union[NDArray, None] = None,
+    likelihood_field: Union[str, None] = None,
 ) -> List[PixyTempResult]:
     """
     Compute pi for all populations in the specified window.
@@ -168,8 +172,14 @@ def compute_summary_pi(
     and ``no_sites`` is added on top of the variant-site totals derived from
     ``gt_region``. ``total_differences`` is unchanged because invariant sites have
     no allele differences by definition.
+
+    When ``lik_region`` and ``likelihood_field`` are both supplied, pi is estimated from
+    per-sample genotype likelihoods via ``pixy.calc_gl.calc_pi_gl`` instead of from hard
+    calls. ``gt_region`` is still used for the per-population non-missing-site count
+    (``no_sites``) and for invariant-contribution accounting.
     """
     pixy_results: List[PixyTempResult] = []
+    use_likelihoods: bool = lik_region is not None and likelihood_field is not None
 
     for pop in popnames:
         pi_result: PiResult
@@ -198,7 +208,14 @@ def compute_summary_pi(
                 # number of sites genotyped in the population
                 # not directly used in the calculation
                 no_sites = int(np.count_nonzero(np.sum(gt_pop.count_alleles(max_allele=1), 1)))
-                pi_result = calc_pi(gt_pop)
+                if use_likelihoods:
+                    assert lik_region is not None and likelihood_field is not None
+                    lik_pop = lik_region[:, popindices[pop], :]
+                    posteriors, missing_mask = likelihoods_to_posteriors(lik_pop, likelihood_field)
+                    n_haps = int(gt_pop.shape[1] * gt_pop.shape[2])
+                    pi_result = calc_pi_gl(posteriors, missing_mask, n_haps=n_haps)
+                else:
+                    pi_result = calc_pi(gt_pop)
 
         # Merge in the analytical invariant contribution from the wisp mask, if any.
         # The variant-derived `total_diffs / total_comps / total_missing` came from
@@ -220,7 +237,11 @@ def compute_summary_pi(
                 no_sites += inv.num_sites
 
         avg_pi: Union[float, str]
-        if isinstance(total_comps, int) and total_comps > 0 and not isinstance(total_diffs, str):
+        if (
+            isinstance(total_comps, (int, float))
+            and total_comps > 0
+            and not isinstance(total_diffs, str)
+        ):
             avg_pi = total_diffs / total_comps
         else:
             avg_pi = pi_result.avg_pi  # NA passthrough

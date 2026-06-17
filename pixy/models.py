@@ -102,15 +102,19 @@ class PiResult:
 
     Attributes:
         avg_pi: proportion of total differences across total comparisons. "NA" if no valid data.
-        total_diffs: sum of the number of differences within the population
-        total_comps: sum of the number of comparisons within the population
-        total_missing: sum of the number of missing within the population
+        total_diffs: sum of the number of differences within the population. Int for the
+            hard-call estimator (`pixy.calc.calc_pi`); float for the genotype-likelihood
+            estimator (`pixy.calc_gl.calc_pi_gl`), which produces expected counts.
+        total_comps: sum of the number of comparisons within the population. Same dtype
+            convention as `total_diffs`.
+        total_missing: sum of the number of missing within the population. Same dtype
+            convention as `total_diffs`.
     """
 
     avg_pi: Union[float, NA]
-    total_diffs: Union[int, NA]
-    total_comps: Union[int, NA]
-    total_missing: Union[int, NA]
+    total_diffs: Union[int, float, NA]
+    total_comps: Union[int, float, NA]
+    total_missing: Union[int, float, NA]
 
     @classmethod
     def empty(cls) -> "PiResult":

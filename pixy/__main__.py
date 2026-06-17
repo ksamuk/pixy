@@ -275,6 +275,20 @@ def main() -> None:  # noqa: C901
 
     (
         optional.add_argument(
+            "--use_likelihoods",
+            action="store_true",
+            default=False,
+            help=(
+                "Estimate pi from per-sample genotype likelihoods (PL or GL FORMAT field) "
+                "instead of hard-called genotypes. Currently supports --stats pi on diploid "
+                "biallelic sites only. PL is preferred when both PL and GL are declared."
+            ),
+            required=False,
+        ),
+    )
+
+    (
+        optional.add_argument(
             "--bypass_invariant_check",
             action="store_true",
             default=False,
@@ -341,6 +355,10 @@ def main() -> None:  # noqa: C901
     # functions can reach it without re-reading the BED header. The mask object holds
     # only the metadata and the BED path; per-window queries are made via tabix.
     args.wisp_mask = pixy_args.wisp_mask
+    # Propagate the GL mode + chosen FORMAT field (PL or GL) onto args so worker
+    # functions can read the right field from the VCF and dispatch to calc_pi_gl.
+    args.use_likelihoods = pixy_args.use_likelihoods
+    args.likelihood_field = pixy_args.likelihood_field
     popindices = {
         name: pixy_args.populations.indices_for(str(name)) for name in pixy_args.pop_names
     }
@@ -730,6 +748,7 @@ def main() -> None:  # noqa: C901
             aggregate=aggregate,
             window_size=output_window_size,
             fst_type=pixy_args.fst_type.value,
+            use_likelihoods=pixy_args.use_likelihoods,
         )
 
     if PixyStat.DXY in successful_stats:

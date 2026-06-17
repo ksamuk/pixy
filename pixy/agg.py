@@ -387,7 +387,13 @@ def _fst_header(fst_type: str, fst_components: bool) -> Tuple[str, ...]:
     return base + ("hudson_fst_num", "hudson_fst_den")
 
 
-def _format_temp_row_for_stat(row: TempRow, stat: str, fst_type: str, fst_components: bool) -> str:
+def _format_temp_row_for_stat(
+    row: TempRow,
+    stat: str,
+    fst_type: str,
+    fst_components: bool,
+    use_likelihoods: bool = False,
+) -> str:
     """
     Format a non-aggregated temp row as one output line for `stat`.
 
@@ -400,6 +406,10 @@ def _format_temp_row_for_stat(row: TempRow, stat: str, fst_type: str, fst_compon
       fst:              pop1, pop2, chrom, w1, w2, avg_fst, n_snps, [components...]
     """
     if stat == "pi":
+        # Under --use_likelihoods, diffs/comps/missing are expected (real-valued) counts
+        # rather than integer pairs, so format them as floats. Otherwise the hard-call
+        # integer formatting is byte-identical to the previous output.
+        _fmt_count = _fmt_float if use_likelihoods else _fmt_int
         cells = [
             row.pop1,
             row.chrom,
@@ -407,9 +417,9 @@ def _format_temp_row_for_stat(row: TempRow, stat: str, fst_type: str, fst_compon
             row.window_pos_2_str,
             _fmt_float(_to_num(row.calculated_stat)),
             _fmt_int(_to_num(row.n_sites)),
-            _fmt_int(_to_num(row.diffs)),
-            _fmt_int(_to_num(row.comps)),
-            _fmt_int(_to_num(row.missing)),
+            _fmt_count(_to_num(row.diffs)),
+            _fmt_count(_to_num(row.comps)),
+            _fmt_count(_to_num(row.missing)),
         ]
     elif stat == "dxy":
         cells = [
@@ -477,9 +487,16 @@ def _format_temp_row_for_stat(row: TempRow, stat: str, fst_type: str, fst_compon
     return "\t".join(cells)
 
 
-def _format_agg_row(row: AggRow, stat: str, fst_type: str, fst_components: bool) -> str:
+def _format_agg_row(
+    row: AggRow,
+    stat: str,
+    fst_type: str,
+    fst_components: bool,
+    use_likelihoods: bool = False,
+) -> str:
     """Format an aggregated row as one output line."""
     if stat == "pi":
+        _fmt_count = _fmt_float if use_likelihoods else _fmt_int
         cells = [
             row.pop1,
             row.chrom,
@@ -487,9 +504,9 @@ def _format_agg_row(row: AggRow, stat: str, fst_type: str, fst_components: bool)
             str(row.window_pos_2),
             _fmt_float(row.calculated_stat),
             _fmt_int(row.n_sites),
-            _fmt_int(row.diffs),
-            _fmt_int(row.comps),
-            _fmt_int(row.missing),
+            _fmt_count(row.diffs),
+            _fmt_count(row.comps),
+            _fmt_count(row.missing),
         ]
     elif stat == "dxy":
         cells = [
@@ -565,6 +582,7 @@ def write_stat_file(  # noqa: C901
     fst_type: str,
     fst_components: bool = False,
     tajima_components: bool = False,
+    use_likelihoods: bool = False,
 ) -> List[str]:
     """Write the per-stat output file. Returns the list of chromosomes that had no data."""
     chroms_with_no_data: List[str] = []
@@ -590,7 +608,9 @@ def write_stat_file(  # noqa: C901
                 continue
             if aggregate:
                 for arow in aggregate_rows(rows, stat, chromosome, window_size, fst_type):
-                    line = _format_agg_row(arow, stat, fst_type, fst_components)
+                    line = _format_agg_row(
+                        arow, stat, fst_type, fst_components, use_likelihoods=use_likelihoods
+                    )
                     if stat == "tajima_d" and tajima_components:
                         line = line + "\t" + arow.tajima_counts
                     f.write(line + "\n")
@@ -598,7 +618,9 @@ def write_stat_file(  # noqa: C901
                 # Non-aggregated: emit each temp row directly, sorted by window_pos_1.
                 rows_sorted = sorted(rows, key=lambda r: int(r.window_pos_1_str))
                 for trow in rows_sorted:
-                    line = _format_temp_row_for_stat(trow, stat, fst_type, fst_components)
+                    line = _format_temp_row_for_stat(
+                        trow, stat, fst_type, fst_components, use_likelihoods=use_likelihoods
+                    )
                     if stat == "tajima_d" and tajima_components:
                         line = line + "\t" + trow.tajima_counts
                     f.write(line + "\n")
