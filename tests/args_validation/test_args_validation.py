@@ -48,6 +48,46 @@ def test_check_and_validate_args(
     assert generated_pixy_args.ploidy_map == {"X": 2}
 
 
+def test_check_and_validate_args_string_interval_crosses_10m(
+    ag1000_vcf_path: Path,
+    ag1000_pop_path: Path,
+    tmp_path: Path,
+) -> None:
+    """
+    Regression test for https://github.com/ksamuk/pixy/issues/217.
+
+    argparse delivers `--interval_start` / `--interval_end` as strings. If they reach
+    `PixyArgs.__post_init__` un-cast, the `start > end` check becomes a lexicographic
+    string compare and rejects any interval whose endpoints differ in digit length and
+    where the shorter value's leading digit is greater (e.g. "9999990" > "10000000").
+    """
+    args = argparse.Namespace()
+    args.vcf = str(ag1000_vcf_path)
+    args.stats = ["pi"]
+    args.populations = ag1000_pop_path
+    args.output_folder = str(tmp_path / "output")
+    args.temp_file = str(tmp_path / "temp_file.txt")
+    args.chromosomes = "X"
+    args.n_cores = 1
+    args.bypass_invariant_check = True
+    args.include_multiallelic_snps = False
+    args.fst_type = "wc"
+    args.output_prefix = "test"
+    args.chunk_size = 100000
+    args.bed_file = None
+    args.window_size = 1
+    args.interval_start = "9"
+    args.interval_end = "20"
+    args.sites_file = None
+
+    pixy_args: PixyArgs = check_and_validate_args(args)
+
+    assert pixy_args.interval_start == 9
+    assert pixy_args.interval_end == 20
+    assert isinstance(pixy_args.interval_start, int)
+    assert isinstance(pixy_args.interval_end, int)
+
+
 ################################################################################
 # Tests for per-contig ploidy inference
 ################################################################################
