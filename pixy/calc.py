@@ -31,6 +31,32 @@ SiteCount: TypeAlias = int
 ObservedAlleleCount: TypeAlias = int
 
 
+def _mutation_counts_by_n(variant_counts: AlleleCountsArray) -> CounterType[int]:
+    """
+    Map observed-chromosome count ``n`` to the number of mutations at those sites.
+
+    Generalizes the segregating-*site* count to a *mutation* count for multiallelic
+    sites: a site with ``k`` observed alleles reflects ``k - 1`` mutations under the
+    infinite-sites assumption (each additional allele is one additional mutation, no
+    homoplasy). Counting mutations -- rather than sites -- makes Watterson's theta and
+    the Tajima's D variance count the same events that multiallelic pi counts, so the
+    estimators are mutually consistent at multiallelic sites and Tajima's D is no longer
+    biased upward by allele multiplicity. Reduces exactly to the segregating-site count
+    when every site is biallelic (``k == 2`` contributes 1).
+
+    ``variant_counts`` is the allele-counts array already restricted to variant sites.
+    A site with a single observed allele (``k == 1``, i.e. monomorphic for a
+    non-reference allele) contributes 0, since it is not segregating.
+    """
+    n_per_site: NDArray[np.int64] = variant_counts.sum(axis=1)
+    k_per_site: NDArray[np.int64] = np.count_nonzero(variant_counts, axis=1)
+    counts: CounterType[int] = Counter()
+    for n_i, k_i in zip(n_per_site.tolist(), k_per_site.tolist(), strict=True):
+        if k_i >= 2:
+            counts[int(n_i)] += int(k_i) - 1
+    return counts
+
+
 @lru_cache(maxsize=1024)
 def _harmonic_sum(n: int) -> np.float64:
     """
@@ -484,9 +510,11 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
 
     num_sites = np.count_nonzero(np.sum(allele_counts, 1))
     num_var_sites = np.count_nonzero(np.sum(variant_counts, 1))
-    # for variant sites only use Counter to generate dictionary
-    # where the key is the number of genotypes and value is number of sites with that many genotypes
-    variant_sites_counter: CounterType[VariantCount] = Counter(variant_counts.sum(axis=1))
+    # for variant sites, map the number of observed genotypes to the number of MUTATIONS
+    # (sum of k-1 over sites with that many genotypes), not the number of sites. This keeps
+    # Watterson's theta consistent with multiallelic pi; for biallelic data it is identical
+    # to the segregating-site count.
+    variant_sites_counter: CounterType[VariantCount] = _mutation_counts_by_n(variant_counts)
     all_sites_counter: CounterType[SiteCount] = Counter(allele_counts.sum(axis=1))
 
     allele_freq_counts: NDArray[np.int64] = np.array(tuple(all_sites_counter.items()))
@@ -502,11 +530,12 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
     # accompanying RuntimeWarning so it doesn't pollute pytest output for this known case.
     watterson_theta: float = 0.0
     with np.errstate(divide="ignore"):
-        for num_genotypes, site_count in variant_sites_counter.items():
-            # `_harmonic_sum(n)` returns 0.0 for n <= 1, preserving the documented "inf"
-            # sentinel for the singleton-haploid case (see comment above).
+        for num_genotypes, mutation_count in variant_sites_counter.items():
+            # `_harmonic_sum(n)` returns 0.0 for n <= 1; a site with a single observed
+            # genotype (n == 1) carries no mutations (k == 1) so it never enters this
+            # counter, and the previous singleton "inf" no longer arises.
             reciprocal_sum: float = _harmonic_sum(int(num_genotypes))
-            watterson_theta += site_count / reciprocal_sum
+            watterson_theta += mutation_count / reciprocal_sum
 
     # Calculate an auxiliary effective-site count that reflects within-site missingness.
     # The Watterson's theta denominator is `num_sites`; this value is emitted as a diagnostic.
@@ -616,22 +645,22 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
     # counts of only variant sites by excluding sites with variant count 0
     variant_allele_counts: AlleleCountsArray = allele_counts[allele_counts[:, 1:].sum(axis=1) != 0]
 
-    # for variant sites only, use Counter to generate dictionary
-    # where the key is the number of genotypes and value is number of sites with that many genotypes
-    variant_gt_counts: CounterType[NumGenotypes] = Counter(variant_allele_counts.sum(axis=1))
+    # for variant sites, map the number of observed genotypes to the number of MUTATIONS
+    # (sum of k-1), not the number of sites, so the theta numerator AND the Tajima's D
+    # variance count the same events as multiallelic pi. Identical to the segregating-site
+    # count for biallelic data. These per-class counts are serialized and summed across
+    # window pieces, so the windowed variance stays consistent (see pixy.agg).
+    variant_gt_counts: CounterType[NumGenotypes] = _mutation_counts_by_n(variant_allele_counts)
 
-    # calculate watterson's theta as sum of equations for differing numbers of genotypes
-    # this is calculating Watterson's theta incorporating missing genotypes
+    # calculate watterson's theta (mutation-count form) incorporating missing genotypes;
+    # `s` is the number of mutations observed in sites with `n` genotypes.
     #
-    # NB: same singleton-haploid corner as in `calc_watterson_theta` — when `n == 1` the
-    # denominator `a1` is 0 and `s / a1` evaluates to `inf`. The
-    # `test_calc_tajima_d_haploid_singleton` test asserts exactly that; `np.errstate` suppresses
-    # the accompanying RuntimeWarning.
+    # NB: `np.errstate` is retained defensively; with mutation counts an `n == 1` class
+    # never occurs (a single observed genotype has k == 1, hence 0 mutations), so the
+    # previous singleton `s / 0 == inf` no longer arises.
     watterson_theta: float = 0.0
     with np.errstate(divide="ignore"):
         for n, s in variant_gt_counts.items():
-            # See comment in calc_watterson_theta — `_harmonic_sum(1) == 0.0` reproduces the
-            # documented inf sentinel for the singleton case.
             a1: float = _harmonic_sum(int(n))
             watterson_theta += s / a1
 
