@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 
 from pixy.calc import calc_tajima_d
 from pixy.calc import calc_watterson_theta
-from pixy.calc import serialize_tajima_d_variant_counts
+from pixy.calc import serialize_tajima_d_components
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
 from pixy.gvcf import expand_blocks
@@ -770,8 +770,9 @@ def compute_summary_stats(  # noqa: C901
                     total_differences=tajima_result.raw_pi,
                     total_comparisons=tajima_result.watterson_theta,
                     total_missing=tajima_result.d_stdev,
-                    tajima_d_variant_counts=serialize_tajima_d_variant_counts(
-                        tajima_result.variant_gt_counts
+                    tajima_d_components=serialize_tajima_d_components(
+                        tajima_result.total_allele_count,
+                        tajima_result.num_mutations,
                     ),
                 )
                 pixy_output.append(pixy_results)

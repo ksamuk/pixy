@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from pixy.calc import calc_tajima_d_stdev
-from pixy.calc import deserialize_tajima_d_variant_counts
+from pixy.calc import deserialize_tajima_d_components
 from tests.conftest import assert_files_are_consistent
 from tests.conftest import run_pixy_helper
 
@@ -500,6 +500,65 @@ def test_pixy_csi_index(
         assert_files_are_consistent(generated_data_path, exp_data_path)
 
 
+@pytest.mark.regression
+def test_pixy_tajima_d_watterson_theta_baseline(
+    pixy_out_dir: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+    expected_outputs: Path,
+) -> None:
+    """
+    Pin the numeric output of Watterson's theta and Tajima's D against stored fixtures.
+
+    WHY THIS EXISTS. Until this test, `tests/main/expected_outputs/baseline/` covered only pi,
+    dxy and FST, so nothing pinned the two estimators added in 2.0.0. Both of their numeric
+    definitions were then silently changed by unrelated work without a single test going red:
+
+      * the Tajima's D denominator fix (#160, released in 2.0.0.beta10) was reverted by
+        78eebd3 while adding windowed aggregation, reintroducing the bias the issue reported;
+      * sites fixed for the alternate allele were counted as segregating, inflating theta.
+
+    This fixture is the cheap durable guard: the ag1000 test VCF carries real, ragged
+    missingness (36 distinct observed-allele-count classes among its variant sites), which is
+    exactly the regime both bugs live in. Any change to either estimator's numbers now shows up
+    here as a diff, and must be justified rather than merely noticed.
+
+    PROVENANCE OF THE FIXTURES -- read before regenerating. These files were generated from
+    pixy's own output, so they pin CURRENT behaviour; they are not an independent oracle. What
+    makes them trustworthy is that the behaviour they pin was validated externally at the time
+    of writing, NOT that pixy produced them:
+
+      * Watterson's theta matches the closed-form JC69 expectation E(s*)/a1 of Tajima (1996,
+        Eq 15) to ~1e-5 across ploidy 2n-8n at 100-120k simulated replicates;
+      * Tajima's D tracks its complete-data value under random per-genotype missingness
+        (-1.84 complete vs -1.82 at 20% missing), which is the criterion issue #160 was
+        reported against;
+      * on biallelic data both agree with `scikit-allel` (see the unit tests in
+        `tests/test_calc.py`).
+
+    So: if this test fails, the burden is on the change to show the NEW numbers meet those same
+    external checks. Do not refresh the fixtures simply to make it pass.
+    """
+    run_pixy_helper(
+        pixy_out_dir=pixy_out_dir,
+        window_size=10000,
+        vcf_path=ag1000_vcf_path,
+        populations_path=ag1000_pop_path,
+        stats=["watterson_theta", "tajima_d"],
+        output_prefix="pixy",
+    )
+
+    expected_out_files: List[Path] = [
+        Path("pixy_watterson_theta.txt"),
+        Path("pixy_tajima_d.txt"),
+    ]
+    for file in expected_out_files:
+        generated_data_path: Path = pixy_out_dir / file
+        exp_data_path: Path = expected_outputs / "baseline" / file
+        assert generated_data_path.exists()
+        assert_files_are_consistent(generated_data_path, exp_data_path)
+
+
 #######################################
 # Tests for output formatting/creation
 #######################################
@@ -634,8 +693,8 @@ def test_pixy_tajima_d_aggregation_matches_direct_calculation(
 
     direct = _read_pixy_tsv(pixy_out_dir / "tajima_direct_tajima_d.txt")
     aggregated = _read_pixy_tsv(pixy_out_dir / "tajima_aggregated_tajima_d.txt")
-    assert direct and "tajima_d_s_counts" not in direct[0]
-    assert aggregated and "tajima_d_s_counts" not in aggregated[0]
+    assert direct and "tajima_d_components" not in direct[0]
+    assert aggregated and "tajima_d_components" not in aggregated[0]
     sort_columns = ["pop", "chromosome", "window_pos_1", "window_pos_2"]
     direct = _sort_rows(direct, sort_columns, _POS_INT_CAST)
     aggregated = _sort_rows(aggregated, sort_columns, _POS_INT_CAST)
@@ -687,8 +746,8 @@ def test_pixy_tajima_d_components_enable_posthoc_aggregation(
 
     components = _read_pixy_tsv(pixy_out_dir / "tajima_components_10kb_tajima_d.txt")
     direct = _read_pixy_tsv(pixy_out_dir / "tajima_direct_20kb_tajima_d.txt")
-    assert components and "tajima_d_s_counts" in components[0]
-    assert direct and "tajima_d_s_counts" not in direct[0]
+    assert components and "tajima_d_components" in components[0]
+    assert direct and "tajima_d_components" not in direct[0]
 
     # Group `components` rows by (pop, chromosome, posthoc_w1, posthoc_w2). Posthoc windows
     # bin the 10kb component rows into the 20kb windows we want to compare against.
@@ -701,13 +760,23 @@ def test_pixy_tajima_d_components_enable_posthoc_aggregation(
 
     posthoc: List[Dict[str, str]] = []
     for (pop, chrom, w1, w2), group_rows in groups.items():
-        variant_counts: Dict[int, int] = {}
+        # Both denominator components are additive across the pieces of a window, as is
+        # no_sites, so summing them and rounding once at the end reproduces the denominator
+        # exactly (see calc.serialize_tajima_d_components).
+        nsum_total = 0
+        mut_total = 0
         for row in group_rows:
-            for n, s in deserialize_tajima_d_variant_counts(row["tajima_d_s_counts"]).items():
-                variant_counts[n] = variant_counts.get(n, 0) + s
+            nsum, mut = deserialize_tajima_d_components(row["tajima_d_components"])
+            nsum_total += nsum
+            mut_total += mut
+        n_sites_total = sum(int(r["no_sites"]) for r in group_rows)
         raw_pi = sum(float(r["raw_pi"]) for r in group_rows)
         raw_wtheta = sum(float(r["raw_watterson_theta"]) for r in group_rows)
-        d_stdev = calc_tajima_d_stdev(variant_counts)
+        d_stdev = calc_tajima_d_stdev(
+            total_allele_count=nsum_total,
+            num_sites=n_sites_total,
+            num_mutations=mut_total,
+        )
         tajima_d = (raw_pi - raw_wtheta) / d_stdev if d_stdev > 0 else math.nan
         # Round-trip everything through str so we can run the same exact-column comparison
         # the other two tests use (which compares string-formatted cells).

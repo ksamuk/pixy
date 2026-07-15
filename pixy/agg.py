@@ -19,7 +19,6 @@ Float64 output exactly:
 from __future__ import annotations
 
 import math
-from collections import Counter
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -33,14 +32,14 @@ from typing import Tuple
 from typing import Union
 
 from pixy.calc import calc_tajima_d_stdev
-from pixy.calc import deserialize_tajima_d_variant_counts
+from pixy.calc import deserialize_tajima_d_components
 
 # ---------------------------------------------------------------------------
 # Temp row shape
 # ---------------------------------------------------------------------------
 
 # Number of columns in `PixyTempResult.__str__()` output (see pixy/models.py).
-# Column 11 (`tajima_d_variant_counts`) is only present on Tajima's D rows; older rows have
+# Column 11 (`tajima_d_components`) is only present on Tajima's D rows; older rows have
 # 11 columns and we treat the missing field as the sentinel "NA".
 _TEMP_COL_COUNT = 12
 
@@ -203,8 +202,10 @@ def _final_stat(  # noqa: C901
         return float(diffs) / float(n_sites)
     if stat == "tajima_d":
         # (raw_pi - watterson_theta) / d_stdev  -- d_stdev recomputed from the merged
-        # variant-count classes by the caller.
-        if d_stdev is None or d_stdev <= 0:
+        # denominator components by the caller.
+        # NB: negated comparison, so that a `nan` d_stdev (undefined denominator) yields "NA"
+        # rather than falling through to produce a nan D. `nan <= 0` is False.
+        if d_stdev is None or not (d_stdev > 0):
             return "NA"
         if _is_na(diffs) or _is_na(comps):
             return "NA"
@@ -263,7 +264,12 @@ def aggregate_rows(
     accum: Dict[Tuple[str, Optional[str], int], List[Numeric]] = defaultdict(
         lambda: ["NA", "NA", "NA", "NA"]
     )
-    tajima_counts: Dict[Tuple[str, Optional[str], int], Counter[int]] = defaultdict(Counter)
+    # Tajima's D denominator components, summed across the pieces of each window. Both are
+    # additive, and `num_sites` (accum[0]) completes the set, so the aggregated denominator is
+    # EXACTLY the one a single pass over the whole window would produce -- the rounding to an
+    # integer mean `n` happens once, below, on the pooled totals. See #160.
+    tajima_nsum: Dict[Tuple[str, Optional[str], int], int] = defaultdict(int)
+    tajima_mut: Dict[Tuple[str, Optional[str], int], int] = defaultdict(int)
 
     for r, pos in zip(rows, positions, strict=True):
         bin_idx = _bin_idx(pos, interval_start, window_size)
@@ -274,8 +280,9 @@ def aggregate_rows(
         a[2] = _add(a[2], _to_num(r.comps))
         a[3] = _add(a[3], _to_num(r.missing))
         if stat == "tajima_d":
-            for n, s in deserialize_tajima_d_variant_counts(r.tajima_counts).items():
-                tajima_counts[key][n] += s
+            nsum, mut = deserialize_tajima_d_components(r.tajima_counts)
+            tajima_nsum[key] += nsum
+            tajima_mut[key] += mut
 
     out: List[AggRow] = []
     for key, comps in accum.items():
@@ -284,17 +291,25 @@ def aggregate_rows(
         window_pos_2 = window_pos_1 + window_size - 1
         d_stdev: Optional[float] = None
         if stat == "tajima_d":
-            d_stdev = calc_tajima_d_stdev(tajima_counts[key])
+            # comps[0] is already numeric (accumulated via `_add`); "NA" means no sites were seen.
+            n_sites_total = comps[0]
+            d_stdev = calc_tajima_d_stdev(
+                total_allele_count=tajima_nsum[key],
+                num_sites=0 if _is_na(n_sites_total) else int(n_sites_total),
+                num_mutations=tajima_mut[key],
+            )
             # For tajima_d, col 10 (missing) is repurposed as d_stdev in the output.
             comps_tail: Numeric = d_stdev
         else:
             comps_tail = comps[3]
         final = _final_stat(stat, fst_type, comps[0], comps[1], comps[2], comps_tail, d_stdev)
-        # Tajima D serializes the merged variant counts back into the output's optional col.
-        from pixy.calc import serialize_tajima_d_variant_counts  # local to avoid cycle
+        # Tajima D serializes the merged components back into the output's optional col.
+        from pixy.calc import serialize_tajima_d_components  # local to avoid cycle
 
         tcounts = (
-            serialize_tajima_d_variant_counts(tajima_counts[key]) if stat == "tajima_d" else "NA"
+            serialize_tajima_d_components(tajima_nsum[key], tajima_mut[key])
+            if stat == "tajima_d"
+            else "NA"
         )
         out.append(
             AggRow(
@@ -571,7 +586,7 @@ def write_stat_file(  # noqa: C901
     if stat == "fst":
         header = _fst_header(fst_type, fst_components)
     elif stat == "tajima_d":
-        header = HEADER_TAJIMA_BASE + (("tajima_d_s_counts",) if tajima_components else ())
+        header = HEADER_TAJIMA_BASE + (("tajima_d_components",) if tajima_components else ())
     elif stat == "pi":
         header = HEADER_PI
     elif stat == "dxy":

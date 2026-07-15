@@ -108,9 +108,14 @@ Watterson's θ (watterson_theta)
 File: ``[prefix]_watterson_theta.txt``
 
 Watterson's θ is an estimator of the population mutation rate computed
-from the number of segregating sites. The unbiased estimator implemented
-in ``pixy`` corrects for missing data and arbitrary ploidy. See Bailey,
-Stevison & Samuk (2025) for the derivation.
+from the number of mutations observed in a window. The unbiased estimator
+implemented in ``pixy`` corrects for missing data and arbitrary ploidy.
+See Bailey, Stevison & Samuk (2025) for the derivation.
+
+``pixy`` counts a site with *k* observed alleles as *k* − 1 mutations
+(Tajima's ``s*``), which on biallelic data is identical to counting
+segregating sites. See :doc:`interpreting_tajima_d` for what this means
+for multiallelic data and for comparison with other tools.
 
 ``pop``
     The ID of the population.
@@ -130,8 +135,11 @@ Stevison & Samuk (2025) for the derivation.
     numerator of ``avg_watterson_theta``.
 
 ``no_var_sites``
-    Number of segregating (variant) sites in the window that
-    contributed to the estimate.
+    Number of variant sites in the window, i.e. sites with a non-zero
+    alternate allele count. Note this is not the same as the number of
+    *segregating* sites: a site at which every sample is homozygous for
+    the alternate allele is a variant site but is not polymorphic, so it
+    is counted here while contributing nothing to θ.
 
 ``weighted_no_sites``
     Auxiliary effective-site count that downweights sites by the fraction
@@ -145,10 +153,19 @@ Tajima's *D* (tajima_d)
 File: ``[prefix]_tajima_d.txt``
 
 Tajima's *D* contrasts two estimators of θ — π (based on pairwise
-differences) and Watterson's θ (based on segregating sites) — to detect
-departures from neutrality. ``pixy`` reports the unbiased estimator
-described in Bailey, Stevison & Samuk (2025), which handles missing
-data correctly.
+differences) and Watterson's θ (based on the number of mutations) — to
+detect departures from neutrality. ``pixy`` reports the unbiased
+estimator described in Bailey, Stevison & Samuk (2025), which handles
+missing data correctly.
+
+.. note::
+
+   *D* is a **relative** measure. Under neutrality its expectation is not
+   0 and its standard deviation is not 1, so an absolute value is not a
+   test of neutrality and ``|D| > 2`` is not a significance threshold.
+   This is true of every implementation, not just ``pixy``. See
+   :doc:`interpreting_tajima_d` before drawing conclusions from these
+   numbers.
 
 ``pop``
     The ID of the population.
@@ -171,11 +188,16 @@ data correctly.
     Standard deviation of the *D* statistic over the window (the
     denominator).
 
-``tajima_d_s_counts``
-    Optional column emitted only with ``--tajima_components``. This is a
-    comma-separated list of ``observed_alleles:segregating_sites`` pairs
-    used to recompute ``tajima_d_stdev`` exactly when aggregating windows
-    after running ``pixy``.
+``tajima_d_components``
+    Optional column emitted only with ``--tajima_components``, formatted
+    ``nsum=<int>,mut=<int>``. ``nsum`` is the summed observed allele count
+    over sites with at least one observed genotype; ``mut`` is the window's
+    total mutation count (the sum of *k* − 1 over variant sites, which on
+    biallelic data equals the number of segregating sites). To recompute
+    ``tajima_d_stdev`` exactly when aggregating windows post hoc, sum
+    ``nsum``, ``mut``, and ``no_sites`` across the rows of the target window;
+    the mean observed allele count is ``nsum / no_sites``, rounded to an
+    integer once at the end.
 
 Working with pixy output data
 =============================

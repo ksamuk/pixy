@@ -11,6 +11,7 @@ from allel import mean_pairwise_difference_between
 from allel import watterson_theta
 from allel import weir_cockerham_fst
 
+from pixy.calc import _tajima_constants
 from pixy.calc import calc_dxy
 from pixy.calc import calc_fst
 from pixy.calc import calc_fst_persite
@@ -951,6 +952,45 @@ def test_calc_watterson_theta_diploid_biallelic() -> None:
     assert watterson_result.num_weighted_sites == 2.0
 
 
+def test_calc_watterson_theta_biallelic_alt_fixed_site_not_segregating() -> None:
+    """
+    Assert that a site fixed for the alternate allele does not count as segregating.
+
+    A site at which every sample is homozygous for the alternate allele has a single
+    observed allele (``k == 1``), so it is not polymorphic -- even though it is a variant
+    relative to the reference. It must contribute 0 to Watterson's theta.
+
+    This array is biallelic throughout, so this guards the DEFAULT code path, not the
+    ``--include_multiallelic_snps`` one. Regression test: pixy <= 2.2.1 tallied one
+    segregating site per row with a non-zero alternate count, which counted this site and
+    inflated raw_theta to 1.3139 instead of 0.8759. Alt-fixed sites are common whenever the
+    reference is diverged from the sampled population. scikit-allel's `count_segregating`
+    has always excluded such sites, which is why the comparison below is the anchor: it
+    fails on the old behavior and passes on the new.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # segregating
+        [[1, 1], [1, 1], [1, 1]],  # FIXED for alt -> k == 1, NOT segregating
+        [[0, 0], [0, 1], [0, 0]],  # segregating
+        [[0, 0], [0, 0], [0, 0]],  # invariant for ref
+    ])
+    ac: AlleleCountsArray = array.count_alleles()
+    assert np.count_nonzero(ac, axis=1).max() == 2, "array must be biallelic throughout"
+    assert ac.count_segregating() == 2  # the alt-fixed site is not one of them
+
+    watterson_result = calc_watterson_theta(array)
+
+    # 2 segregating sites over a_n(6) = 2.2833..., NOT 3
+    assert watterson_result.raw_theta == pytest.approx(0.8759124087591241)
+    assert watterson_result.avg_theta == pytest.approx(watterson_theta(ac=ac, pos=[1, 2, 3, 4]))
+
+    # the alt-fixed site is still a *variant* site (non-zero alt count) -- it is only
+    # excluded from the segregating/mutation count, so num_var_sites still counts it
+    assert watterson_result.num_var_sites == 3
+    assert watterson_result.num_sites == 4
+    assert watterson_result.num_weighted_sites == 4.0
+
+
 def test_calc_watterson_theta_diploid_multiallelic() -> None:
     """
     Assert that Watterson's Theta calculation produces known outputs with known inputs.
@@ -1115,6 +1155,95 @@ def test_calc_tajima_d_diploid_biallelic() -> None:
     # There is no standalone function or helper for the denominator - this was manually calculated
     # from scikit-allel's code
     assert result.d_stdev == pytest.approx(0.18485059)
+
+
+def test_calc_tajima_d_biallelic_alt_fixed_site_not_segregating() -> None:
+    """
+    Assert Tajima's D excludes alternate-fixed sites from the segregating count.
+
+    Companion to `test_calc_watterson_theta_biallelic_alt_fixed_site_not_segregating`. The
+    same alt-fixed site (every sample homozygous alt, so ``k == 1``) must contribute
+    nothing to either the theta arm of D or the variance term. Biallelic throughout, so
+    this guards the DEFAULT code path.
+
+    Regression test: pixy <= 2.2.1 counted the alt-fixed site as segregating, which
+    inflated Watterson's theta and so depressed D. The scikit-allel agreement asserted
+    below is the anchor -- it did NOT hold before the mutation-count change, because allel
+    counts segregating sites (excluding this one) while pixy counted variant rows.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # segregating
+        [[1, 1], [1, 1], [1, 1]],  # FIXED for alt -> k == 1, NOT segregating
+        [[0, 0], [0, 1], [0, 0]],  # segregating
+        [[0, 0], [0, 0], [0, 0]],  # invariant for ref
+    ])
+    ac: AlleleCountsArray = array.count_alleles()
+    assert np.count_nonzero(ac, axis=1).max() == 2, "array must be biallelic throughout"
+
+    result: TajimaDResult = calc_tajima_d(array)
+
+    # On biallelic data pixy and scikit-allel must agree: both see 2 segregating sites
+    assert result.tajima_d == pytest.approx(allel.tajima_d(ac=ac, min_sites=0))
+    assert result.raw_pi == pytest.approx(allel.mean_pairwise_difference(ac=ac).sum())
+    assert result.watterson_theta == pytest.approx(
+        allel.watterson_theta(pos=[1, 2, 3, 4], ac=ac) * 4
+    )
+
+    # the theta arm sees 2 mutations, not 3, and the variance term is built from the same
+    assert result.watterson_theta == pytest.approx(0.8759124087591241)
+    assert result.num_mutations == 2
+
+
+def test_calc_tajima_d_ragged_missingness_matches_pooled_n() -> None:
+    """
+    Assert the D denominator is evaluated ONCE at the pooled mean n, not summed per n-class.
+
+    Regression test for https://github.com/ksamuk/pixy/issues/160, and for its silent revert.
+    The fix (#163, pixy 2.0.0.beta10) evaluates Tajima's denominator a single time at the mean
+    observed allele count. It was undone by 78eebd3, which reinstated a per-class sum while
+    building window aggregation, because that needed a decomposable denominator.
+
+    A per-class implementation computes ``sum_i sqrt(v_i)`` where the correct form is
+    ``sqrt(sum_i v_i)``. Since ``sum_i sqrt(v_i) >= sqrt(sum_i v_i)`` with equality only when a
+    single class is occupied, it inflates the denominator whenever missing data makes the
+    per-site observed-allele count ragged, shrinking |D| toward 0.
+
+    This array is deliberately RAGGED: each variant site has a different number of observed
+    alleles (6, 4 and 2). Uniform missingness cannot catch the bug -- neither can pixy's own
+    vcfsim-based validation, whose missing-genotype model masks a fixed count of individuals
+    per site and so leaves n constant. That blind spot is why the revert went unnoticed.
+    """
+    array = GenotypeArray([
+        [[0, 0], [0, 1], [1, 1]],  # n = 6 observed alleles, segregating
+        [[0, 1], [1, 1], [-1, -1]],  # n = 4 observed alleles, segregating
+        [[0, 1], [-1, -1], [-1, -1]],  # n = 2 observed alleles, segregating
+        [[0, 0], [0, 0], [0, 0]],  # n = 6, invariant (counts toward the mean n)
+    ])
+    result: TajimaDResult = calc_tajima_d(array)
+
+    # Ragged by construction: three distinct observed-allele counts among variant sites.
+    ac: AlleleCountsArray = array.count_alleles()
+    variant = ac[ac[:, 1:].sum(axis=1) != 0]
+    assert sorted(int(x) for x in variant.sum(axis=1)) == [2, 4, 6]
+
+    # 3 mutations; mean n over the 4 sites with observed alleles = (6+4+2+6)/4 = 4.5 -> 4
+    assert result.num_mutations == 3
+    assert result.total_allele_count == 18
+    assert result.num_sites == 4
+
+    # The denominator must equal ONE evaluation at n=4, s=3 ...
+    e1, e2 = _tajima_constants(4)
+    expected = math.sqrt((e1 * 3) + (e2 * 3 * 2))
+    assert result.d_stdev == pytest.approx(expected)
+
+    # ... and must NOT equal the per-class sum of square roots that #160 was about.
+    per_class_sum = sum(
+        math.sqrt(_tajima_constants(n)[0] * 1 + _tajima_constants(n)[1] * 1 * 0) for n in (6, 4, 2)
+    )
+    assert result.d_stdev != pytest.approx(per_class_sum)
+    # The buggy form is strictly larger, which is what dragged D toward 0.
+    assert isinstance(result.d_stdev, float)  # narrow Union[float, NA] for the comparison
+    assert per_class_sum > result.d_stdev
 
 
 def test_calc_tajima_d_diploid_multiallelic() -> None:

@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from dataclasses import fields
-from typing import Dict
 from typing import Literal
 from typing import Union
 
@@ -49,8 +48,8 @@ class PixyTempResult:
     `raw_pi` is stored in the `total_differences` field.
     `watterson_theta` is stored in the `total_comparisons` field.
     `d_stdev` is stored in the `total_missing` field.
-    `tajima_d_variant_counts` stores the internal observed-allele-count classes used to recompute
-    `d_stdev` when aggregating chunked Tajima's D output.
+    `tajima_d_components` stores the additive components (`nsum=`, `mut=`) used to recompute
+    `d_stdev` when aggregating chunked Tajima's D output. See `calc.serialize_tajima_d_components`.
 
     This object is overloaded so that all `pixy` stats can leverage one dataclass to hold temporary
     results.
@@ -73,7 +72,7 @@ class PixyTempResult:
     total_differences: Union[int, float, NA]
     total_comparisons: Union[int, float, NA]
     total_missing: Union[int, float, NA]
-    tajima_d_variant_counts: Union[str, NA] = "NA"
+    tajima_d_components: Union[str, NA] = "NA"
 
     def __str__(self) -> str:
         """
@@ -185,7 +184,11 @@ class TajimaDResult:
         watterson_theta: the calculation of Watterson's theta that includes missing genotypes
         d_stdev: the denominator of Tajima's D (standard deviation of the covariance between the
             calculated raw pi and watterson_theta)
-        variant_gt_counts: count of segregating sites by number of observed alleles
+        total_allele_count: summed observed allele count over sites with at least one observed
+            allele. With `num_sites` this gives the mean observed alleles per site used by the
+            D denominator; both are additive, so windows can be aggregated exactly.
+        num_mutations: the window's total mutation count (Tajima 1996's `s*`), which equals the
+            number of segregating sites on biallelic data
     """
 
     tajima_d: Union[float, NA]
@@ -193,7 +196,8 @@ class TajimaDResult:
     raw_pi: Union[float, NA]
     watterson_theta: Union[float, NA]
     d_stdev: Union[float, NA]
-    variant_gt_counts: Dict[int, int]
+    total_allele_count: int
+    num_mutations: int
 
     @classmethod
     def empty(cls) -> "TajimaDResult":
@@ -204,7 +208,8 @@ class TajimaDResult:
             raw_pi="NA",
             watterson_theta="NA",
             d_stdev="NA",
-            variant_gt_counts={},
+            total_allele_count=0,
+            num_mutations=0,
         )
 
 
