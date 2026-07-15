@@ -71,10 +71,11 @@ def precompute_filtered_variant_array(
 
         # remove invariant sites, and for Weir-Cockerham also polyallelic sites
         # (`allel.weir_cockerham_fst` assumes biallelic data, whereas pixy's Hudson estimator
-        # handles any number of alleles)
+        # handles any number of alleles). --fst_biallelic opts Hudson back in to the
+        # biallelic-only behavior; it is a no-op for Weir-Cockerham, which is always biallelic.
         # we retain sites where num ALTs > 2 but only have genotypes from two alleles
         site_is_usable: NDArray[np.bool_]
-        if FSTEstimator(args.fst_type) is FSTEstimator.HUDSON:
+        if FSTEstimator(args.fst_type) is FSTEstimator.HUDSON and not args.fst_biallelic:
             site_is_usable = allele_counts.allelism()[:] > 1
         else:
             site_is_usable = allele_counts.is_biallelic()[:]
