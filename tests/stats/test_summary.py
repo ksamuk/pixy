@@ -19,21 +19,30 @@ POS_ARRAY = SortedIndex(np.array([100, 200, 300]))
 
 
 @pytest.mark.parametrize(
-    "fst_type, expected_positions",
+    "fst_type, fst_biallelic, expected_positions",
     [
         # Weir-Cockerham assumes biallelic data, so multiallelic sites are dropped
-        (FSTEstimator.WC, [200]),
+        (FSTEstimator.WC, False, [200]),
         # pixy's Hudson estimator handles any number of alleles, so only the invariant site is
         # dropped
-        (FSTEstimator.HUDSON, [200, 300]),
+        (FSTEstimator.HUDSON, False, [200, 300]),
+        # --fst_biallelic opts Hudson back in to biallelic-only filtering
+        (FSTEstimator.HUDSON, True, [200]),
+        # ...and is a no-op for Weir-Cockerham, which is always biallelic
+        (FSTEstimator.WC, True, [200]),
     ],
 )
 def test_precompute_filtered_variant_array_retains_multiallelic_sites_for_hudson_only(
     fst_type: FSTEstimator,
+    fst_biallelic: bool,
     expected_positions: list,
 ) -> None:
-    """Multiallelic sites should be retained for Hudson FST, but not for Weir-Cockerham FST."""
-    args = argparse.Namespace(populations="populations.txt", fst_type=fst_type.value)
+    """Multiallelic sites should be retained only for Hudson FST without --fst_biallelic."""
+    args = argparse.Namespace(
+        populations="populations.txt",
+        fst_type=fst_type.value,
+        fst_biallelic=fst_biallelic,
+    )
 
     _, gt_array_fst, pos_array_fst = precompute_filtered_variant_array(
         args=args,

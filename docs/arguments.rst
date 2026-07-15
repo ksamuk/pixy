@@ -85,6 +85,13 @@ Optional
     ``wc_fst_b``, and ``wc_fst_c``. For ``--fst_type hudson``, this
     adds ``hudson_fst_num`` and ``hudson_fst_den``.
 
+**--fst_biallelic**
+    Restrict F\ :sub:`ST` to biallelic sites, excluding multiallelic sites
+    from the F\ :sub:`ST` calculation only; they still contribute to π and
+    d\ :sub:`xy`. This only has an effect for ``--fst_type hudson`` in
+    combination with ``--include_multiallelic_snps``, since ``--fst_type wc``
+    is always restricted to biallelic sites. Disabled by default.
+
 **--tajima_components**
     Include the Tajima's *D* aggregation components in the Tajima's *D*
     output table. This adds ``tajima_d_s_counts``, a comma-separated list
