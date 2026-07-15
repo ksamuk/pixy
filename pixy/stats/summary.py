@@ -52,7 +52,9 @@ def precompute_filtered_variant_array(
     Returns:
         A tuple (per_site_fst_results, gt_array_fst, pos_array_fst), where `gt_array_fst` and
         `pos_array_fst` contain the subset of variants in `gt_array` and `pos_array` which are
-        biallelic. These objects are `None` if the input VCF contained no variants in the region of
+        usable by the requested FST estimator: biallelic variants for Weir-Cockerham, or any
+        variant (including multiallelic ones) for Hudson.
+        These objects are `None` if the input VCF contained no variants in the region of
         interest (i.e. `callset_is_none` is True or `gt_array` is empty), or when a `populations`
         file was not specified in the command-line arguments.
 
@@ -67,16 +69,23 @@ def precompute_filtered_variant_array(
         # compute allel freqs
         allele_counts: AlleleCountsArray = gt_array.count_alleles()
 
-        # remove invariant/polyallelic sites
-        # we retain sites where numn ALTs > 2 but only have genotypes from two alleles
-        is_biallelic = allele_counts.is_biallelic()[:]
+        # remove invariant sites, and for Weir-Cockerham also polyallelic sites
+        # (`allel.weir_cockerham_fst` assumes biallelic data, whereas pixy's Hudson estimator
+        # handles any number of alleles). --fst_biallelic opts Hudson back in to the
+        # biallelic-only behavior; it is a no-op for Weir-Cockerham, which is always biallelic.
+        # we retain sites where num ALTs > 2 but only have genotypes from two alleles
+        site_is_usable: NDArray[np.bool_]
+        if FSTEstimator(args.fst_type) is FSTEstimator.HUDSON and not args.fst_biallelic:
+            site_is_usable = allele_counts.allelism()[:] > 1
+        else:
+            site_is_usable = allele_counts.is_biallelic()[:]
 
-        # filter gt and position arrays for biallelic variable sites
+        # filter gt and position arrays for variable sites
         # NB: we are masking `gt_array` and `pos_array` with the filtered variants. Indexing either
         # `GenotypeArray` or `SortedIndex` with a boolean array returns a subset of the initial
         # object, but scikit-allel doesn't type this appropriately, so the cast is needed.
-        gt_array_fst = gt_array.compress(is_biallelic, axis=0)
-        pos_array_fst = cast(SortedIndex, pos_array[is_biallelic])
+        gt_array_fst = gt_array.compress(site_is_usable, axis=0)
+        pos_array_fst = cast(SortedIndex, pos_array[site_is_usable])
 
     else:
         gt_array_fst = None

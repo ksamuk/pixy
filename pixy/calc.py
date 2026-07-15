@@ -329,6 +329,51 @@ def calc_dxy(pop1_gt_array: GenotypeArray, pop2_gt_array: GenotypeArray) -> DxyR
     )
 
 
+def _hudson_fst(ac1: AlleleCountsArray, ac2: AlleleCountsArray) -> Tuple[NDArray, NDArray]:
+    """
+    Compute the per-site numerator and denominator of Hudson's FST.
+
+    This is the "ratio of averages" estimator of Hudson (1992) as formulated by Bhatia et al.
+    (2013), generalized to an arbitrary number of alleles::
+
+        num = H_b - (h_1 + h_2) / 2
+        den = H_b
+
+    where ``H_b`` is the probability that two alleles drawn one from each population differ, and
+    ``h_i`` is the unbiased expected heterozygosity of population ``i``. For biallelic sites this
+    reduces exactly to ``allel.hudson_fst``; unlike that function, which only reads the first ALT
+    allele, it remains correct at multiallelic sites.
+
+    Args:
+        ac1: allele counts for the first population
+        ac2: allele counts for the second population
+
+    Returns:
+        A tuple of the per-site numerator and denominator. Sites at which either population has
+        fewer than two observed alleles are NaN in both.
+
+    """
+    an1: NDArray = np.sum(ac1, axis=1)
+    an2: NDArray = np.sum(ac2, axis=1)
+
+    # allele frequencies; sites with no observed alleles yield NaN and propagate to num/den
+    with np.errstate(divide="ignore", invalid="ignore"):
+        p1: NDArray = ac1 / an1[:, None]
+        p2: NDArray = ac2 / an2[:, None]
+
+        # between-population heterozygosity (equivalently, per-site dxy)
+        h_between: NDArray = 1 - np.sum(p1 * p2, axis=1)
+
+        # unbiased within-population heterozygosities
+        h1: NDArray = (an1 / (an1 - 1)) * (1 - np.sum(p1**2, axis=1))
+        h2: NDArray = (an2 / (an2 - 1)) * (1 - np.sum(p2**2, axis=1))
+
+        num: NDArray = h_between - (h1 + h2) / 2
+        den: NDArray = h_between
+
+    return num, den
+
+
 # function for obtaining fst AND variance components via scikit allel function
 # (need variance components for proper aggregation)
 # for single sites, this is the final FST calculation
@@ -400,15 +445,21 @@ def calc_fst(
 
     # Hudson 92
     if fst_type is FSTEstimator.HUDSON:
-        # following scikit allel docs
-        # allel counts for each population
-        ac1: AlleleCountsArray = gt_array_fst.count_alleles(subpop=fst_pop_indicies[0])
-        ac2: AlleleCountsArray = gt_array_fst.count_alleles(subpop=fst_pop_indicies[1])
+        # allele counts for each population
+        # NB: `max_allele` is fixed across both populations so that the count arrays are
+        # conformable, and so that alleles absent from one population are still represented
+        max_allele: int = max(int(gt_array_fst.max()), 1)
+        ac1: AlleleCountsArray = gt_array_fst.count_alleles(
+            subpop=fst_pop_indicies[0], max_allele=max_allele
+        )
+        ac2: AlleleCountsArray = gt_array_fst.count_alleles(
+            subpop=fst_pop_indicies[1], max_allele=max_allele
+        )
 
         # hudson fst has two components (numerator & denominator)
         num: NDArray
         den: NDArray
-        num, den = allel.hudson_fst(ac1, ac2)
+        num, den = _hudson_fst(ac1, ac2)
 
         # compute variance component sums
         num_sum: float = np.nansum(num)
@@ -470,13 +521,15 @@ def calc_fst_persite(
 
     # Hudson 92
     elif fst_type == "hudson":
-        # following scikit allel docs
-        # allel counts for each population
-        ac1 = gt_array_fst.count_alleles(subpop=fst_pop_indicies[0])
-        ac2 = gt_array_fst.count_alleles(subpop=fst_pop_indicies[1])
+        # allele counts for each population
+        # NB: `max_allele` is fixed across both populations so that the count arrays are
+        # conformable, and so that alleles absent from one population are still represented
+        max_allele = max(int(gt_array_fst.max()), 1)
+        ac1 = gt_array_fst.count_alleles(subpop=fst_pop_indicies[0], max_allele=max_allele)
+        ac2 = gt_array_fst.count_alleles(subpop=fst_pop_indicies[1], max_allele=max_allele)
 
         # hudson fst has two components (numerator & denominator)
-        num, den = allel.hudson_fst(ac1, ac2)
+        num, den = _hudson_fst(ac1, ac2)
 
         a_sum = np.nan_to_num(num, nan=0.0)
         b_sum = np.nan_to_num(den, nan=0.0)

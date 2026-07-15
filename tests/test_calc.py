@@ -11,6 +11,7 @@ from allel import mean_pairwise_difference_between
 from allel import watterson_theta
 from allel import weir_cockerham_fst
 
+from pixy.calc import _hudson_fst
 from pixy.calc import _tajima_constants
 from pixy.calc import calc_dxy
 from pixy.calc import calc_fst
@@ -774,24 +775,29 @@ def test_calc_dxy_multiallelic() -> None:
 
 
 def test_calc_fst_hudson_multiallelic() -> None:
-    """Compare FST calculation to the `scikit-allel` implementation."""
-    # scikit-allel's implementation accepts one array for each population
+    """
+    Hudson FST should use every allele at a multiallelic site.
+
+    `scikit-allel`'s `hudson_fst` only reads the first ALT allele, so it cannot be used as the
+    reference here. The expected values below are derived by hand from Bhatia et al. (2013):
+    `num = H_b - (h_1 + h_2) / 2` and `den = H_b`, where `H_b = 1 - sum_k p_1k * p_2k` and
+    `h_i = (n_i / (n_i - 1)) * (1 - sum_k p_ik ** 2)`.
+    """
     pop1_gt_array = GenotypeArray([
-        [[0, 0], [0, 1], [1, 2]],  # population 1/site 1
-        [[0, 0], [0, 2], [2, 2]],  # population 1/site 2
+        [[0, 0], [0, 1], [1, 2]],  # population 1/site 1; allele freqs 1/2, 1/3, 1/6
+        [[0, 0], [0, 2], [2, 2]],  # population 1/site 2; allele freqs 1/2,   0, 1/2
     ])
 
     pop2_gt_array = GenotypeArray([
-        [[0, 1], [0, 2], [1, 1]],  # population 2/site 1
-        [[0, 1], [1, 2], [0, 1]],  # population 2/site 2
+        [[0, 1], [0, 2], [1, 1]],  # population 2/site 1; allele freqs 1/3, 1/2, 1/6
+        [[0, 1], [1, 2], [0, 1]],  # population 2/site 2; allele freqs 1/3, 1/2, 1/6
     ])
 
-    num, den = hudson_fst(
-        ac1=pop1_gt_array.count_alleles(),
-        ac2=pop2_gt_array.count_alleles(),
-    )
-
-    expected_fst = num.sum() / den.sum()
+    # site 1: H_b = 23/36, h_1 = h_2 = 11/15  => num = -17/180, den = 23/36
+    # site 2: H_b =  3/4,  h_1 = 3/5, h_2 = 11/15 => num =   1/12, den =  3/4
+    expected_num = -17 / 180 + 1 / 12
+    expected_den = 23 / 36 + 3 / 4
+    expected_fst = expected_num / expected_den
 
     # `calc_fst` accepts an aggregate array with all populations combined
     combined_gt_array = pop1_gt_array.concatenate(pop2_gt_array, axis=1)
@@ -808,10 +814,27 @@ def test_calc_fst_hudson_multiallelic() -> None:
     )
 
     assert result.fst == pytest.approx(expected_fst)
-    assert result.a == pytest.approx(num.sum())
-    assert result.b == pytest.approx(den.sum())
+    assert result.a == pytest.approx(expected_num)
+    assert result.b == pytest.approx(expected_den)
     assert result.c == 0
     assert result.n_sites == combined_gt_array.n_variants
+
+
+def test_hudson_fst_matches_scikit_allel_when_biallelic() -> None:
+    """The multiallelic Hudson estimator should reduce to `scikit-allel`'s when biallelic."""
+    rng = np.random.default_rng(42)
+
+    pop1_gt_array = GenotypeArray(rng.integers(0, 2, size=(100, 8, 2)))
+    pop2_gt_array = GenotypeArray(rng.integers(0, 2, size=(100, 5, 2)))
+
+    ac1 = pop1_gt_array.count_alleles(max_allele=1)
+    ac2 = pop2_gt_array.count_alleles(max_allele=1)
+
+    expected_num, expected_den = hudson_fst(ac1=ac1, ac2=ac2)
+    actual_num, actual_den = _hudson_fst(ac1=ac1, ac2=ac2)
+
+    assert actual_num == pytest.approx(expected_num)
+    assert actual_den == pytest.approx(expected_den)
 
 
 def test_calc_fst_wc_multiallelic() -> None:

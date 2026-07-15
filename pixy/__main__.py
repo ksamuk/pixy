@@ -249,6 +249,20 @@ def main() -> None:  # noqa: C901
         required=False,
     )
     optional.add_argument(
+        "--fst_biallelic",
+        action="store_true",
+        default=False,
+        help=(
+            "Restrict FST to biallelic sites, excluding multiallelic sites from the FST "
+            "calculation only (they still contribute to pi and dxy). "
+            "This only has an effect for --fst_type hudson in combination with "
+            "--include_multiallelic_snps; --fst_type wc is always restricted to biallelic "
+            "sites regardless of this flag. "
+            "Defaults to False."
+        ),
+        required=False,
+    )
+    optional.add_argument(
         "--tajima_components",
         action="store_true",
         default=False,
