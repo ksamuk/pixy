@@ -40,6 +40,7 @@ As of version 2.0, ``pixy`` also supports organisms of arbitrary ploidy and VCFs
     examples
     example_data
     output
+    interpreting_tajima_d
     plotting
 
 How should I cite pixy?

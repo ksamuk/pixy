@@ -22,6 +22,72 @@ New features
   companion tool at https://github.com/samuk-lab/wisp). Incompatible
   with ``--gvcf``.
 
+Bug fixes
+---------
+
+- **Tajima's D no longer collapses toward 0 with missing data
+  (reinstates the fix for issue #160).** The denominator of *D* is again
+  evaluated **once**, at the mean number of observed alleles per site, as
+  contributed by akihirao's ``ThetaRecov`` and originally released in
+  2.0.0.beta10. That fix was inadvertently reverted in 2.1.0 while adding
+  windowed Tajima's D aggregation, which needed a denominator that could be
+  summed across window pieces and so rebuilt it as a per-observed-allele-count
+  -class sum. Summing the square root of each class computes
+  ``sum(sqrt(v))`` where the correct form is ``sqrt(sum(v))``; since
+  ``sum(sqrt(v)) >= sqrt(sum(v))``, the denominator was inflated as soon as
+  missing data made the per-site observed-allele count ragged, shrinking
+  \|*D*\| toward 0 and narrowing its distribution. Measured on a simulated
+  growth model (true *D* ≈ −1.84): 2.2.1 reported −1.38 at 20% missing
+  genotypes and −1.18 at 60%, versus −1.82 and −1.65 now. **Data with no
+  missing genotypes is unaffected** — every site then has the same observed
+  allele count, and the two forms coincide exactly. Aggregation is preserved
+  and is now exact rather than approximate: the two denominator components are
+  additive across window pieces, and the rounding to an integer mean happens
+  once, on the pooled totals.
+
+- **The** ``--tajima_components`` **output column has changed** as a
+  consequence. It is renamed ``tajima_d_s_counts`` → ``tajima_d_components``
+  and now holds ``nsum=<int>,mut=<int>`` (the summed observed allele count and
+  the total mutation count) rather than ``n:s`` observed-allele-count classes,
+  which are not sufficient to reconstruct the corrected denominator. Sum both
+  fields, and ``no_sites``, across the rows of a window to recompute
+  ``tajima_d_stdev`` exactly.
+
+- **Sites fixed for the alternate allele are no longer counted as
+  segregating.** A site at which every sample is homozygous for the
+  alternate allele has a single observed allele and so is not
+  polymorphic, but ``pixy`` up to 2.2.1 tallied one segregating site for
+  every site with a non-zero alternate count, including these. This
+  inflated Watterson's θ and depressed Tajima's *D*. **This affects the
+  default biallelic code path**, not only ``--include_multiallelic_snps``:
+  θ\ :sub:`W` and Tajima's *D* will change for any dataset containing
+  alternate-fixed sites, which are common whenever the reference is
+  diverged from the sampled population, or a population is fixed for a
+  derived allele. π, d\ :sub:`xy`, and F\ :sub:`ST` are unaffected. On
+  biallelic input ``pixy`` now agrees with ``scikit-allel``'s
+  ``watterson_theta`` and ``tajima_d``, which it did not before.
+  Relatedly, a site with a single observed haploid genotype now
+  contributes 0 rather than producing an infinite θ\ :sub:`W`.
+
+- **Watterson's θ and Tajima's D now count mutations rather than
+  segregating sites at multiallelic sites.** Applies to
+  ``--include_multiallelic_snps`` only. A site with *k* observed alleles
+  now contributes *k* − 1 mutations — Tajima's ``s*``, the minimum
+  (parsimony) mutation count per site (Tajima 1996) — where it previously
+  contributed 1 regardless of *k*. Watterson's estimator targets the
+  number of mutations on the genealogy; counting sites is a shorthand
+  that is exact only under strict infinite sites, and a multiallelic site
+  is by definition where that shorthand breaks. The previous mismatch —
+  multiallelic-aware π counting allelic differences while θ\ :sub:`W`
+  counted sites — biased Tajima's *D* upward, and the bias grew with the
+  number of sampled lineages (ploidy × sample size). On biallelic data
+  every *k* − 1 is 1, so the estimator is unchanged there. Multiallelic
+  θ\ :sub:`W` and Tajima's *D* now depart by design from implementations
+  that count sites (``scikit-allel``, ``vcftools``); this is worth stating
+  in a methods section. Note that under recurrent mutation ``s*`` is a
+  parsimony minimum, so θ\ :sub:`W` retains a small (~4%) downward bias
+  that no model-free estimator can remove.
+
 pixy 2.1.3
 ==========
 

@@ -3,7 +3,6 @@ from functools import lru_cache
 from typing import Any
 from typing import Counter as CounterType
 from typing import List
-from typing import Mapping
 from typing import Tuple
 from typing import Union
 
@@ -29,6 +28,45 @@ from pixy.models import WattersonThetaResult
 VariantCount: TypeAlias = int
 SiteCount: TypeAlias = int
 ObservedAlleleCount: TypeAlias = int
+
+
+def _mutation_counts_by_n(variant_counts: AlleleCountsArray) -> CounterType[int]:
+    r"""
+    Map observed-chromosome count ``n`` to the number of mutations at those sites.
+
+    Generalizes the segregating-*site* count to a *mutation* count: a site with ``k``
+    observed alleles requires at least ``k - 1`` mutations to explain. This is Tajima's
+    ``s*``, the minimum (parsimony) number of mutations per site (Tajima 1996, Eq 14),
+    whose expectation under Jukes-Cantor is given in closed form by that paper's Eq 15.
+
+    Watterson's derivation is a statement about the number of *mutations* on the
+    genealogy -- :math:`E[\eta] = a_n \theta` follows from Poisson mutation over the
+    coalescent tree length :math:`E[T_{total}] = 2 a_n`. The segregating-*site* count is
+    used in its place only because under strict infinite sites each mutation creates a
+    new site, so the two coincide and the distinction is invisible. A multiallelic site
+    is by definition a departure from infinite sites, and there ``s*`` -- not the site
+    count -- is the quantity that tracks the genealogical mutation count. Reduces exactly
+    to the segregating-site count when every site is biallelic (``k == 2`` contributes 1).
+
+    Under recurrent mutation ``s*`` is a lower bound: homoplasy and back-mutation are
+    invisible to parsimony, so it undercounts the true mutation number. That gap is
+    irreducible without committing to a mutation model -- no exact sampling formula
+    exists for general finite-allele models (Bhaskar, Kamm & Song 2012) -- and it leaves
+    Watterson's theta ~4% below :math:`4 N_e \mu` under the JC69 validation regime,
+    flat across ploidy. See the pixy 2.0.0 manuscript's polyploid validation.
+
+    ``variant_counts`` is the allele-counts array already restricted to variant sites.
+    A site with a single observed allele (``k == 1``, i.e. monomorphic for a
+    non-reference allele) contributes 0, since it is not segregating. Note this differs
+    from the site-counting behavior it replaces, which tallied such sites as segregating.
+    """
+    n_per_site: NDArray[np.int64] = variant_counts.sum(axis=1)
+    k_per_site: NDArray[np.int64] = np.count_nonzero(variant_counts, axis=1)
+    counts: CounterType[int] = Counter()
+    for n_i, k_i in zip(n_per_site.tolist(), k_per_site.tolist(), strict=True):
+        if k_i >= 2:
+            counts[int(n_i)] += int(k_i) - 1
+    return counts
 
 
 @lru_cache(maxsize=1024)
@@ -537,29 +575,27 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
 
     num_sites = np.count_nonzero(np.sum(allele_counts, 1))
     num_var_sites = np.count_nonzero(np.sum(variant_counts, 1))
-    # for variant sites only use Counter to generate dictionary
-    # where the key is the number of genotypes and value is number of sites with that many genotypes
-    variant_sites_counter: CounterType[VariantCount] = Counter(variant_counts.sum(axis=1))
+    # for variant sites, map the number of observed genotypes to the number of MUTATIONS
+    # (Tajima 1996's `s*` = sum of k-1 over sites with that many genotypes), not the number
+    # of sites. Watterson's estimator targets the genealogical mutation count; site counting
+    # is a strict-infinite-sites shorthand for it that breaks at multiallelic sites. For
+    # biallelic data the two are identical.
+    variant_sites_counter: CounterType[VariantCount] = _mutation_counts_by_n(variant_counts)
     all_sites_counter: CounterType[SiteCount] = Counter(allele_counts.sum(axis=1))
 
     allele_freq_counts: NDArray[np.int64] = np.array(tuple(all_sites_counter.items()))
 
     # calculate Watterson's theta as sum of equations for differing numbers of genotypes
     # this is calculating Watterson's theta incorporating missing genotypes
-    #
-    # NB: when only a single (haploid) genotype is observed at a site (num_genotypes == 1),
-    # `np.arange(1, 1)` is empty so `reciprocal_sum == 0`, and `site_count / 0` evaluates to
-    # `inf`. This is the mathematically correct sentinel — Watterson's theta is undefined when
-    # you can't observe variation across samples — and is exactly what the
-    # `test_calc_watterson_theta_haploid_singleton` test asserts. `np.errstate` suppresses the
-    # accompanying RuntimeWarning so it doesn't pollute pytest output for this known case.
     watterson_theta: float = 0.0
     with np.errstate(divide="ignore"):
-        for num_genotypes, site_count in variant_sites_counter.items():
-            # `_harmonic_sum(n)` returns 0.0 for n <= 1, preserving the documented "inf"
-            # sentinel for the singleton-haploid case (see comment above).
+        for num_genotypes, mutation_count in variant_sites_counter.items():
+            # `_harmonic_sum(n)` returns 0.0 for n <= 1, which would make this `inf`. A site
+            # with a single observed genotype (n == 1) also has a single observed allele
+            # (k == 1) and so carries 0 mutations, so it never enters this counter and the
+            # division is never reached. `np.errstate` is retained defensively.
             reciprocal_sum: float = _harmonic_sum(int(num_genotypes))
-            watterson_theta += site_count / reciprocal_sum
+            watterson_theta += mutation_count / reciprocal_sum
 
     # Calculate an auxiliary effective-site count that reflects within-site missingness.
     # The Watterson's theta denominator is `num_sites`; this value is emitted as a diagnostic.
@@ -594,50 +630,107 @@ def calc_watterson_theta(gt_array: GenotypeArray) -> WattersonThetaResult:
 
 
 def calc_tajima_d_stdev(
-    variant_gt_counts: Mapping[ObservedAlleleCount, SiteCount],
+    total_allele_count: int,
+    num_sites: int,
+    num_mutations: int,
 ) -> float:
     """
     Calculates the standard deviation term used as Tajima's D denominator.
 
-    The missing-data correction from Bailey et al. 2025 sums the denominator over variant-site
-    classes with the same number of observed alleles. `variant_gt_counts` maps each observed allele
-    count `n` to the number of segregating sites observed with that count.
+    Evaluates Tajima 1989's denominator ONCE, at the mean number of observed alleles per site
+    (`n = round(total_allele_count / num_sites)`) and the window's total mutation count
+    (`num_mutations`). This is the estimator contributed by akihirao's `ThetaRecov` and adopted
+    in pixy 2.0.0.beta10 to fix https://github.com/ksamuk/pixy/issues/160.
+
+    Do NOT reintroduce a per-observed-allele-count-class sum here. Evaluating the denominator
+    once per class and summing the square roots computes `sum_i sqrt(v_i)` in place of
+    `sqrt(sum_i v_i)`. Because `sum_i sqrt(v_i) >= sqrt(sum_i v_i)`, with equality only when a
+    single class is occupied, that inflates the denominator as soon as missing data makes the
+    per-site observed-allele count ragged, which shrinks |D| toward 0 and narrows its
+    distribution -- exactly the bias reported in #160. The two forms agree when every site has
+    the same `n`, so data without missing genotypes cannot distinguish them (nor can pixy's own
+    vcfsim-based validation, whose missing-genotype model masks a FIXED count of individuals per
+    site and so leaves `n` constant). `test_calc_tajima_d_ragged_missingness_matches_pooled_n`
+    guards this.
+
+    Args:
+        total_allele_count: summed observed allele count over sites with at least one observed
+            allele. Sites with no observed genotype are excluded, so that masked or fully-missing
+            sites do not drag the mean toward 0 (see #186, #188).
+        num_sites: the number of sites with at least one observed allele (the count matching
+            `total_allele_count`).
+        num_mutations: the window's total mutation count -- Tajima 1996's `s*`, the sum of
+            `k - 1` over variant sites, which equals the number of segregating sites on
+            biallelic data. See `_mutation_counts_by_n`.
+
+    Returns:
+        the denominator of Tajima's D, or `nan` where it is undefined (no observed sites, no
+        mutations, or fewer than 2 observed alleles per site on average).
+
+    NB: Tajima 1989's `e1`/`e2` are derived under infinite sites, where the mutation count and
+    the site count coincide, so `e2 * s * (s - 1)` treats two mutations sharing one site as two
+    independent units. This is an approximation confined to multiallelic sites, and a much
+    smaller departure than the one every use of this formula already makes: the variance assumes
+    a single non-recombining locus, and recombination shrinks the true sd of D several-fold
+    (measured ~0.87 at r=0 vs ~0.19 at r=mu). Absolute D values are therefore not calibrated
+    test statistics under any counting scheme; see `docs/interpreting_tajima_d.rst`.
     """
-    d_stdev = 0.0
-    for n, s in variant_gt_counts.items():
-        if n < 2 or s <= 0:
-            continue
-        # (e1, e2) depend only on `n` and are cached so that repeated `n` values across many
-        # sites in a window don't re-derive the same a1/a2/b1/b2/c1/c2/e1/e2 chain.
-        e1, e2 = _tajima_constants(int(n))
-        # np.sqrt (not math.sqrt) to preserve the prior behavior of returning nan on negative
-        # variance terms rather than raising ValueError.
-        d_stdev += float(np.sqrt((e1 * s) + (e2 * s * (s - 1))))
+    if num_sites <= 0 or num_mutations <= 0:
+        return float("nan")
 
-    return float(d_stdev)
+    # Round the mean observed allele count to an integer `n`, as Tajima's coefficients are only
+    # defined for whole numbers of sampled alleles.
+    n = int(np.rint(total_allele_count / num_sites))
+    if n < 2:
+        # Tajima's D is undefined; `b1` would divide by `3 * (n - 1) == 0`.
+        return float("nan")
 
-
-def serialize_tajima_d_variant_counts(
-    variant_gt_counts: Mapping[ObservedAlleleCount, SiteCount],
-) -> str:
-    """Serializes Tajima's D observed-allele-count classes for the temp file."""
-    if not variant_gt_counts:
-        return "NA"
-
-    return ",".join(f"{n}:{s}" for n, s in sorted(variant_gt_counts.items()))
+    e1, e2 = _tajima_constants(n)
+    s = num_mutations
+    # np.sqrt (not math.sqrt) to return nan on a negative variance term rather than raising.
+    return float(np.sqrt((e1 * s) + (e2 * s * (s - 1))))
 
 
-def deserialize_tajima_d_variant_counts(value: object) -> CounterType[ObservedAlleleCount]:
-    """Deserializes Tajima's D observed-allele-count classes from the temp file."""
+def serialize_tajima_d_components(total_allele_count: int, num_mutations: int) -> str:
+    """
+    Serializes the components needed to recompute Tajima's D's denominator.
+
+    Both quantities are additive across window pieces, so summing them over the pieces of a
+    window and calling `calc_tajima_d_stdev` on the totals reproduces the denominator that a
+    single pass over the whole window would give (`num_sites`, the third input, is already
+    carried in its own column). The rounding to integer `n` happens once, at the end, on the
+    pooled mean -- which is why aggregation is exact rather than approximate.
+
+    The `nsum=`/`mut=` labels are deliberate: this field previously held `n:s` pairs of
+    observed-allele-count classes, and a bare `123:45` would silently misparse as one such
+    class. The labelled form makes stale readers fail loudly instead.
+    """
+    return f"nsum={int(total_allele_count)},mut={int(num_mutations)}"
+
+
+def deserialize_tajima_d_components(value: object) -> Tuple[int, int]:
+    """
+    Deserializes `(total_allele_count, num_mutations)` from the temp file.
+
+    Returns `(0, 0)` for absent/`"NA"` fields, which `calc_tajima_d_stdev` maps to `nan`.
+    Raises on the pre-2.2.1 `n:s` class format rather than guessing at it.
+    """
     if not isinstance(value, str) or value == "NA" or value == "":
-        return Counter()
+        return (0, 0)
 
-    counts: CounterType[ObservedAlleleCount] = Counter()
+    fields: dict = {}
     for item in value.split(","):
-        n, s = item.split(":")
-        counts[int(n)] += int(s)
+        key, _, val = item.partition("=")
+        if not _:
+            raise ValueError(
+                f"Unrecognized Tajima's D components field {value!r}. Expected "
+                f"'nsum=<int>,mut=<int>'. Values written by pixy <= 2.2.1 used observed-allele "
+                f"-count classes ('n:s,n:s,...'), which are not sufficient to recompute the "
+                f"denominator; re-run pixy rather than reusing old temp files."
+            )
+        fields[key] = val
 
-    return counts
+    return (int(fields["nsum"]), int(fields["mut"]))
 
 
 def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
@@ -669,26 +762,39 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
     # counts of only variant sites by excluding sites with variant count 0
     variant_allele_counts: AlleleCountsArray = allele_counts[allele_counts[:, 1:].sum(axis=1) != 0]
 
-    # for variant sites only, use Counter to generate dictionary
-    # where the key is the number of genotypes and value is number of sites with that many genotypes
-    variant_gt_counts: CounterType[NumGenotypes] = Counter(variant_allele_counts.sum(axis=1))
+    # for variant sites, map the number of observed genotypes to the number of MUTATIONS
+    # (Tajima 1996's `s*` = sum of k-1), not the number of sites, so the theta arm of the
+    # D contrast estimates a mutation count rather than a site count. Identical to the
+    # segregating-site count for biallelic data.
+    variant_gt_counts: CounterType[NumGenotypes] = _mutation_counts_by_n(variant_allele_counts)
 
-    # calculate watterson's theta as sum of equations for differing numbers of genotypes
-    # this is calculating Watterson's theta incorporating missing genotypes
+    # calculate watterson's theta (mutation-count form) incorporating missing genotypes;
+    # `s` is the number of mutations observed in sites with `n` genotypes. This per-class sum is
+    # Bailey et al. 2025's Equation 3 and is NOT affected by the #160 denominator fix below --
+    # only the D denominator changed there; theta and pi already agreed between implementations.
     #
-    # NB: same singleton-haploid corner as in `calc_watterson_theta` — when `n == 1` the
-    # denominator `a1` is 0 and `s / a1` evaluates to `inf`. The
-    # `test_calc_tajima_d_haploid_singleton` test asserts exactly that; `np.errstate` suppresses
-    # the accompanying RuntimeWarning.
+    # NB: `np.errstate` is retained defensively; with mutation counts an `n == 1` class
+    # never occurs (a single observed genotype has k == 1, hence 0 mutations), so the
+    # previous singleton `s / 0 == inf` no longer arises.
     watterson_theta: float = 0.0
     with np.errstate(divide="ignore"):
         for n, s in variant_gt_counts.items():
-            # See comment in calc_watterson_theta — `_harmonic_sum(1) == 0.0` reproduces the
-            # documented inf sentinel for the singleton case.
             a1: float = _harmonic_sum(int(n))
             watterson_theta += s / a1
 
-    d_stdev = calc_tajima_d_stdev(variant_gt_counts)
+    # Components of the D denominator. Sum the observed allele count only over sites with at
+    # least one observed allele: masked or fully-missing sites have a count of 0 and would drag
+    # the mean toward 0, breaking the denominator when `--sites_file` masks most of a window
+    # (#186, #188). `num_sites` above is exactly the number of such sites.
+    per_site_n: NDArray[np.int_] = allele_counts.sum(axis=1)
+    total_allele_count: int = int(per_site_n[per_site_n > 0].sum())
+    num_mutations: int = int(sum(variant_gt_counts.values()))
+
+    d_stdev = calc_tajima_d_stdev(
+        total_allele_count=total_allele_count,
+        num_sites=int(num_sites),
+        num_mutations=num_mutations,
+    )
 
     tajima_d: Union[float, NA]
     if d_stdev > 0 and not any(np.isnan(x) for x in [raw_pi, watterson_theta, d_stdev]):
@@ -707,5 +813,6 @@ def calc_tajima_d(gt_array: GenotypeArray) -> TajimaDResult:
         raw_pi=raw_pi,
         watterson_theta=watterson_theta,
         d_stdev=d_stdev,
-        variant_gt_counts=dict(variant_gt_counts),
+        total_allele_count=total_allele_count,
+        num_mutations=num_mutations,
     )
