@@ -15,6 +15,7 @@ import logging
 import os
 import sys
 import time
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import List
@@ -40,7 +41,9 @@ def main() -> None:  # noqa: C901
         "pixy: unbiased estimates of pi, dxy, fst, Watterson's Theta, and Tajima's D from "
         "VCFs with invariant sites"
     )
-    version = "2.2.1"
+    # single source of truth is the `version` field of pyproject.toml, recorded in the
+    # installed package metadata at build time
+    version = package_version("pixy")
     citation = (
         "Korunes, KL and K Samuk. "
         "pixy: Unbiased estimation of nucleotide diversity and divergence in the presence of "
