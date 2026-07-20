@@ -1,6 +1,19 @@
 name: Code checks
 
-on: [push, pull_request]
+# `push` is limited to master because a PR branch in this repo would otherwise fire
+# both `push` and `pull_request` for the same commit, queueing two identical runs of
+# the five-way Python matrix. Branch pushes are still covered — via `pull_request`
+# once a PR is open.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Superseded runs are pointless once a newer commit exists on the same ref, and they
+# hold runners that the newest commit is waiting on.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   POETRY_VERSION: 1.8.5

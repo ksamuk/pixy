@@ -1,5 +1,8 @@
 {% set name = "pixy" %}
-{% set version = "2.2.1" %}
+{# version is read from pyproject.toml so it is only ever declared in one place.
+   from_recipe_dir=True makes the path resolve relative to this recipe rather than
+   the (not-yet-populated) source work dir. #}
+{% set version = load_file_data('../pyproject.toml', from_recipe_dir=True)['tool']['poetry']['version'] %}
 
 package:
   name: {{ name|lower }}

@@ -6,8 +6,15 @@ Explanations of major changes to ``pixy`` are listed below. For up-to-date
 info on minor versions and bugfixes, see the release notes on GitHub:
 https://github.com/ksamuk/pixy/releases
 
-Unreleased
+pixy 2.2.3
 ==========
+
+This release contains the same analytical changes as the 2.2.2 tag, which
+was released with its internal version strings left at ``2.2.1``: builds
+from that tag report ``pixy 2.2.1`` from ``pixy --version`` and in output
+headers. 2.2.3 corrects the version strings only; if you are on 2.2.2,
+there is no change in results, but ``--version`` will now agree with the
+release you installed.
 
 New features
 ------------
@@ -88,7 +95,7 @@ Bug fixes
   parsimony minimum, so θ\ :sub:`W` retains a small (~4%) downward bias
   that no model-free estimator can remove.
 
-pixy 2.1.3
+pixy 2.2.0
 ==========
 
 New features

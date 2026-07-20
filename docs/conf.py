@@ -16,6 +16,9 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
+from pathlib import Path
+
+import tomllib
 
 # -- Project information -----------------------------------------------------
 
@@ -23,10 +26,15 @@ project = "pixy"
 copyright = "2019-2026, Kieran Samuk, Katharine Korunes"
 author = "Kieran Samuk, Katharine Korunes"
 
-# The short X.Y version
-version = "2.0"
+# Read the version from pyproject.toml rather than duplicating it here. Read the Docs
+# builds the docs without installing pixy, so importlib.metadata is not an option.
+with (Path(__file__).parent.parent / "pyproject.toml").open("rb") as pyproject:
+    _version = tomllib.load(pyproject)["tool"]["poetry"]["version"]
+
 # The full version, including alpha/beta/rc tags
-release = "2.0.0"
+release = _version
+# The short X.Y version
+version = ".".join(_version.split(".")[:2])
 
 
 # -- General configuration ---------------------------------------------------
