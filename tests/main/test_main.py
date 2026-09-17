@@ -1,8 +1,10 @@
 import csv
+import gzip
 import logging
 import math
 import os
 import shutil
+import subprocess
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -869,9 +871,8 @@ def test_pixy_multicore_matches_single_core(
     mc_out.mkdir()
 
     # Annotate as Dict[str, Any] so mypy doesn't infer Dict[str, object] (which can't be
-    # splatted into run_pixy_helper's typed kwargs). chunk_size must be >= window_size;
-    # this value yields ~5 chunks per chromosome for the ag1000 fixture, enough for a
-    # 2-core pool to see real parallelism.
+    # splatted into run_pixy_helper's typed kwargs). This chunk_size yields ~5 chunks per
+    # chromosome for the ag1000 fixture, enough for a 2-core pool to see real parallelism.
     common: Dict[str, Any] = dict(
         stats=["pi", "fst", "dxy"],
         window_size=10000,
@@ -890,6 +891,149 @@ def test_pixy_multicore_matches_single_core(
         # `assert_files_are_consistent` sorts then line-compares, which is what we want:
         # multicore output rows can arrive in non-deterministic order across runs.
         assert_files_are_consistent(mc, sc)
+
+
+def _assert_rows_close(gen_path: Path, exp_path: Path, rel_tol: float = 1e-9) -> None:
+    """
+    Compare two pixy output files row-by-row, with a relative tolerance on float cells.
+
+    Used where the two runs sum the same per-site components in a different order (e.g. a
+    different chunking), so the results agree to rounding but not byte-for-byte.
+    """
+    gen_lines = sorted(gen_path.read_text().splitlines())
+    exp_lines = sorted(exp_path.read_text().splitlines())
+    assert len(gen_lines) == len(exp_lines), f"{gen_path.name}: row counts differ"
+    for gen_line, exp_line in zip(gen_lines, exp_lines, strict=True):
+        for gen_cell, exp_cell in zip(gen_line.split("\t"), exp_line.split("\t"), strict=True):
+            try:
+                assert math.isclose(float(gen_cell), float(exp_cell), rel_tol=rel_tol), (
+                    f"{gen_path.name}: {gen_line!r} != {exp_line!r}"
+                )
+            except ValueError:
+                assert gen_cell == exp_cell, f"{gen_path.name}: {gen_line!r} != {exp_line!r}"
+
+
+@pytest.mark.regression
+def test_pixy_fst_unaligned_chunk_matches_default(
+    tmp_path: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+) -> None:
+    """
+    FST with ``--chunk_size`` smaller than (and not a divisor of) ``--window_size``.
+
+    In that configuration a single chunk can hold sub-windows belonging to two adjacent
+    windows. FST for each sub-window must be restricted to that sub-window's sites;
+    previously the whole chunk was used, which inflated ``no_snps`` and double-counted the
+    variance components across windows. Output is compared to a run with the default chunk
+    size (one chunk per window) rather than to a baseline file. The FST variance components
+    are summed in a different order across the sub-windows, so floats are compared with a
+    relative tolerance rather than byte-for-byte.
+    """
+    default_out = tmp_path / "default_chunk"
+    small_out = tmp_path / "small_chunk"
+    default_out.mkdir()
+    small_out.mkdir()
+
+    common: Dict[str, Any] = dict(
+        stats=["pi", "fst", "dxy"],
+        window_size=20000,
+        vcf_path=ag1000_vcf_path,
+        populations_path=ag1000_pop_path,
+        fst_components=True,
+    )
+    run_pixy_helper(pixy_out_dir=default_out, chunk_size=100000, **common)
+    run_pixy_helper(pixy_out_dir=small_out, chunk_size=15000, **common)
+
+    for name in ("pixy_pi.txt", "pixy_dxy.txt", "pixy_fst.txt"):
+        _assert_rows_close(small_out / name, default_out / name)
+
+
+@pytest.mark.regression
+@pytest.mark.skipif(
+    shutil.which("bgzip") is None or shutil.which("tabix") is None,
+    reason="bgzip and tabix are required to build the fixture VCF",
+)
+def test_pixy_aggregate_fst_windows_align_when_first_subwindow_has_no_snps(
+    tmp_path: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+) -> None:
+    """
+    Aggregate-mode FST windows must start at the interval start, like every other stat.
+
+    FST emits no row for a sub-window without SNPs. Aggregation used to take the interval
+    start from the rows it received, so a SNP-free leading sub-window shifted every FST
+    window by one sub-window (e.g. 5001-25000 instead of 1-20000) while the pi/dxy windows
+    stayed put. The fixture is the ag1000 VCF with the SNP records in the first 5000 bp
+    removed (invariant sites kept), so the first 5000-bp sub-window has sites but no SNPs.
+    """
+    vcf_path = tmp_path / "no_leading_snps.vcf"
+    with gzip.open(ag1000_vcf_path, "rt") as src, open(vcf_path, "w") as dst:
+        for line in src:
+            if not line.startswith("#"):
+                cols = line.split("\t", 5)
+                if int(cols[1]) <= 5000 and cols[4] != ".":
+                    continue
+            dst.write(line)
+    subprocess.run(["bgzip", "-f", str(vcf_path)], check=True)
+    vcf_gz = tmp_path / "no_leading_snps.vcf.gz"
+    subprocess.run(["tabix", "-p", "vcf", str(vcf_gz)], check=True)
+
+    default_out = tmp_path / "default_chunk"
+    small_out = tmp_path / "small_chunk"
+    default_out.mkdir()
+    small_out.mkdir()
+
+    common: Dict[str, Any] = dict(
+        stats=["pi", "fst"],
+        window_size=20000,
+        vcf_path=vcf_gz,
+        populations_path=ag1000_pop_path,
+    )
+    run_pixy_helper(pixy_out_dir=default_out, chunk_size=100000, **common)
+    run_pixy_helper(pixy_out_dir=small_out, chunk_size=5000, **common)
+
+    assert_files_are_consistent(small_out / "pixy_pi.txt", default_out / "pixy_pi.txt")
+    _assert_rows_close(small_out / "pixy_fst.txt", default_out / "pixy_fst.txt")
+
+
+@pytest.mark.regression
+def test_pixy_sites_file_keeps_sites_at_chunk_boundaries(
+    tmp_path: Path,
+    ag1000_pop_path: Path,
+    ag1000_vcf_path: Path,
+) -> None:
+    """
+    A sites file listing every position must give the same output as no sites file at all.
+
+    Sites used to be assigned to chunks with different arithmetic from the windows, so the
+    sites just past each chunk boundary landed in the wrong chunk and were masked out as
+    missing. A small chunk size makes many boundaries, so every window lost a few sites.
+    """
+    sites_path = tmp_path / "all_sites.txt"
+    with open(sites_path, "w") as f:
+        for chrom in ("X", "1"):
+            for pos in range(1, 60001):
+                f.write(f"{chrom}\t{pos}\n")
+
+    plain_out = tmp_path / "plain"
+    sites_out = tmp_path / "sites"
+    plain_out.mkdir()
+    sites_out.mkdir()
+
+    common: Dict[str, Any] = dict(
+        stats=["pi", "dxy", "fst"],
+        window_size=10000,
+        chunk_size=5000,
+        vcf_path=ag1000_vcf_path,
+        populations_path=ag1000_pop_path,
+    )
+    run_pixy_helper(pixy_out_dir=plain_out, **common)
+    run_pixy_helper(pixy_out_dir=sites_out, sites_path=sites_path, **common)
+
+    for name in ("pixy_pi.txt", "pixy_dxy.txt", "pixy_fst.txt"):
+        assert_files_are_consistent(sites_out / name, plain_out / name)
 
 
 ################################################################################
@@ -1405,3 +1549,44 @@ def test_pixy_gvcf_matches_all_sites_baseline(
         assert all_sites_path.exists(), f"all-sites run produced no {name}"
         assert gvcf_path.exists(), f"gvcf run produced no {name}"
         assert_files_are_consistent(gvcf_path, all_sites_path)
+
+
+def test_numpy_compat_missing_detects_chained_import_error() -> None:
+    """
+    `_numpy_compat_missing` must find `numpy.compat` anywhere in an exception chain.
+
+    Reproduces the exception shape from issue #225: numpy 2 removed `numpy.compat`, old
+    dask raises ModuleNotFoundError for it, and dask.array wraps that in an ImportError
+    ("Dask array requirements are not installed") that surfaces from `import allel`.
+    """
+    from pixy.__main__ import _numpy_compat_missing
+
+    def _issue_225_error() -> ImportError:
+        try:
+            try:
+                raise ModuleNotFoundError("No module named 'numpy.compat'", name="numpy.compat")
+            except ModuleNotFoundError as inner:
+                raise ImportError("Dask array requirements are not installed.") from inner
+        except ImportError as outer:
+            return outer
+
+    assert _numpy_compat_missing(_issue_225_error())
+
+    # implicit chaining (__context__ rather than __cause__) is also traversed
+    def _implicitly_chained_error() -> ImportError:
+        try:
+            try:
+                raise ModuleNotFoundError("No module named 'numpy.compat'", name="numpy.compat")
+            except ModuleNotFoundError:
+                # implicit chaining is the scenario under test
+                raise ImportError("Dask array requirements are not installed.")  # noqa: B904
+        except ImportError as outer:
+            return outer
+
+    assert _numpy_compat_missing(_implicitly_chained_error())
+
+    # unrelated import failures are left alone
+    assert not _numpy_compat_missing(ImportError("No module named 'allel'"))
+    assert not _numpy_compat_missing(
+        ModuleNotFoundError("No module named 'numpy.random'", name="numpy.random")
+    )

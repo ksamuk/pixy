@@ -1,6 +1,6 @@
 [tool.poetry]
 name          = "pixy"
-version       = "2.2.3"
+version       = "2.2.4"
 description   = "An unbiased estimation of average nucleotide diversity within (π) and between (dxy) populations from a VCF"
 readme        = "README.md"
 authors       = [

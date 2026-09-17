@@ -18,6 +18,7 @@ import time
 from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import Dict
 from typing import List
 from typing import Optional
 
@@ -28,6 +29,37 @@ if TYPE_CHECKING:
     from pixy.args_validation import PixyArgs
 
 # main pixy function
+
+
+def _numpy_compat_missing(exc: BaseException) -> bool:
+    """
+    Check an exception chain for the `ModuleNotFoundError` on `numpy.compat`.
+
+    scikit-allel imports its optional dask integration whenever dask is importable, and
+    dask < 2023.9 imports `numpy.compat`, which was removed in numpy 2.0. In such
+    environments `import allel` fails with dask's misleading "Dask array requirements are
+    not installed" ImportError, whose chain ends in the `numpy.compat` ModuleNotFoundError
+    (see https://github.com/ksamuk/pixy/issues/225). Walks `__cause__`/`__context__` links
+    to find it.
+    """
+    seen = set()
+    cur: Optional[BaseException] = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, ModuleNotFoundError) and cur.name == "numpy.compat":
+            return True
+        cur = cur.__cause__ if cur.__cause__ is not None else cur.__context__
+    return False
+
+
+_NUMPY2_DASK_HELP = (
+    "pixy could not import scikit-allel because this environment combines numpy >= 2 with a "
+    "dask release that still uses the `numpy.compat` module, which numpy 2.0 removed. "
+    "scikit-allel loads its optional dask integration whenever dask is installed, so the "
+    "incompatible dask breaks `import allel` before pixy can run. To fix this, upgrade dask "
+    "to >= 2024.5.1 (e.g. `conda install 'dask-core>=2024.5.1'` or `pip install -U dask`), "
+    "or downgrade numpy to < 2."
+)
 
 
 def main() -> None:  # noqa: C901
@@ -366,8 +398,16 @@ def main() -> None:  # noqa: C901
     # — they're only loaded when the corresponding code path actually runs.
     import subprocess
 
-    import pixy.args_validation
-    import pixy.core  # transitively imports pixy.calc, which workers reach via pixy.core
+    try:
+        import pixy.args_validation
+        import pixy.core  # transitively imports pixy.calc, which workers reach via pixy.core
+    except ImportError as e:
+        # A numpy 2 + old-dask environment kills `import allel` with an unhelpful error
+        # (and `sys.tracebacklimit = 0` above hides the numpy.compat chain that explains
+        # it), so replace it with an actionable message. See _numpy_compat_missing.
+        if _numpy_compat_missing(e):
+            raise ImportError(_NUMPY2_DASK_HELP) from e
+        raise
 
     # validate arguments with the check_and_validate_args fuction
     # returns parsed populaion, chromosome, and sample info
@@ -495,6 +535,11 @@ def main() -> None:  # noqa: C901
 
     # begin processing each chromosome
 
+    # the first window position of each chromosome; `pixy.agg` bins sub-window rows relative
+    # to it when aggregating (it cannot be recovered from the rows themselves, because FST
+    # emits no row for a sub-window without SNPs)
+    interval_starts: Dict[str, int] = {}
+
     for chromosome in pixy_args.chromosomes:
         logger.info(f"Processing chromosome/contig {chromosome}")
 
@@ -554,6 +599,7 @@ def main() -> None:  # noqa: C901
                     f"interval end {interval_end}"
                 )
 
+            interval_starts[chromosome] = interval_start
             targ_region = chromosome + ":" + str(interval_start) + "-" + str(interval_end)
 
             logger.info(f"Calculating statistics for region {targ_region}")
@@ -624,10 +670,10 @@ def main() -> None:  # noqa: C901
         # using chunk_size, assign  windows to chunks
         window_list = pixy.core.assign_windows_to_chunks(window_list, effective_chunk_size)
 
-        # if using a sites file, assign sites to chunks, as with windows above
+        # if using a sites file, each chunk is handed the sites within the region it reads
+        sites_list: Optional[List[int]]
         if pixy_args.sites is not None:
-            sites_pre_list = pixy_args.sites.positions_for(chromosome)
-            sites_list = pixy.core.assign_sites_to_chunks(sites_pre_list, effective_chunk_size)
+            sites_list = sorted(pixy_args.sites.positions_for(chromosome))
         else:
             sites_list = None
         # obtain the list of chunks from the window list
@@ -643,17 +689,18 @@ def main() -> None:  # noqa: C901
                 # create a subset of the window list specific to this chunk
                 window_list_chunk = [x for x in window_list if x[2] == chunk]
 
-                # and for the site list (if it exists)
+                # determine the bounds of the chunk
+                chunk_pos_1 = min(window_list_chunk, key=lambda x: x[1])[0]
+                chunk_pos_2 = max(window_list_chunk, key=lambda x: x[1])[1]
+
+                # and the target sites within those bounds (if using a sites file)
                 sites_list_chunk: Optional[List[int]]
                 if sites_list is None:
                     sites_list_chunk = None
                 else:
-                    chunk_sites_lists: List[List[int]] = [x for x in sites_list if x[1] == chunk]
-                    sites_list_chunk = [x[0] for x in chunk_sites_lists]
-
-                # determine the bounds of the chunk
-                chunk_pos_1 = min(window_list_chunk, key=lambda x: x[1])[0]
-                chunk_pos_2 = max(window_list_chunk, key=lambda x: x[1])[1]
+                    sites_list_chunk = pixy.core.select_sites_in_chunk(
+                        sites_list, chunk_pos_1, chunk_pos_2
+                    )
 
                 # launch a summary stats job for this chunk
                 job = pool.apply_async(
@@ -669,7 +716,6 @@ def main() -> None:  # noqa: C901
                         window_list_chunk,
                         q,
                         sites_list_chunk,
-                        aggregate,
                         args.window_size,
                     ),
                 )
@@ -685,16 +731,17 @@ def main() -> None:  # noqa: C901
                 # create a subset of the window list specific to this chunk
                 window_list_chunk = [x for x in window_list if x[2] == chunk]
 
-                # and for the site list (if it exists)
-                if pixy_args.sites is not None and sites_list is not None:
-                    chunk_sites_lists = [x for x in sites_list if x[1] == chunk]
-                    sites_list_chunk = [x[0] for x in chunk_sites_lists]
-                else:
-                    sites_list_chunk = None
-
                 # determine the bounds of the chunk
                 chunk_pos_1 = min(window_list_chunk, key=lambda x: x[1])[0]
                 chunk_pos_2 = max(window_list_chunk, key=lambda x: x[1])[1]
+
+                # and the target sites within those bounds (if using a sites file)
+                if sites_list is not None:
+                    sites_list_chunk = pixy.core.select_sites_in_chunk(
+                        sites_list, chunk_pos_1, chunk_pos_2
+                    )
+                else:
+                    sites_list_chunk = None
 
                 # don't use the queue (q) when running in single core mode; rebind to the
                 # sentinel string `compute_summary_stats` checks for. The type changes here
@@ -713,7 +760,6 @@ def main() -> None:  # noqa: C901
                     window_list_chunk,
                     q,
                     sites_list_chunk,
-                    aggregate,
                     args.window_size,
                 )
 
@@ -775,6 +821,7 @@ def main() -> None:  # noqa: C901
             chrom_list=chrom_list,
             aggregate=aggregate,
             window_size=output_window_size,
+            interval_starts=interval_starts,
             fst_type=pixy_args.fst_type.value,
         )
 
@@ -786,6 +833,7 @@ def main() -> None:  # noqa: C901
             chrom_list=chrom_list,
             aggregate=aggregate,
             window_size=output_window_size,
+            interval_starts=interval_starts,
             fst_type=pixy_args.fst_type.value,
         )
 
@@ -797,6 +845,7 @@ def main() -> None:  # noqa: C901
             chrom_list=chrom_list,
             aggregate=aggregate,
             window_size=output_window_size,
+            interval_starts=interval_starts,
             fst_type=pixy_args.fst_type.value,
             fst_components=pixy_args.fst_components,
         )
@@ -814,6 +863,7 @@ def main() -> None:  # noqa: C901
             chrom_list=chrom_list,
             aggregate=aggregate,
             window_size=output_window_size,
+            interval_starts=interval_starts,
             fst_type=pixy_args.fst_type.value,
         )
 
@@ -825,6 +875,7 @@ def main() -> None:  # noqa: C901
             chrom_list=chrom_list,
             aggregate=aggregate,
             window_size=output_window_size,
+            interval_starts=interval_starts,
             fst_type=pixy_args.fst_type.value,
             tajima_components=pixy_args.tajima_components,
         )
