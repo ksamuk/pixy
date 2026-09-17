@@ -245,9 +245,15 @@ def aggregate_rows(
     chromosome: str,
     window_size: int,
     fst_type: str,
+    interval_start: int,
 ) -> List[AggRow]:
     """
     Aggregate temp rows for a single (stat, chromosome) into output-window-sized rows.
+
+    `interval_start` is the first window position of the chromosome. It is taken from the
+    caller rather than from `min(window_pos_1)` over `rows`, because FST emits no row for a
+    sub-window without SNPs: if the leading sub-window is SNP-free, the minimum over the rows
+    is one sub-window too late and every FST window would be shifted.
 
     Replaces `pixy.core.aggregate_output()` (the previous pandas implementation). The
     binning is identical to what `pandas.cut` produced for the same `interval_start` /
@@ -259,7 +265,6 @@ def aggregate_rows(
     if not rows:
         return []
     positions = [int(r.window_pos_1_str) for r in rows]
-    interval_start = min(positions)
 
     accum: Dict[Tuple[str, Optional[str], int], List[Numeric]] = defaultdict(
         lambda: ["NA", "NA", "NA", "NA"]
@@ -578,10 +583,16 @@ def write_stat_file(  # noqa: C901
     aggregate: bool,
     window_size: int,
     fst_type: str,
+    interval_starts: Dict[str, int],
     fst_components: bool = False,
     tajima_components: bool = False,
 ) -> List[str]:
-    """Write the per-stat output file. Returns the list of chromosomes that had no data."""
+    """
+    Write the per-stat output file. Returns the list of chromosomes that had no data.
+
+    `interval_starts` maps each chromosome to its first window position; only consulted when
+    `aggregate` is True.
+    """
     chroms_with_no_data: List[str] = []
     if stat == "fst":
         header = _fst_header(fst_type, fst_components)
@@ -604,7 +615,9 @@ def write_stat_file(  # noqa: C901
                 chroms_with_no_data.append(chromosome)
                 continue
             if aggregate:
-                for arow in aggregate_rows(rows, stat, chromosome, window_size, fst_type):
+                for arow in aggregate_rows(
+                    rows, stat, chromosome, window_size, fst_type, interval_starts[chromosome]
+                ):
                     line = _format_agg_row(arow, stat, fst_type, fst_components)
                     if stat == "tajima_d" and tajima_components:
                         line = line + "\t" + arow.tajima_counts

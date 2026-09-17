@@ -35,7 +35,9 @@ from numpy.typing import NDArray
 # (`values`) and a `__getattr__` definition that permits transparent access to member methods and
 # attributes of this array, so it functionally behaves as a subclass. Including the `NDArray`
 # inheritance in this type stub simplified some of the child stubs and corresponding type hints.
-class ArrayWrapper(NDArray):
+# `np.ndarray` is used directly rather than the `NDArray` alias: numpy >= 2.5 defines `NDArray`
+# with a PEP 695 `type` statement, which mypy does not accept as a base class.
+class ArrayWrapper(np.ndarray[Any, Any]):
     def __init__(self, data: Union[NDArray, "ArrayWrapper"]) -> None: ...
 
 ####################################################################################################

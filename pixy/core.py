@@ -1,4 +1,5 @@
 import argparse
+import bisect
 import warnings
 from multiprocessing import Queue
 from multiprocessing import queues
@@ -144,30 +145,26 @@ def assign_windows_to_chunks(window_pre_list: List[List[int]], chunk_size: int) 
 
 
 # function for assinging sites to larger chunks
-def assign_sites_to_chunks(sites_pre_list: List[int], chunk_size: int) -> List[List[int]]:
+def select_sites_in_chunk(sites_sorted: List[int], chunk_pos_1: int, chunk_pos_2: int) -> List[int]:
     """
-    Assigns each site in a list to a chunk based on its position and given chunk size.
+    Returns the target sites that fall within a chunk's read region (inclusive bounds).
 
-    The chunk index for each site is determined by dividing the site position by
-    `(chunk_size + 1)` and using `np.floor` to calculate the chunk index. This
-    function returns a list of sites, where each site is paired with the chunk
-    index it belongs to.
+    Sites are matched to a chunk by the region that chunk actually reads, so a site always
+    lands in the same chunk as the window containing it. (An earlier implementation assigned
+    sites and windows to chunks with different arithmetic, which silently masked out the
+    sites just past each chunk boundary.)
 
     Args:
-        sites_pre_list: the sites (positions) of interest
-        chunk_size: the size of each chunk
+        sites_sorted: the sites (positions) of interest, in ascending order
+        chunk_pos_1: the first position read for the chunk
+        chunk_pos_2: the last position read for the chunk
 
     Returns:
-        sites_list: A list where each element is a pair of a site and its corresponding
-            chunk index
+        the subset of `sites_sorted` in `[chunk_pos_1, chunk_pos_2]`
     """
-    # assign sites to chunks using np.floor
-    chunk_list = [np.floor(x / (chunk_size + 1)) for x in sites_pre_list]
-
-    # bind the lists back together
-    sites_list = [list(a) for a in zip(sites_pre_list, chunk_list, strict=True)]
-
-    return sites_list
+    lo = bisect.bisect_left(sites_sorted, chunk_pos_1)
+    hi = bisect.bisect_right(sites_sorted, chunk_pos_2)
+    return sites_sorted[lo:hi]
 
 
 # function for masking non-target sites in a genotype array
@@ -489,7 +486,6 @@ def compute_summary_stats(  # noqa: C901
     # `isinstance` check on use.
     q: Any,
     sites_list_chunk: Optional[List[int]],
-    aggregate: bool,
     window_size: int,
 ) -> None:
     """
@@ -506,7 +502,6 @@ def compute_summary_stats(  # noqa: C901
         window_list_chunk: the list of window start:stop that correspond to this chunk
         q: either "NULL" in single-core mode or a `Queue` object in multicore mode
         sites_list_chunk: list of positions in which to mask non-target sites
-        aggregate: True if `window_size` > `chunk_size` or the chromosome is longer than the cutoff
         window_size: window size over which to calculate stats (in base pairs)
 
     Returns:
@@ -722,7 +717,6 @@ def compute_summary_stats(  # noqa: C901
                 pos_array_fst=pos_array_fst,
                 window_is_empty=window_is_empty,
                 callset_is_none=callset_is_none,
-                aggregate=aggregate,
                 popindices=popindices,
                 chromosome=chromosome,
                 window_pos_1=window_pos_1,

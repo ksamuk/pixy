@@ -6,6 +6,22 @@ Explanations of major changes to ``pixy`` are listed below. For up-to-date
 info on minor versions and bugfixes, see the release notes on GitHub:
 https://github.com/ksamuk/pixy/releases
 
+pixy 2.2.4
+==========
+
+Bug fixes
+---------
+
+- **Packaging: numpy 2 with an old dask no longer breaks pixy at startup
+  (issue #225).** numpy 2.0 removed ``numpy.compat``, which dask
+  releases before 2024.5.1 still import; scikit-allel loads its optional
+  dask integration whenever dask is installed, so in such environments
+  ``pixy`` failed at startup with dask's misleading "Dask array requirements
+  are not installed" error. The conda recipe now requires
+  ``dask-core >= 2024.5.1``, and ``pixy`` detects this specific failure and
+  reports an actionable message (upgrade dask or downgrade numpy) instead.
+  No change in results.
+
 pixy 2.2.3
 ==========
 

@@ -90,7 +90,13 @@ File: ``[prefix]_fst.txt``
     (Hudson 1992 / Bhatia *et al.* 2013) produces ``avg_hudson_fst``.
 
 ``no_snps``
-    Total number of variable sites (SNPs) in the window.
+    Number of sites in the window used for the F\ :sub:`ST` estimate. A
+    site is used when it is polymorphic among the samples in the VCF
+    (singletons count; the FILTER column is ignored). For ``--fst_type
+    wc``, or ``--fst_type hudson`` with ``--fst_biallelic``, only sites
+    with exactly two observed alleles are used; for ``--fst_type hudson``
+    with ``--include_multiallelic_snps``, sites with more than two
+    observed alleles are used as well.
 
 ``wc_fst_a``, ``wc_fst_b``, ``wc_fst_c``
     Present when ``--fst_components`` and ``--fst_type wc`` are used.

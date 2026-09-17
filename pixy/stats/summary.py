@@ -22,7 +22,6 @@ from pixy.calc import calc_fst_persite
 from pixy.calc import calc_pi
 from pixy.enums import FSTEstimator
 from pixy.models import DxyResult
-from pixy.models import FstResult
 from pixy.models import PiResult
 from pixy.models import PixyTempResult
 from pixy.wisp import WindowInvariantContributions
@@ -363,7 +362,6 @@ def compute_summary_fst(
     pos_array_fst: Union[SortedIndex, None],
     window_is_empty: bool,
     callset_is_none: bool,
-    aggregate: bool,
     popindices: Dict[str, NDArray[np.int64]],
     chromosome: str,
     window_pos_1: int,
@@ -410,68 +408,23 @@ def compute_summary_fst(
             and not window_is_empty
         )
 
-        fst_results: List[PixyTempResult]
-        if aggregate:
-            fst_results = _compute_aggregate_fst_for_pair(
-                gt_matrix_is_empty=gt_matrix_is_empty,
-                fst_type=fst_type,
-                gt_array_fst=gt_array_fst,
-                fst_pop_indicies=fst_pop_indicies,
-                window_pos_1=window_pos_1,
-                window_pos_2=window_pos_2,
-                pop_pair=pop_pair,
-                chromosome=chromosome,
-            )
-        else:
-            fst_results = _compute_individual_fst_for_pair(
-                gt_matrix_is_empty=gt_matrix_is_empty,
-                fst_type=fst_type,
-                pos_array_fst=pos_array_fst,
-                gt_array_fst=gt_array_fst,
-                fst_pop_indicies=fst_pop_indicies,
-                window_pos_1=window_pos_1,
-                window_pos_2=window_pos_2,
-                pop_pair=pop_pair,
-                chromosome=chromosome,
-            )
+        # NB: always restrict to the sites within [window_pos_1, window_pos_2]. In aggregate
+        # mode (window_size > chunk_size) a chunk can hold sub-windows from two different
+        # windows, so computing over the whole chunk would inflate `no_snps` and double-count
+        # the variance components; the per-sub-window rows are summed downstream in `agg.py`.
+        fst_results: List[PixyTempResult] = _compute_individual_fst_for_pair(
+            gt_matrix_is_empty=gt_matrix_is_empty,
+            fst_type=fst_type,
+            pos_array_fst=pos_array_fst,
+            gt_array_fst=gt_array_fst,
+            fst_pop_indicies=fst_pop_indicies,
+            window_pos_1=window_pos_1,
+            window_pos_2=window_pos_2,
+            pop_pair=pop_pair,
+            chromosome=chromosome,
+        )
 
         pixy_results.extend(fst_results)
-
-    return pixy_results
-
-
-def _compute_aggregate_fst_for_pair(
-    gt_matrix_is_empty: bool,
-    fst_type: FSTEstimator,
-    gt_array_fst: GenotypeArray,
-    fst_pop_indicies: List[List[int]],
-    window_pos_1: int,
-    window_pos_2: int,
-    pop_pair: Tuple[str, str],
-    chromosome: str,
-) -> List[PixyTempResult]:
-    """Compute aggregate FST for a pair of populations."""
-    result: FstResult
-    if gt_matrix_is_empty:
-        result = FstResult.empty()
-    else:
-        result = calc_fst(gt_array_fst, fst_pop_indicies, fst_type)
-
-    pixy_result = PixyTempResult(
-        pixy_stat=PixyStat.FST,
-        population_1=pop_pair[0],
-        population_2=pop_pair[1],
-        chromosome=chromosome,
-        window_pos_1=window_pos_1,
-        window_pos_2=window_pos_2,
-        calculated_stat=result.fst,
-        shared_sites_with_alleles=result.n_sites,
-        total_differences=result.a,
-        total_comparisons=result.b,
-        total_missing=result.c,
-    )
-
-    pixy_results = [pixy_result]
 
     return pixy_results
 
