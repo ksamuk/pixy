@@ -9,7 +9,10 @@ tests drive :func:`pixy.__main__.main` through the standard
 """
 
 import logging
+import shutil
+import subprocess
 from pathlib import Path
+from typing import Any
 from typing import Dict
 
 import numpy as np
@@ -17,6 +20,8 @@ import pytest
 from numpy.typing import NDArray
 
 from pixy.gvcf import expand_blocks
+from pixy.gvcf import strip_symbolic_alts
+from tests.conftest import assert_files_are_consistent
 from tests.conftest import run_pixy_helper
 
 
@@ -287,3 +292,149 @@ def test_gvcf_recognised_log_message(
         chromosomes="X",
     )
     assert any("Input recognised as a GVCF" in rec.getMessage() for rec in caplog.records)
+
+
+################################################################################
+# Symbolic ALT alleles (<NON_REF>, <*>)
+################################################################################
+
+
+def test_strip_symbolic_alts_recomputes_numalt_and_is_snp() -> None:
+    """Symbolic ALTs are not real alleles: they must not count toward numalt or block is_snp."""
+    gt = np.array(
+        [
+            [[0, 0], [0, 0]],  # single-site block: A -> <NON_REF>
+            [[0, 1], [0, 2]],  # SNP: A -> G,<NON_REF>; one call to the symbolic allele
+            [[0, 1], [0, 0]],  # plain SNP, untouched
+            [[0, 1], [0, 0]],  # indel with a symbolic allele stays a non-SNP
+            [[0, 1], [1, 2]],  # multiallelic SNP: A -> G,T,<*>
+        ],
+        dtype=np.int8,
+    )
+    cs: Dict[str, NDArray] = {
+        "variants/REF": np.array(["A", "A", "A", "AC", "A"], dtype=object),
+        "variants/ALT": np.array(
+            [
+                ["<NON_REF>", "", "", ""],
+                ["G", "<NON_REF>", "", ""],
+                ["G", "", "", ""],
+                ["A", "<NON_REF>", "", ""],
+                ["G", "T", "<*>", ""],
+            ],
+            dtype=object,
+        ),
+        "variants/numalt": np.array([1, 2, 1, 2, 3], dtype=np.int32),
+        "variants/is_snp": np.array([False, False, True, False, False]),
+        "calldata/GT": gt,
+    }
+
+    out = strip_symbolic_alts(cs)
+
+    np.testing.assert_array_equal(out["variants/numalt"], [0, 1, 1, 1, 2])
+    np.testing.assert_array_equal(out["variants/is_snp"], [False, True, True, False, True])
+    # the call to the symbolic allele becomes missing; real alleles are untouched
+    np.testing.assert_array_equal(out["calldata/GT"][1], [[0, 1], [0, -1]])
+    np.testing.assert_array_equal(out["calldata/GT"][4], [[0, 1], [1, 2]])
+
+
+def _write_indexed_vcf(path: Path, body: str) -> Path:
+    header = (
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="Stop position of the interval">\n'
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4\n"
+    )
+    path.write_text(header + body)
+    subprocess.run(["bgzip", "-f", str(path)], check=True)
+    gz = path.with_name(path.name + ".gz")
+    subprocess.run(["tabix", "-p", "vcf", str(gz)], check=True)
+    return gz
+
+
+@pytest.mark.skipif(
+    shutil.which("bgzip") is None or shutil.which("tabix") is None,
+    reason="bgzip and tabix are required to build the synthetic GVCF",
+)
+def test_pixy_gvcf_gatk_style_records_match_all_sites(tmp_path: Path) -> None:
+    """
+    GATK-style GVCF records must give the same output as the equivalent all-sites VCF.
+
+    Covers the record shapes real GATK GVCFs contain but the collapsed fixture does not:
+    single-site blocks (``END == POS``), ``<NON_REF>`` records without ``END``, and variant
+    records that carry a trailing ``<NON_REF>`` allele.
+    """
+    ref = "0/0\t0/0\t0/0\t0/0"
+    all_sites = "".join(f"chr1\t{pos}\t.\tA\t.\t.\tPASS\t.\tGT\t{ref}\n" for pos in range(1, 7))
+    all_sites += "chr1\t7\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\t0/0\t1/1\t0/1\n"
+    all_sites += "chr1\t8\t.\tA\tG,T\t.\tPASS\t.\tGT\t0/1\t0/2\t1/1\t0/0\n"
+    all_sites += f"chr1\t9\t.\tA\t.\t.\tPASS\t.\tGT\t{ref}\n"
+
+    gvcf = f"chr1\t1\t.\tA\t<NON_REF>\t.\tPASS\tEND=5\tGT\t{ref}\n"
+    gvcf += f"chr1\t6\t.\tA\t<NON_REF>\t.\tPASS\tEND=6\tGT\t{ref}\n"
+    gvcf += "chr1\t7\t.\tA\tG,<NON_REF>\t.\tPASS\t.\tGT\t0/1\t0/0\t1/1\t0/1\n"
+    gvcf += "chr1\t8\t.\tA\tG,T,<NON_REF>\t.\tPASS\t.\tGT\t0/1\t0/2\t1/1\t0/0\n"
+    gvcf += f"chr1\t9\t.\tA\t<NON_REF>\t.\tPASS\t.\tGT\t{ref}\n"
+
+    all_sites_gz = _write_indexed_vcf(tmp_path / "all_sites.vcf", all_sites)
+    gvcf_gz = _write_indexed_vcf(tmp_path / "gvcf.vcf", gvcf)
+    pop_file = tmp_path / "pops.txt"
+    pop_file.write_text("S1\tA\nS2\tA\nS3\tB\nS4\tB\n")
+
+    all_sites_out = tmp_path / "all_sites_out"
+    gvcf_out = tmp_path / "gvcf_out"
+    all_sites_out.mkdir()
+    gvcf_out.mkdir()
+
+    common: Dict[str, Any] = dict(
+        stats=["pi", "dxy", "fst", "watterson_theta", "tajima_d"],
+        window_size=100,
+        populations_path=pop_file,
+        fst_type="hudson",
+        include_multiallelic_snps=True,
+    )
+    run_pixy_helper(pixy_out_dir=all_sites_out, vcf_path=all_sites_gz, **common)
+    run_pixy_helper(pixy_out_dir=gvcf_out, vcf_path=gvcf_gz, gvcf=True, **common)
+
+    for name in (
+        "pixy_pi.txt",
+        "pixy_dxy.txt",
+        "pixy_fst.txt",
+        "pixy_watterson_theta.txt",
+        "pixy_tajima_d.txt",
+    ):
+        assert_files_are_consistent(gvcf_out / name, all_sites_out / name)
+
+    # guard against both runs being trivially empty: 9 sites, 2 of them variable
+    pi_rows = (gvcf_out / "pixy_pi.txt").read_text().splitlines()[1:]
+    assert all(row.split("\t")[5] == "9" for row in pi_rows)
+    assert all(float(row.split("\t")[4]) > 0 for row in pi_rows)
+
+
+@pytest.mark.skipif(
+    shutil.which("bgzip") is None or shutil.which("tabix") is None,
+    reason="bgzip and tabix are required to build the synthetic GVCF",
+)
+def test_pixy_gvcf_fst_only_keeps_variants_with_symbolic_allele(tmp_path: Path) -> None:
+    """The FST-only streaming read path must also see through a trailing ``<NON_REF>``."""
+    gvcf = "chr1\t1\t.\tA\t<NON_REF>\t.\tPASS\tEND=6\tGT\t0/0\t0/0\t0/0\t0/0\n"
+    gvcf += "chr1\t7\t.\tA\tG,<NON_REF>\t.\tPASS\t.\tGT\t0/1\t0/0\t1/1\t0/1\n"
+    gvcf_gz = _write_indexed_vcf(tmp_path / "gvcf.vcf", gvcf)
+    pop_file = tmp_path / "pops.txt"
+    pop_file.write_text("S1\tA\nS2\tA\nS3\tB\nS4\tB\n")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    run_pixy_helper(
+        pixy_out_dir=out_dir,
+        stats=["fst"],
+        window_size=100,
+        vcf_path=gvcf_gz,
+        populations_path=pop_file,
+        fst_type="hudson",
+        gvcf=True,
+    )
+
+    fst_rows = (out_dir / "pixy_fst.txt").read_text().splitlines()[1:]
+    assert len(fst_rows) == 1
+    assert fst_rows[0].split("\t")[6] == "1"  # no_snps

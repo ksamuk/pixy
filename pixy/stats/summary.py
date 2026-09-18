@@ -205,7 +205,7 @@ def compute_summary_pi(
             else:
                 # number of sites genotyped in the population
                 # not directly used in the calculation
-                no_sites = int(np.count_nonzero(np.sum(gt_pop.count_alleles(max_allele=1), 1)))
+                no_sites = int(np.count_nonzero(np.sum(gt_pop.count_alleles(), 1)))
                 pi_result = calc_pi(gt_pop)
 
         # Merge in the analytical invariant contribution from the wisp mask, if any.
@@ -311,8 +311,8 @@ def compute_summary_dxy(
             else:
                 # for number of sites (not used in calculation), report the
                 # number of sites that have at least one genotype in BOTH populations
-                pop1_sites = np.sum(pop1_gt_region.count_alleles(max_allele=1), 1) > 0
-                pop2_sites = np.sum(pop2_gt_region.count_alleles(max_allele=1), 1) > 0
+                pop1_sites = np.sum(pop1_gt_region.count_alleles(), 1) > 0
+                pop2_sites = np.sum(pop2_gt_region.count_alleles(), 1) > 0
                 no_sites = np.sum(np.logical_and(pop1_sites, pop2_sites))
                 dxy_result = calc_dxy(pop1_gt_array=pop1_gt_region, pop2_gt_array=pop2_gt_region)
 

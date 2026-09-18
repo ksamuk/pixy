@@ -377,3 +377,46 @@ def test_pixy_with_wisp_mask_missing_index(tmp_path: Path) -> None:
             window_size=500,
             wisp_bed_path=inputs["wisp"],
         )
+
+
+@pytest.mark.skipif(
+    shutil.which("bgzip") is None or shutil.which("tabix") is None,
+    reason="bgzip and tabix are required to build the synthetic wisp dataset",
+)
+def test_pixy_with_wisp_mask_tajima_d_aggregation_matches_single_pass(tmp_path: Path) -> None:
+    """
+    Tajima's D must survive window aggregation on the wisp path.
+
+    The D denominator uses the mean observed allele count per site. Wisp invariant sites are
+    added to the site count, so they must be added to the allele-count sum as well; otherwise
+    the aggregated mean collapses toward 0 and D becomes NA.
+    """
+    inputs = _build_wisp_dataset(tmp_path)
+    outputs = {}
+    for label, chunk_size in (("single_pass", None), ("aggregated", 100)):
+        out_dir = tmp_path / label
+        out_dir.mkdir()
+        run_pixy_helper(
+            pixy_out_dir=out_dir,
+            stats=["tajima_d"],
+            vcf_path=inputs["vcf"],
+            populations_path=inputs["pops"],
+            window_size=1000,
+            chunk_size=chunk_size,
+            chromosomes="chr1",
+            wisp_bed_path=inputs["wisp"],
+        )
+        outputs[label] = (out_dir / "pixy_tajima_d.txt").read_text().splitlines()[1:]
+
+    assert len(outputs["single_pass"]) == 2
+    assert len(outputs["aggregated"]) == 2
+    for single, aggregated in zip(outputs["single_pass"], outputs["aggregated"], strict=True):
+        single_cols, aggregated_cols = single.split("\t"), aggregated.split("\t")
+        assert single_cols[4] != "NA"
+        # pop, chromosome, window bounds and no_sites are exact
+        assert aggregated_cols[:4] == single_cols[:4]
+        assert aggregated_cols[5] == single_cols[5]
+        # the floats round-trip through the temp file at 14 significant digits
+        assert [float(x) for x in aggregated_cols[4:]] == pytest.approx(
+            [float(x) for x in single_cols[4:]], rel=1e-10
+        )
