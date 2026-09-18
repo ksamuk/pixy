@@ -23,6 +23,62 @@ from typing import Optional
 import numpy as np
 from numpy.typing import NDArray
 
+# Symbolic ALT alleles that stand for "any other allele" rather than an observed one.
+SYMBOLIC_ALTS = ("<NON_REF>", "<*>")
+
+# Number of ALT columns to request from scikit-allel for GVCF input: up to three real SNP
+# alleles plus the trailing symbolic allele. (scikit-allel's default of 3 would truncate the
+# symbolic allele off a triallelic-plus-`<NON_REF>` record and hide it from us.)
+GVCF_ALT_NUMBER = 4
+
+
+def strip_symbolic_alts(callset: Dict[str, NDArray]) -> Dict[str, NDArray]:
+    """
+    Discount symbolic ALT alleles (``<NON_REF>``, ``<*>``) from ``numalt`` and ``is_snp``.
+
+    GATK writes ``<NON_REF>`` as the last ALT of *every* GVCF record, not just multi-site
+    blocks. scikit-allel counts it as a real allele, so a reference-only record reports
+    ``numalt=1, is_snp=False`` and a plain SNP (``A -> G,<NON_REF>``) reports
+    ``numalt=2, is_snp=False``; pixy's site filter would discard both. This rewrites those
+    two fields, for rows carrying a symbolic allele only, to what they would be had the
+    symbolic allele not been listed. Genotype calls pointing at the symbolic allele (an
+    unobserved, unknown allele) are set to missing.
+
+    Args:
+        callset: a dict as returned by :func:`allel.read_vcf` containing ``variants/REF``,
+            ``variants/ALT``, ``variants/numalt``, ``variants/is_snp`` and ``calldata/GT``.
+
+    Returns:
+        The same dict, modified in place.
+    """
+    alt: NDArray = np.asarray(callset["variants/ALT"]).astype(str)
+    if alt.ndim == 1:
+        alt = alt[:, None]
+    is_symbolic: NDArray = np.isin(alt, SYMBOLIC_ALTS)
+    rows: NDArray = np.any(is_symbolic, axis=1)
+    if not rows.any():
+        return callset
+
+    is_real: NDArray = (alt != "") & ~is_symbolic
+    numalt_real: NDArray = is_real.sum(axis=1)
+    ref_len: NDArray = np.char.str_len(np.asarray(callset["variants/REF"]).astype(str))
+    # a SNP has a single-base REF and at least one real ALT, all of them single-base
+    # (`*`, the spanning-deletion allele, is not a base)
+    alt_is_base: NDArray = (np.char.str_len(alt) == 1) & (alt != "*")
+    is_snp_real: NDArray = (ref_len == 1) & (numalt_real > 0) & (alt_is_base | ~is_real).all(axis=1)
+
+    numalt: NDArray = callset["variants/numalt"]
+    is_snp: NDArray = callset["variants/is_snp"]
+    numalt[rows] = numalt_real[rows]
+    is_snp[rows] = is_snp_real[rows]
+
+    # allele index of the symbolic ALT (ALT column j is allele j + 1)
+    gt: NDArray = callset["calldata/GT"]
+    symbolic_allele: NDArray = np.where(rows, is_symbolic.argmax(axis=1) + 1, -2)
+    gt[gt == symbolic_allele.reshape((-1,) + (1,) * (gt.ndim - 1))] = -1
+
+    return callset
+
 
 def expand_blocks(
     callset: Dict[str, NDArray],

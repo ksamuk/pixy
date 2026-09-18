@@ -65,7 +65,7 @@ class TempRow(NamedTuple):
     diffs: str
     comps: str
     missing: str
-    tajima_counts: str  # "n:s,n:s,..." or "NA"
+    tajima_counts: str  # "nsum=<int>,mut=<int>" or "NA"
 
 
 def iter_temp_rows(temp_file: Path) -> Iterator[TempRow]:
@@ -212,12 +212,14 @@ def _final_stat(  # noqa: C901
         return (float(diffs) - float(comps)) / d_stdev
     if stat == "fst":
         if fst_type == "wc":
+            # NB: same `> 0` conditions as `pixy.calc.calc_fst`, so that a window is defined
+            # (or NA) regardless of whether it was aggregated
             denom: Numeric = _add(_add(diffs, comps), missing)
-            if _is_na(denom) or denom == 0:
+            if _is_na(denom) or not float(denom) > 0:
                 return "NA"
             return float(diffs) / float(denom)
         if fst_type == "hudson":
-            if _is_na(comps) or comps == 0:
+            if _is_na(comps) or not float(comps) > 0:
                 return "NA"
             return float(diffs) / float(comps)
     raise ValueError(f"Unsupported statistic for aggregation: {stat}")
@@ -468,8 +470,6 @@ def _format_temp_row_for_stat(row: TempRow, stat: str, fst_type: str, fst_compon
             _fmt_float(_to_num(row.comps)),
             _fmt_float(_to_num(row.missing)),
         ]
-        if fst_components:  # fst_components flag is overloaded; tajima_components is what matters
-            pass  # handled by caller
     elif stat == "fst":
         cells = [
             row.pop1,
@@ -638,8 +638,6 @@ def group_temp_rows_by_stat_chrom(
 ) -> Dict[Tuple[str, str], List[TempRow]]:
     """Single-pass grouping equivalent to `outpanel.groupby([0, 3])` in the old code."""
     out: Dict[Tuple[str, str], List[TempRow]] = defaultdict(list)
-    successful_stats: set[str] = set()
     for r in rows:
         out[(r.stat, r.chrom)].append(r)
-        successful_stats.add(r.stat)
     return out

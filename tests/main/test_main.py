@@ -1590,3 +1590,39 @@ def test_numpy_compat_missing_detects_chained_import_error() -> None:
     assert not _numpy_compat_missing(
         ModuleNotFoundError("No module named 'numpy.random'", name="numpy.random")
     )
+
+
+@pytest.mark.skipif(
+    shutil.which("bgzip") is None or shutil.which("tabix") is None,
+    reason="bgzip and tabix are required to build the synthetic VCF",
+)
+def test_pixy_interval_one_site_longer_than_window_keeps_last_site(tmp_path: Path) -> None:
+    """An interval of `window_size + 1` sites needs two windows, not one truncated window."""
+    body = "".join(f"chr1\t{pos}\t.\tA\t.\t.\tPASS\t.\tGT\t0/0\t0/0\n" for pos in range(1, 11))
+    body += "chr1\t11\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\t0/0\n"
+    vcf = tmp_path / "data.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\n" + body
+    )
+    subprocess.run(["bgzip", "-f", str(vcf)], check=True)
+    vcf_gz = vcf.with_suffix(".vcf.gz")
+    subprocess.run(["tabix", "-p", "vcf", str(vcf_gz)], check=True)
+    pop_file = tmp_path / "pops.txt"
+    pop_file.write_text("S1\tA\nS2\tA\n")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    run_pixy_helper(
+        pixy_out_dir=out_dir,
+        stats=["pi"],
+        vcf_path=vcf_gz,
+        populations_path=pop_file,
+        window_size=10,
+    )
+
+    rows = [ln.split("\t") for ln in (out_dir / "pixy_pi.txt").read_text().splitlines()[1:]]
+    assert [(r[2], r[3], r[5]) for r in rows] == [("1", "10", "10"), ("11", "20", "1")]
+    assert int(rows[1][6]) > 0  # the SNP at position 11 is counted

@@ -20,11 +20,14 @@ from allel import SortedIndex
 from numpy.typing import NDArray
 
 from pixy.calc import calc_tajima_d
+from pixy.calc import calc_tajima_d_stdev
 from pixy.calc import calc_watterson_theta
 from pixy.calc import serialize_tajima_d_components
 from pixy.enums import FSTEstimator
 from pixy.enums import PixyStat
+from pixy.gvcf import GVCF_ALT_NUMBER
 from pixy.gvcf import expand_blocks
+from pixy.gvcf import strip_symbolic_alts
 from pixy.models import PixyTempResult
 from pixy.models import TajimaDResult
 from pixy.models import WattersonThetaResult
@@ -225,9 +228,13 @@ def _read_filtered_variants_streaming(  # noqa: C901
     window_region: str,
     ploidy: int,
     include_multiallelic_snps: bool,
+    is_gvcf: bool = False,
 ) -> Tuple[bool, Optional[GenotypeArray], Optional[SortedIndex]]:
     """
     Stream a VCF region in sub-chunks, keeping only variant rows in memory.
+
+    When `is_gvcf` is set, symbolic ALT alleles (`<NON_REF>`) are discounted before the SNP
+    mask is built -- GATK appends one to every variant record of a GVCF.
 
     Used by `read_and_filter_genotypes` when invariant sites are not needed (FST-only
     runs, or any path where the VCF is variants-only by design — e.g. the wisp-mask
@@ -239,23 +246,25 @@ def _read_filtered_variants_streaming(  # noqa: C901
     pos_pieces: List[NDArray] = []
     gt_pieces: List[NDArray] = []
 
+    fields: List[str] = ["CHROM", "POS", "calldata/GT", "variants/is_snp", "variants/numalt"]
+    numbers: Dict[str, int] = {"GT": ploidy}
+    if is_gvcf:
+        fields.extend(["variants/REF", "variants/ALT"])
+        numbers["ALT"] = GVCF_ALT_NUMBER
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning, module="allel")
         _fields, _samples, _headers, it = allel.iter_vcf_chunks(  # type: ignore[attr-defined]
             vcf_path,
-            fields=[
-                "CHROM",
-                "POS",
-                "calldata/GT",
-                "variants/is_snp",
-                "variants/numalt",
-            ],
-            numbers={"GT": ploidy},
+            fields=fields,
+            numbers=numbers,
             region=window_region,
             chunk_length=_STREAMING_SUB_CHUNK_LENGTH,
         )
 
         for chunk_dict, _chunk_length, _chrom, _last_pos in it:
+            if is_gvcf:
+                chunk_dict = strip_symbolic_alts(chunk_dict)
             is_biallelic_snp = np.logical_and(
                 chunk_dict["variants/is_snp"][:] == 1,
                 chunk_dict["variants/numalt"][:] == 1,
@@ -358,14 +367,15 @@ def read_and_filter_genotypes(  # noqa: C901
     # rows per-sub-chunk so peak RSS scales with variant density rather than chunk
     # length. `sites_list_chunk` masking, if any, is applied below by the shared
     # post-read path; the streaming branch returns early with the assembled arrays.
-    # NB: GVCF block rows are correctly dropped here without any special handling —
-    # blocks have `is_snp == 0` and are filtered out by the biallelic-SNP mask.
+    # NB: GVCF block rows are dropped here without any special handling — they are not
+    # SNPs (and have `numalt == 0` once their symbolic ALT is discounted).
     if not needs_invariants:
         callset_is_none, gt_array, pos_array = _read_filtered_variants_streaming(
             vcf_path=args.vcf,
             window_region=window_region,
             ploidy=ploidy,
             include_multiallelic_snps=include_multiallelic_snps,
+            is_gvcf=is_gvcf,
         )
         if not callset_is_none and sites_list_chunk is not None:
             assert pos_array is not None and gt_array is not None
@@ -378,20 +388,26 @@ def read_and_filter_genotypes(  # noqa: C901
     # `variants/END` is requested unconditionally — scikit-allel returns it filled with
     # -1 when the field is missing from a record, which costs nothing for non-GVCF
     # inputs and is consumed by `pixy.gvcf.expand_blocks` below when --gvcf is set.
+    # REF/ALT are only needed to see through the symbolic `<NON_REF>` allele of a GVCF.
+    fields: List[str] = [
+        "CHROM",
+        "POS",
+        "calldata/GT",
+        "variants/is_snp",
+        "variants/numalt",
+        "variants/END",
+    ]
+    numbers: Dict[str, int] = {"GT": ploidy}
+    if is_gvcf:
+        fields.extend(["variants/REF", "variants/ALT"])
+        numbers["ALT"] = GVCF_ALT_NUMBER
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning, module="allel")
         callset = allel.read_vcf(
             args.vcf,
             region=window_region,
-            fields=[
-                "CHROM",
-                "POS",
-                "calldata/GT",
-                "variants/is_snp",
-                "variants/numalt",
-                "variants/END",
-            ],
-            numbers={"GT": ploidy},
+            fields=fields,
+            numbers=numbers,
         )
 
     # keep track of whether the callset was empty (no sites for this range in the VCF)
@@ -405,7 +421,11 @@ def read_and_filter_genotypes(  # noqa: C901
         # GVCF block expansion happens before the genotype-array construction below, so
         # the existing biallelic/invariant mask logic stays untouched: synthesised rows
         # have numalt==0 and are picked up by the `is_invariant_site` branch.
+        # Symbolic alleles are discounted first, so that single-site blocks and `<NON_REF>`
+        # records without an END become ordinary invariant rows (numalt==0) and SNPs with
+        # a trailing `<NON_REF>` become ordinary SNPs.
         if is_gvcf:
+            callset = strip_symbolic_alts(callset)
             callset = expand_blocks(callset, region_start=window_pos_1, region_end=window_pos_2)
 
         # if the callset is NOT empty (None), continue with pipeline
@@ -743,14 +763,35 @@ def compute_summary_stats(  # noqa: C901
                     # otherwise compute Tajima's D as normal
                     else:
                         tajima_result = calc_tajima_d(gt_pop)
-                # Add the wisp invariant-site contribution to num_sites only.
-                # Invariants don't contribute to raw_pi, Watterson's theta, the per-site
-                # variant-class counts, or the d_stdev — those are all variant-only quantities.
+                # Merge in the wisp invariant-site contribution. Invariants don't contribute to
+                # raw_pi, Watterson's theta, or the mutation count, but the D denominator is
+                # evaluated at the mean observed allele count over ALL sites, so `num_sites`
+                # and `total_allele_count` are merged together and the denominator (and D)
+                # recomputed -- exactly what an all-sites VCF would have produced.
                 num_sites = tajima_result.num_sites
+                total_allele_count = tajima_result.total_allele_count
+                tajima_d = tajima_result.tajima_d
+                d_stdev = tajima_result.d_stdev
                 if invariant_contribution is not None:
                     inv_t = invariant_contribution.tajima.get(str(pop))
-                    if inv_t is not None:
+                    if inv_t is not None and inv_t.num_sites > 0:
                         num_sites = num_sites + inv_t.num_sites
+                        total_allele_count = total_allele_count + inv_t.allele_count_sum
+                        d_stdev = calc_tajima_d_stdev(
+                            total_allele_count=total_allele_count,
+                            num_sites=num_sites,
+                            num_mutations=tajima_result.num_mutations,
+                        )
+                        if (
+                            d_stdev > 0
+                            and not isinstance(tajima_result.raw_pi, str)
+                            and not isinstance(tajima_result.watterson_theta, str)
+                        ):
+                            tajima_d = (
+                                tajima_result.raw_pi - tajima_result.watterson_theta
+                            ) / d_stdev
+                        else:
+                            tajima_d = "NA"
                 # consult the docstring of `PixyTempResult` for more details on overloaded fields
                 pixy_results: PixyTempResult = PixyTempResult(
                     pixy_stat=PixyStat.TAJIMA_D,
@@ -759,13 +800,13 @@ def compute_summary_stats(  # noqa: C901
                     chromosome=chromosome,
                     window_pos_1=window_pos_1,
                     window_pos_2=window_pos_2,
-                    calculated_stat=tajima_result.tajima_d,
+                    calculated_stat=tajima_d,
                     shared_sites_with_alleles=num_sites,
                     total_differences=tajima_result.raw_pi,
                     total_comparisons=tajima_result.watterson_theta,
-                    total_missing=tajima_result.d_stdev,
+                    total_missing=d_stdev,
                     tajima_d_components=serialize_tajima_d_components(
-                        tajima_result.total_allele_count,
+                        total_allele_count,
                         tajima_result.num_mutations,
                     ),
                 )

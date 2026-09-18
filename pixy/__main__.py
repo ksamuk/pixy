@@ -614,7 +614,9 @@ def main() -> None:  # noqa: C901
                 window_list = [list(a) for a in zip(sites_pre_list, sites_pre_list, strict=True)]
             else:
                 # if the interval is smaller than one window, make a list of length 1
-                if (interval_end - interval_start) <= window_size:
+                # NB: strict `<`. The interval holds `interval_end - interval_start + 1` sites, so
+                # a difference equal to `window_size` is one site more than a window can cover.
+                if (interval_end - interval_start) < window_size:
                     window_pos_1_list = [interval_start]
                     window_pos_2_list = [interval_start + window_size - 1]
                 else:
@@ -624,7 +626,9 @@ def main() -> None:  # noqa: C901
                         interval_end = interval_end + (window_size - (interval_end % window_size))
 
                     # create the start and stops for each window
-                    window_pos_1_list = [*range(interval_start, int(interval_end), window_size)]
+                    # NB: `interval_end + 1`, so that a window starting exactly at `interval_end`
+                    # is not dropped (e.g. the last site of every per-site run)
+                    window_pos_1_list = [*range(interval_start, int(interval_end) + 1, window_size)]
                     window_pos_2_list = [
                         *range(
                             interval_start + (window_size - 1),
@@ -633,10 +637,7 @@ def main() -> None:  # noqa: C901
                         )
                     ]
 
-                # `strict=False` is intentional: when `window_size == 1`, `window_pos_2_list`
-                # is one element longer than `window_pos_1_list` by construction (the trailing
-                # entry is meaningful for larger window sizes but spurious here), and the loop
-                # relies on `zip()` truncating to the shorter sequence.
+                # the two lists are the same length by construction
                 window_list = [
                     list(a) for a in zip(window_pos_1_list, window_pos_2_list, strict=False)
                 ]

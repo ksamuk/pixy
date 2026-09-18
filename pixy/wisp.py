@@ -318,12 +318,18 @@ class TajimaInvariantContribution:
     """
     Per-population invariant-site additions to a Tajima's D result.
 
-    Invariants only nudge ``num_sites`` upward — the numerator (``raw_pi``),
-    Watterson's theta term, and the per-site standard-deviation accumulator all derive
-    from variant sites only.
+    Invariants leave the numerator (``raw_pi`` and the Watterson's theta term) and the
+    mutation count untouched, but they are sites like any other for the mean observed
+    allele count per site that the D denominator is evaluated at. ``num_sites`` and
+    ``allele_count_sum`` must therefore always be merged together.
+
+    Attributes:
+        num_sites: count of invariant sites with k_haps > 0.
+        allele_count_sum: sum of k_haps over those sites.
     """
 
     num_sites: int = 0
+    allele_count_sum: int = 0
 
 
 @dataclass
@@ -437,6 +443,7 @@ def compute_window_invariant_contributions(  # noqa: C901
             contributions.watterson[pop].add(k_haps=k_haps, n_sites=n_invariant_in_range)
             if k_haps > 0:
                 contributions.tajima[pop].num_sites += n_invariant_in_range
+                contributions.tajima[pop].allele_count_sum += n_invariant_in_range * k_haps
 
         # Per-pair dxy contributions.
         for i in range(len(pop_names)):

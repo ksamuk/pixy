@@ -369,7 +369,9 @@ def _hudson_fst(ac1: AlleleCountsArray, ac2: AlleleCountsArray) -> Tuple[NDArray
         h2: NDArray = (an2 / (an2 - 1)) * (1 - np.sum(p2**2, axis=1))
 
         num: NDArray = h_between - (h1 + h2) / 2
-        den: NDArray = h_between
+        # `h_between` is still defined when a population has a single observed allele, but the
+        # numerator is not; drop the site from both so the ratio of sums stays unbiased
+        den: NDArray = np.where(np.isnan(num), np.nan, h_between)
 
     return num, den
 
@@ -466,7 +468,9 @@ def calc_fst(
         den_sum: float = np.nansum(den)
 
         # compute fst
-        if (num_sum + den_sum) > 0:
+        # NB: the numerator is legitimately negative when within-population diversity exceeds
+        # between-population divergence, so only the denominator decides whether FST is defined
+        if den_sum > 0:
             fst = num_sum / den_sum
         else:
             fst = "NA"

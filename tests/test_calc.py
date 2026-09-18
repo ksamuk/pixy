@@ -1370,3 +1370,43 @@ def test_calc_tajima_d_all_sites_masked_returns_na() -> None:
 
     assert result.tajima_d == "NA"
     assert result.num_sites == 0
+
+
+def test_calc_fst_hudson_negative_fst_is_not_na() -> None:
+    """
+    A negative Hudson FST is a valid estimate and must not be reported as NA.
+
+    With one heterozygous diploid per population, `H_b = 0.5` and the unbiased within-population
+    heterozygosities are both 1, so `num = -0.5`, `den = 0.5` and FST = -1. The windowed and
+    per-site estimators must agree.
+    """
+    array = GenotypeArray([[[0, 1], [0, 1]]])
+    pops = [[0], [1]]
+
+    result: FstResult = calc_fst(array, pops, FSTEstimator.HUDSON)
+    per_site_fst, _, _, _ = calc_fst_persite(array, pops, "hudson")
+
+    assert result.fst == pytest.approx(-1.0)
+    assert per_site_fst[0] == pytest.approx(-1.0)
+
+
+def test_calc_fst_hudson_single_allele_site_excluded_from_denominator() -> None:
+    """
+    A site where a population has a single observed allele contributes to neither component.
+
+    The unbiased within-population heterozygosity is undefined at `n == 1`, so the numerator is
+    NaN there. The denominator must be NaN at the same site, otherwise the ratio of sums is
+    biased toward zero.
+    """
+    informative_site = [[0, 0], [0, 1], [1, 1], [0, 1]]
+    single_allele_site = [[0, -1], [-1, -1], [1, 1], [0, 1]]
+    pops = [[0, 1], [2, 3]]
+
+    with_site: FstResult = calc_fst(
+        GenotypeArray([informative_site, single_allele_site]), pops, FSTEstimator.HUDSON
+    )
+    without_site: FstResult = calc_fst(GenotypeArray([informative_site]), pops, FSTEstimator.HUDSON)
+
+    assert with_site.fst == pytest.approx(without_site.fst)
+    assert with_site.a == pytest.approx(without_site.a)
+    assert with_site.b == pytest.approx(without_site.b)

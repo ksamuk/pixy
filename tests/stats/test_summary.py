@@ -1,4 +1,6 @@
 import argparse
+from typing import Any
+from typing import Dict
 
 import numpy as np
 import pytest
@@ -6,6 +8,8 @@ from allel import GenotypeArray
 from allel import SortedIndex
 
 from pixy.enums import FSTEstimator
+from pixy.stats.summary import compute_summary_dxy
+from pixy.stats.summary import compute_summary_pi
 from pixy.stats.summary import precompute_filtered_variant_array
 
 # site 1 is invariant, site 2 is biallelic, and site 3 is triallelic
@@ -58,3 +62,28 @@ def test_precompute_filtered_variant_array_retains_multiallelic_sites_for_hudson
     assert pos_array_fst is not None
     assert list(pos_array_fst) == expected_positions
     assert gt_array_fst.n_variants == len(expected_positions)
+
+
+def test_compute_summary_no_sites_counts_sites_fixed_for_a_second_alt() -> None:
+    """A population carrying only ALT2 at a site still has genotypes there."""
+    # site 1: pop A is fixed for ALT2; site 2: ordinary biallelic site
+    gt_region = GenotypeArray([
+        [[2, 2], [2, 2], [0, 0], [0, 1]],
+        [[0, 0], [0, 1], [0, 0], [1, 1]],
+    ])
+    popindices = {"A": np.array([0, 1]), "B": np.array([2, 3])}
+    common: Dict[str, Any] = dict(
+        popnames=np.array(["A", "B"]),
+        window_is_empty=False,
+        gt_region=gt_region,
+        popindices=popindices,
+        chromosome="chr1",
+        window_pos_1=1,
+        window_pos_2=100,
+    )
+
+    pi_results = compute_summary_pi(**common)
+    dxy_results = compute_summary_dxy(**common)
+
+    assert [r.shared_sites_with_alleles for r in pi_results] == [2, 2]
+    assert [r.shared_sites_with_alleles for r in dxy_results] == [2]
