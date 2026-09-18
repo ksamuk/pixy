@@ -119,7 +119,6 @@ def precompute_filtered_variant_array(
         # intended)
         # TODO: verify these are indeed spurious
         # https://github.com/fulcrumgenomics/pixy-dev/issues/48
-        np.seterr(divide="ignore", invalid="ignore")
 
         # if the genotype matrix is not empty, compute FST
         # otherwise return NA
@@ -128,9 +127,10 @@ def precompute_filtered_variant_array(
                 "if gt_array_fst is not None, pos_array_fst should be not None as well"
             )
 
-            per_site_fsts, per_site_a, per_site_b, per_site_c = calc_fst_persite(
-                gt_array_fst, fst_pop_indicies, args.fst_type
-            )
+            with np.errstate(divide="ignore", invalid="ignore"):
+                per_site_fsts, per_site_a, per_site_b, per_site_c = calc_fst_persite(
+                    gt_array_fst, fst_pop_indicies, args.fst_type
+                )
             assert gt_array_fst.shape[0] == pos_array_fst.shape[0] == per_site_fsts.shape[0], (
                 "the genotype, position, and FST arrays should have the same length"
             )
@@ -397,7 +397,6 @@ def compute_summary_fst(
         # intended)
         # TODO: verify these are indeed spurious
         # https://github.com/fulcrumgenomics/pixy-dev/issues/48
-        np.seterr(divide="ignore", invalid="ignore")
 
         # if the genotype matrix is not empty, compute FST
         # other wise return NA
@@ -460,7 +459,8 @@ def _compute_individual_fst_for_pair(
 
     site_mask = np.logical_and(pos_array_fst >= window_pos_1, pos_array_fst <= window_pos_2)
     gt_region_fst = gt_array_fst.compress(site_mask, axis=0)
-    result = calc_fst(gt_region_fst, fst_pop_indicies, fst_type)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        result = calc_fst(gt_region_fst, fst_pop_indicies, fst_type)
 
     pixy_result = PixyTempResult(
         pixy_stat=PixyStat.FST,
